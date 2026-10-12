@@ -61,3 +61,5 @@ on conflict (id) do nothing;
 drop policy if exists "nest staff job-files" on storage.objects;
 create policy "nest staff job-files" on storage.objects for all to authenticated
   using (bucket_id = 'job-files') with check (bucket_id = 'job-files');
+
+-- 이어서 같은 폴더의 update-02.sql(현장 사진 · 수금 · 매출)도 실행하세요.

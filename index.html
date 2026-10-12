@@ -154,7 +154,7 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .fg-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .fg-btns{display:flex;gap:6px;flex-wrap:wrap}
 .fg-btns label{flex-direction:row;color:var(--fg);cursor:pointer}
-.fpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.fpick,.phpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .fg-btns label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .flist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .flist li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
@@ -169,6 +169,120 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .login img{width:72px;height:72px;border-radius:16px}
 .hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .who{font-size:12px;color:var(--muted)}
+button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
+.tabs{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{white-space:nowrap;flex:none}
+@media (max-width:560px){.tab{padding:8px 8px;font-size:14px}}
+.update{background:var(--soon-bg);color:var(--soon);border-radius:8px;padding:10px 12px;font-size:13px}
+.update a{color:inherit;font-weight:700}
+.warn-box{font-size:13px;color:var(--late);background:var(--late-bg);border-radius:6px;padding:8px 10px}
+.warn-box ul{margin:4px 0 0;padding-left:18px}
+.view{display:flex;flex-direction:column;gap:14px}
+.view h3{margin:6px 0 0;font-size:15px}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.filters select{width:auto}
+/* 시공자별 일정판 */
+.crewgrid{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow-x:auto}
+.crewgrid table{min-width:100%;width:auto;table-layout:fixed}
+.crewgrid th,.crewgrid td{padding:6px;border-right:1px solid var(--line);vertical-align:top;width:68px;min-width:68px;max-width:68px}
+.crewgrid th:last-child,.crewgrid td:last-child{border-right:0}
+.crewgrid th.nm{width:96px;min-width:96px;max-width:96px;position:sticky;left:0;background:var(--surface);z-index:1;font-size:13px;color:var(--fg);font-weight:500;white-space:normal;word-break:keep-all}
+.crewgrid th.nm small{display:block;color:var(--muted);font-size:11px;font-weight:400}
+.crewgrid thead th{text-align:center;font-size:12px;padding:6px 2px}
+.crewgrid thead th.nm{text-align:left;padding:6px}
+.crewgrid .we{background:color-mix(in srgb,var(--surface) 55%,var(--line))}
+.crewgrid thead th.today{color:var(--accent);font-weight:700}
+.crewgrid td.today{background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.crewgrid td .ev{margin-bottom:2px;cursor:pointer}
+.crewgrid td.clash{background:var(--late-bg)}
+.clash-tag{display:block;font-size:10px;color:var(--late);font-weight:700}
+.crewgrid tbody tr{cursor:default}
+.crewgrid tbody tr:hover{background:none}
+.ev[data-j]{cursor:pointer}
+.crew-title{min-width:200px}
+#crewToday{white-space:nowrap}
+@media (max-width:560px){.crew-title{min-width:0;flex:1;font-size:15px!important}
+  .crewgrid th,.crewgrid td{width:58px;min-width:58px;max-width:58px;padding:5px 4px}
+  .crewgrid th.nm{width:70px;min-width:70px;max-width:70px}}
+/* 수금 · 매출 */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile small{font-size:12px;color:var(--muted)}
+.tile b{font-family:var(--mono);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tile.warn b{color:var(--soon)}
+.tile.bad b{color:var(--late)}
+.tbl{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow-x:auto}
+.tbl table{min-width:560px}
+.num{text-align:right;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+th.num{font-family:var(--font);font-size:12px}
+.neg{color:var(--late)}
+.bar{display:block;height:6px;border-radius:3px;background:color-mix(in srgb,var(--line) 60%,transparent);overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar.cost i{background:var(--muted)}
+.bar+.bar{margin-top:3px}
+.barcell{width:26%;vertical-align:middle}
+.m-only{display:none}
+.tile small+small{margin-top:-2px}
+/* 휴대폰: 표를 한 줄씩 카드처럼 */
+@media (max-width:560px){
+  .tile b{font-size:16px}
+  .tbl.stack table,.tbl.fit table{min-width:0}
+  .tbl.stack thead{display:none}
+  .tbl.stack tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .tbl.stack tbody tr:last-child{border-bottom:0}
+  .tbl.stack td{border:0;padding:0}
+  .tbl.stack td.job{order:-1;flex-basis:100%}
+  .tbl.stack td.job b{display:inline}
+  .tbl.stack td.job small{margin-left:6px}
+  .tbl.stack td[data-l]{flex:1 1 0;text-align:left;min-width:0}
+  .tbl.stack td[data-l]::before{content:attr(data-l);display:block;font-family:var(--font);font-size:11px;color:var(--muted)}
+  .tbl.stack td.push{margin-left:auto}
+  .tbl.stack.two td[data-l]{flex:1 1 40%}
+  .tbl.stack tr.zero{display:none}
+  .tbl.stack td.full{flex-basis:100%}
+  .tbl.stack .barcell,.tbl.stack .d-only{display:none}
+  .tbl.stack .m-only{display:inline}
+  .tbl.fit th,.tbl.fit td{padding:8px}
+}
+/* 수금 · 원가 입력 */
+.panel h4{margin:4px 0 0;font-size:13px;font-weight:700}
+.pay-row{display:grid;grid-template-columns:100px 1fr 150px auto 150px auto;gap:8px;align-items:end}
+.cost-row{display:grid;grid-template-columns:160px 1fr 1.4fr auto;gap:8px;align-items:end}
+.pay-row>*,.cost-row>*{min-width:0}
+.pay-row input:not([type=checkbox]),.pay-row select,.cost-row input,.cost-row select{width:100%}
+.pay-row label.check{padding-bottom:8px;white-space:nowrap}
+.won{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+@media (max-width:700px){.pay-row,.cost-row{grid-template-columns:1fr 1fr}.cost-row .note{grid-column:1/-1}}
+.mo-sum{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px}
+.mo-sum b{font-family:var(--mono);font-weight:500}
+.mo-sum small{color:var(--muted)}
+.rows{display:flex;flex-direction:column;gap:8px}
+/* 현장 사진 */
+.ph-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.ph-bar label.stage{flex-direction:row;align-items:center;gap:8px}
+#ph-list{display:flex;flex-direction:column;gap:12px}
+.ph-grp{display:flex;flex-direction:column;gap:6px}
+.ph-head{font-size:13px}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.ph{position:relative;aspect-ratio:1;border:1px solid var(--line);border-radius:6px;overflow:hidden;padding:0;background:var(--bg);display:block;width:100%}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph.wait span{position:absolute;left:0;right:0;bottom:0;font-size:11px;background:color-mix(in srgb,var(--bg) 85%,transparent);color:var(--fg);padding:2px 4px}
+.ph-x{position:absolute;top:4px;right:4px;font-size:11px;border:0;border-radius:4px;background:var(--surface);color:var(--late);padding:1px 6px}
+.ph-none{border:1px dashed var(--line);border-radius:6px;padding:10px;color:var(--muted);font-size:13px}
+/* 사진 크게 보기: 사진이 잘 보이도록 항상 어두운 바탕 */
+.viewer{position:fixed;inset:0;z-index:50;background:#141210;display:flex;flex-direction:column;color:#F1E8DA}
+.v-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 16px 12px}
+.v-top .btn.ghost{color:#F1E8DA;border-color:#5A534C;text-decoration:none}
+.v-top .btn.del{color:#F08A7E;border-color:#5A534C}
+.v-top select{background:#2A2724;color:#F1E8DA;border-color:#5A534C}
+.v-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.v-cap{font-size:13px;font-family:var(--mono)}
+.v-img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 8px max(16px,env(safe-area-inset-bottom))}
+.v-img img{max-width:calc(100% - 96px);max-height:calc(100vh - 120px);object-fit:contain}
+.v-nav{background:rgba(255,255,255,.12);color:#F1E8DA;border:0;border-radius:50%;width:40px;height:40px;font-size:22px;flex:none}
+.v-nav:disabled{opacity:.25}
+@media (max-width:560px){.v-nav{display:none}.v-img img{max-width:100%}}
 </style>
 <style>[hidden]{display:none!important} body{margin:0;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(48px,env(safe-area-inset-bottom))}</style>
 </head>
@@ -197,6 +311,8 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
     </div>
     <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
   </header>
+
+  <div class="update" id="updNote" hidden>현장 사진·수금·매출 기능을 쓰려면 Supabase 업데이트를 한 번 해야 해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-02.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 전부 복사해 Supabase의 SQL Editor에 붙여넣고 Run을 누르면 끝나요.</div>
 
   <div class="summary" id="summary"></div>
 
@@ -234,6 +350,7 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
       <div class="hint">들어갈 시공자를 고르세요. 아무도 안 고르면 '미배정'으로 표시돼요.</div>
       <div class="crewpick" id="f-crew"></div>
       <div style="display:flex;gap:8px;max-width:360px"><input id="f-newcrew" placeholder="명단에 없는 시공자 이름" aria-label="새 시공자 이름" style="flex:1"><button class="btn ghost sm" type="button" id="addCrew">명단에 추가</button></div>
+      <div class="warn-box" id="f-clash" hidden></div>
     </div>
     <div class="sec">
       <h3>마감</h3>
@@ -249,6 +366,15 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
       <div><button class="btn ghost sm" id="addAs" type="button">+ AS 일정 추가</button></div>
     </div>
     <div class="sec">
+      <h3>현장 사진</h3>
+      <div class="ph-bar">
+        <label class="stage">단계<select id="ph-stage"><option>실측</option><option>시공 전</option><option>시공 후</option><option>마감</option><option>AS</option><option>기타</option></select></label>
+        <span class="fg-btns"><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="phpick"></label><label class="btn ghost sm">앨범에서 고르기<input type="file" accept="image/*" multiple class="phpick"></label></span>
+      </div>
+      <div id="ph-list"></div>
+      <div class="hint">고른 단계로 묶여 보관돼요. 사진을 누르면 크게 보이고, 단계를 바꾸거나 지울 수 있어요. 휴대폰 사진은 자동으로 줄여서 올라가요.</div>
+    </div>
+    <div class="sec">
       <h3>도면 · 견적서</h3>
       <div class="filegrp">
         <div class="fg-head"><b>도면</b><span class="fg-btns"><label class="btn ghost sm">파일 올리기<input type="file" multiple class="fpick" data-kind="drawing"></label><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="fpick" data-kind="drawing"></label></span></div>
@@ -259,6 +385,22 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
         <ul class="flist" id="fl-estimate"></ul>
       </div>
       <div class="hint">PDF와 사진은 누르면 바로 열리고, 엑셀·CAD 파일은 내려받아 열어요. 파일 하나당 50MB까지 올릴 수 있어요.</div>
+    </div>
+    <div class="sec admin-only" id="sec-money" hidden>
+      <h3>수금 · 원가 <span class="hint">관리자 계정에만 보여요</span></h3>
+      <div class="grid">
+        <label>계약일<input type="date" id="mo-date"></label>
+        <label>계약금액(원)<input class="won" inputmode="numeric" id="mo-amount" placeholder="예: 15,000,000"></label>
+        <label class="check"><input type="checkbox" id="mo-vat">부가세 별도 (10% 더 받음)</label>
+      </div>
+      <h4>입금</h4>
+      <div class="hint">계약금·중도금·잔금을 받을 날과 함께 넣고, 들어오면 '입금됨'에 체크하세요.</div>
+      <div class="rows" id="mo-pays"></div>
+      <div><button class="btn ghost sm" type="button" id="addPay">+ 입금 일정 추가</button></div>
+      <h4>원가</h4>
+      <div class="rows" id="mo-costs"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="btn ghost sm" type="button" id="addCost">+ 원가 항목 추가</button><span class="hint" id="mo-extra-hint"></span></div>
+      <div class="mo-sum" id="mo-sum"></div>
     </div>
     <div class="err" id="f-err" hidden></div>
     <div class="confirm" id="delConfirm" hidden>이 현장을 삭제할까요? 되돌릴 수 없어요. <button class="btn del sm" type="button" id="delYes">삭제</button> <button class="btn ghost sm" type="button" id="delNo">취소</button></div>
@@ -271,15 +413,18 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-board" aria-selected="true">현장 목록</button>
     <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
+    <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
+    <button class="tab admin-only" role="tab" id="tab-pay" aria-selected="false" hidden>수금</button>
+    <button class="tab admin-only" role="tab" id="tab-sales" aria-selected="false" hidden>매출·원가</button>
   </div>
 
   <section id="view-board">
     <div class="board"><table>
-      <thead><tr><th>현장</th><th>실측일</th><th>시공 기간</th><th>시공자</th><th>마감</th><th>추가 투입</th><th>도면 · 견적서</th></tr></thead>
+      <thead id="thead"></thead>
       <tbody id="tbody"></tbody></table></div>
     <div class="cards" id="cards"></div>
     <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 오른쪽 위 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
-    <p class="sub">현장을 누르면 일정과 AS를 고치고 도면·견적서를 올릴 수 있어요. 시공 7일 전까지 시공자가 안 잡혀 있으면 빨간색으로 표시됩니다.</p>
+    <p class="sub">현장을 누르면 일정·AS를 고치고 사진·도면·견적서를 올릴 수 있어요. 시공 7일 전까지 시공자가 안 잡혀 있으면 빨간색으로 표시됩니다.</p>
   </section>
 
   <section id="view-cal" hidden>
@@ -297,6 +442,55 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
     </div>
     <div class="cal" id="cal"></div>
   </section>
+
+  <section id="view-crew" class="view" hidden>
+    <div class="calhead">
+      <button class="btn ghost" id="crewPrev" aria-label="이전 기간">‹</button>
+      <h2 id="crewTitle" class="crew-title"></h2>
+      <button class="btn ghost" id="crewNext" aria-label="다음 기간">›</button>
+      <button class="btn ghost sm" id="crewToday">이번 주</button>
+    </div>
+    <div class="crewgrid" id="crewgrid"></div>
+    <p class="sub" id="crewNote"></p>
+    <p class="sub">한 줄이 시공자 한 명이에요. 시공(현장 색)과 AS(토마토색)가 함께 보이고, 같은 날 두 현장에 잡히면 빨간 칸으로 표시돼요.</p>
+  </section>
+
+  <section id="view-pay" class="view" hidden>
+    <div class="tiles" id="payTiles"></div>
+    <div class="empty" id="payEmpty" hidden>아직 금액을 넣은 현장이 없어요. 현장을 눌러 아래쪽 <b>수금 · 원가</b>에 계약금액과 입금 일정을 넣어 보세요.</div>
+    <h3>받을 돈 (입금 예정 · 지연)</h3>
+    <div class="tbl stack"><table><thead><tr><th>받을 날</th><th>현장</th><th>구분</th><th class="num">금액</th><th>상태</th></tr></thead><tbody id="payTodo"></tbody></table></div>
+    <h3>현장별 수금</h3>
+    <div class="tbl stack"><table><thead><tr><th>현장</th><th class="num">받을 돈</th><th class="num">받은 돈</th><th class="num">미수금</th><th>상태</th></tr></thead><tbody id="payJobs"></tbody></table></div>
+    <h3>최근 30일 입금</h3>
+    <div class="tbl stack"><table><thead><tr><th>입금일</th><th>현장</th><th>구분</th><th class="num">금액</th></tr></thead><tbody id="payDone"></tbody></table></div>
+  </section>
+
+  <section id="view-sales" class="view" hidden>
+    <div class="filters"><select id="sa-y" aria-label="연도"></select><select id="sa-m" aria-label="월"><option value="0">1년 전체</option><option value="1">1월</option><option value="2">2월</option><option value="3">3월</option><option value="4">4월</option><option value="5">5월</option><option value="6">6월</option><option value="7">7월</option><option value="8">8월</option><option value="9">9월</option><option value="10">10월</option><option value="11">11월</option><option value="12">12월</option></select></div>
+    <div class="tiles" id="saTiles"></div>
+    <div id="saMonthsBox" class="view">
+      <h3>월별</h3>
+      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익률</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>원가</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
+    </div>
+    <h3>현장별</h3>
+    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
+    <h3>원가 구성</h3>
+    <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
+    <p class="sub" id="saNote"></p>
+  </section>
+</div>
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="사진 크게 보기">
+  <div class="v-top">
+    <span class="v-cap" id="v-cap"></span>
+    <span class="v-btns">
+      <select id="v-stage" aria-label="사진 단계"><option>실측</option><option>시공 전</option><option>시공 후</option><option>마감</option><option>AS</option><option>기타</option></select>
+      <a class="btn ghost sm" id="v-open" target="_blank" rel="noopener">원본</a>
+      <button class="btn del sm" type="button" id="v-del">삭제</button>
+      <button class="btn ghost sm" type="button" id="v-close">닫기</button>
+    </span>
+  </div>
+  <div class="v-img"><button class="v-nav" type="button" id="v-prev" aria-label="이전 사진">‹</button><img id="v-img" alt="현장 사진"><button class="v-nav" type="button" id="v-next" aria-label="다음 사진">›</button></div>
 </div>
 <script src="vendor/supabase.js"></script>
 <script src="config.js"></script>
