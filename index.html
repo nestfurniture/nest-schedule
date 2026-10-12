@@ -19,7 +19,10 @@
 :root{
   --bg:#F6F4EE; --surface:#FCFBF8; --line:#DCD6CA; --fg:#2B2A28; --muted:#6E655B; --accent:#A9471C; --accent-fg:#F6F4EE;
   --late:#B3261E; --late-bg:#F6DEDA; --soon:#86601A; --soon-bg:#F1E7D2; --ok:#4F6B3A; --ok-bg:#E4EADB;
-  --c-measure:#2B2A28; --c-install:#A9471C; --c-as:#5E7048; --ev-fg:#F6F4EE;
+  --c-measure:#2B2A28; --ev-fg:#F6F4EE;
+  /* 시공 색 3가지(현장마다 선택) · AS 토마토 */
+  --c-orange:#A9471C; --c-orange-fg:#F6F4EE; --c-banana:#E9C46A; --c-banana-fg:#2B2A28; --c-avocado:#5F7232; --c-avocado-fg:#F6F4EE;
+  --c-as:#CB3E2A; --c-as-fg:#FFFFFF;
   --font:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --display:"Cormorant Garamond",Georgia,"Noto Serif KR",serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -27,11 +30,15 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
   --late:#F08A7E; --late-bg:#40221E; --soon:#E2B866; --soon-bg:#3A2F1A; --ok:#9DBB82; --ok-bg:#25301E;
-  --c-measure:#D8D0C4; --c-install:#D9733F; --c-as:#9DBB82; --ev-fg:#1E1C1A; color-scheme:dark}}
+  --c-measure:#D8D0C4; --ev-fg:#1E1C1A;
+  --c-orange:#D9733F; --c-orange-fg:#1E1C1A; --c-banana:#E8C766; --c-banana-fg:#1E1C1A; --c-avocado:#A3B862; --c-avocado-fg:#1E1C1A;
+  --c-as:#F0715C; --c-as-fg:#1E1C1A; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
   --late:#F08A7E; --late-bg:#40221E; --soon:#E2B866; --soon-bg:#3A2F1A; --ok:#9DBB82; --ok-bg:#25301E;
-  --c-measure:#D8D0C4; --c-install:#D9733F; --c-as:#9DBB82; --ev-fg:#1E1C1A; color-scheme:dark}
+  --c-measure:#D8D0C4; --ev-fg:#1E1C1A;
+  --c-orange:#D9733F; --c-orange-fg:#1E1C1A; --c-banana:#E8C766; --c-banana-fg:#1E1C1A; --c-avocado:#A3B862; --c-avocado-fg:#1E1C1A;
+  --c-as:#F0715C; --c-as-fg:#1E1C1A; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:20px 48px}
 .wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
@@ -96,11 +103,21 @@ tr:last-child td{border-bottom:0}
 .day.today .n{color:var(--accent-fg);background:var(--accent);border-radius:4px;padding:0 5px;align-self:flex-start}
 .ev{font-size:11px;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ev-fg);border:1px solid transparent}
 .ev.m{background:var(--c-measure)}
-.ev.i{background:var(--c-install)}
-.ev.i.none{background:var(--late-bg);color:var(--late);border:1px dashed var(--late)}
-.ev.a{background:var(--c-as)}
+.k-orange{--chip:var(--c-orange);--chip-fg:var(--c-orange-fg)}
+.k-banana{--chip:var(--c-banana);--chip-fg:var(--c-banana-fg)}
+.k-avocado{--chip:var(--c-avocado);--chip-fg:var(--c-avocado-fg)}
+.ev.i{background:var(--chip);color:var(--chip-fg)}
+.ev.i.none{background:color-mix(in srgb,var(--chip) 16%,var(--surface));color:var(--fg);border:1px dashed var(--chip)}
+.ev.a{background:var(--c-as);color:var(--c-as-fg)}
 .ev.a.done{opacity:.5;text-decoration:line-through}
-.ev.x{background:transparent;color:var(--c-install);border-color:var(--c-install)}
+.ev.x{background:transparent;color:var(--fg);border-color:var(--chip)}
+.dot.k{background:var(--chip)}
+.colorpick{display:flex;flex-wrap:wrap;gap:8px}
+.colorpick label{flex-direction:row;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:5px 12px 5px 6px;color:var(--fg);font-size:14px;cursor:pointer}
+.colorpick label:has(input:checked){border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg)}
+.colorpick input{position:absolute;opacity:0;width:1px;height:1px}
+.colorpick label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.colorpick .sw{width:18px;height:18px;border-radius:50%;background:var(--chip)}
 .day.we{background:color-mix(in srgb,var(--bg) 60%,var(--line))}
 .day.we.other{background:var(--bg)}
 @media (max-width:560px){.day{min-height:70px}.ev{font-size:10px;padding:0 3px}}
@@ -207,6 +224,12 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
         <label class="check"><input type="checkbox" id="f-sat">토요일도 작업</label>
         <label class="check"><input type="checkbox" id="f-sun">일요일도 작업</label>
       </div>
+      <div class="colorpick" role="radiogroup" aria-label="달력 색상">
+        <label class="k-orange"><input type="radio" name="f-color" value="orange" checked><span class="sw"></span>번트오렌지</label>
+        <label class="k-banana"><input type="radio" name="f-color" value="banana"><span class="sw"></span>바나나</label>
+        <label class="k-avocado"><input type="radio" name="f-color" value="avocado"><span class="sw"></span>아보카도</label>
+      </div>
+      <div class="hint">달력에 표시될 시공 색이에요. 같은 날 겹치는 현장은 다른 색을 고르면 구분하기 쉬워요. 새 현장은 겹치지 않는 색이 자동으로 골라져요.</div>
       <div class="hint">체크하지 않으면 토·일은 시공 일정에서 빠져요. 예: 금요일 시작, 월요일 종료면 금·월만 표시돼요.</div>
       <div class="hint">들어갈 시공자를 고르세요. 아무도 안 고르면 '미배정'으로 표시돼요.</div>
       <div class="crewpick" id="f-crew"></div>
@@ -267,10 +290,10 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
     </div>
     <div class="legend">
       <span><i class="dot" style="background:var(--c-measure)"></i>실측</span>
-      <span><i class="dot" style="background:var(--c-install)"></i>시공 (시공자 이름)</span>
+      <span><i class="dot k k-orange"></i><i class="dot k k-banana"></i><i class="dot k k-avocado"></i>시공 (현장별 색 · 시공자 이름)</span>
       <span><i class="dot" style="background:var(--c-as)"></i>AS</span>
-      <span><i class="dot" style="background:var(--late-bg);border:1px dashed var(--late)"></i>시공자 미배정</span>
-      <span><i class="dot" style="border:1px solid var(--c-install)"></i>마감 추가 투입</span>
+      <span><i class="dot" style="border:1px dashed var(--fg)"></i>시공자 미배정</span>
+      <span><i class="dot" style="border:1px solid var(--fg)"></i>마감 추가 투입</span>
     </div>
     <div class="cal" id="cal"></div>
   </section>

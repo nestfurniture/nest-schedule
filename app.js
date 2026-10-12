@@ -17,12 +17,14 @@ function workDays(j){const out=[];if(!j.i.start)return out;const end=j.i.end&&j.
   for(let d=j.i.start,n=0;d<=end&&n<370;d=addDays(d,1),n++){const w=dow(d);if((w===6&&!j.i.sat)||(w===0&&!j.i.sun))continue;out.push(d);}return out;}
 const range=j=>{if(!j.i.start)return"";const one=!j.i.end||j.i.end===j.i.start;const n=workDays(j).length;
   return (one?fmtW(j.i.start):`${fmtW(j.i.start)}~${fmtW(j.i.end)}`)+(one?"":` <span class="wk">· 작업 ${n}일</span>`);};
+const COLORS=["orange","banana","avocado"];
+const kc=j=>"k-"+(COLORS.includes(j.i.color)?j.i.color:"orange");
 const asOpen=j=>j.f.as.filter(a=>!a.done);
 const extraSum=j=>j.f.extra.reduce((a,e)=>a+(+e.people||0),0);
 const noCrewSoon=j=>!j.f.done&&j.i.start&&!j.i.crew.length&&j.i.start<=addDays(TODAY,7);
 const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
-  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun},
+  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange"},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[]},createdAt:d.created_at||""};}
 
 function measureTag(j){if(!j.m.date)return`<span class="tag wait">날짜 미정</span>`;
@@ -59,7 +61,7 @@ function render(){
   $("tbody").innerHTML=sorted.map(j=>`<tr data-j="${esc(j.id)}" tabindex="0">
     <td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small></td>
     <td><div class="cell"><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</div></td>
-    <td><span class="d">${range(j)||"—"}</span></td>
+    <td><span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span></td>
     <td><div class="cell">${crewHtml(j)}</div></td>
     <td><div class="cell">${finishTag(j)}${asTag(j)}</div></td>
     <td>${extraHtml(j)}</td>
@@ -68,7 +70,7 @@ function render(){
     <div class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small></div>
     <dl class="kv">
       <dt>실측</dt><dd><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</dd>
-      <dt>시공</dt><dd><span class="d">${range(j)||"—"}</span></dd>
+      <dt>시공</dt><dd><span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span></dd>
       <dt>시공자</dt><dd>${crewHtml(j)}</dd>
       <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}${asTag(j)}</dd>
       <dt>파일</dt><dd>${fileCount(j)}</dd>
@@ -86,9 +88,9 @@ function renderCal(){
     jobs.forEach(j=>{
       if(j.m.date===ds)ev+=`<div class="ev m" title="${esc(j.name)} 실측">실측 ${short(j)}</div>`;
       if(workDays(j).includes(ds)){const who=j.i.crew.length?j.i.crew.join("·"):"미배정";
-        ev+=`<div class="ev i ${j.i.crew.length?"":"none"}" title="${esc(j.name)} 시공 · ${esc(who)}">${short(j)} · ${esc(who)}</div>`;}
+        ev+=`<div class="ev i ${kc(j)} ${j.i.crew.length?"":"none"}" title="${esc(j.name)} 시공 · ${esc(who)}">${short(j)} · ${esc(who)}</div>`;}
       j.f.as.forEach(a=>{if(a.date===ds)ev+=`<div class="ev a ${a.done?"done":""}" title="${esc(j.name)} AS · ${esc(a.crew||"담당 미정")} ${esc(a.note)}">AS ${short(j)}${a.crew?` · ${esc(a.crew)}`:""}</div>`;});
-      j.f.extra.forEach(x=>{if(x.date===ds)ev+=`<div class="ev x" title="${esc(j.name)} 마감 추가 ${+x.people}명 ${esc(x.note)}">+${+x.people}명 ${short(j)}</div>`;});
+      j.f.extra.forEach(x=>{if(x.date===ds)ev+=`<div class="ev x ${kc(j)}" title="${esc(j.name)} 마감 추가 ${+x.people}명 ${esc(x.note)}">+${+x.people}명 ${short(j)}</div>`;});
     });
     const we=d.getDay()===0||d.getDay()===6;
     h+=`<div class="day ${d.getMonth()!==calM?"other":""} ${ds===TODAY?"today":""} ${we?"we":""}"><span class="n">${d.getDate()}</span>${ev}</div>`;}
@@ -99,6 +101,16 @@ function renderCal(){
 function renderCrewPick(selected){
   $("f-crew").innerHTML=CREW.map((c,n)=>`<label><input type="checkbox" id="f-c${n}" value="${esc(c)}" ${selected.includes(c)?"checked":""}>${esc(c)}</label>`).join("");}
 const pickedCrew=()=>[...$("f-crew").querySelectorAll("input:checked")].map(x=>x.value);
+/* 시공 색: 새 현장은 날짜가 겹치는 다른 현장과 안 겹치는 색을 자동 선택 */
+let colorTouched=false;
+const getColor=()=>(document.querySelector('input[name="f-color"]:checked')||{}).value||"orange";
+function setColor(c){document.querySelectorAll('input[name="f-color"]').forEach(r=>r.checked=r.value===c);}
+function autoColor(){if(colorTouched)return;const s=$("f-istart").value;if(!s)return;
+  const mine=workDays({i:{start:s,end:$("f-iend").value||s,sat:$("f-sat").checked,sun:$("f-sun").checked}});
+  const used=jobs.filter(o=>o!==editing&&workDays(o).some(d=>mine.includes(d))).map(o=>o.i.color);
+  setColor(COLORS.find(c=>!used.includes(c))||COLORS[used.length%COLORS.length]);}
+["f-istart","f-iend","f-sat","f-sun"].forEach(id=>$(id).addEventListener("change",autoColor));
+document.querySelectorAll('input[name="f-color"]').forEach(r=>r.addEventListener("change",()=>{colorTouched=true;}));
 let asSeq=0;
 function asRow(a={date:"",crew:"",note:"",done:false}){const n=asSeq++;const div=document.createElement("div");div.className="as-row";
   const opts=["",...CREW,...(a.crew&&!CREW.includes(a.crew)?[a.crew]:[])].map(c=>`<option value="${esc(c)}" ${c===a.crew?"selected":""}>${c?esc(c):"담당 미정"}</option>`).join("");
@@ -112,6 +124,7 @@ function openForm(j){editing=j||null;$("formTitle").textContent=j?`${j.name} 수
   const v=j||norm("",{});
   $("f-name").value=v.name;$("f-item").value=v.item;$("f-addr").value=v.addr;
   $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
+  setColor(v.i.color||"orange");colorTouched=!!j;
   v.i.crew.forEach(c=>{if(!CREW.includes(c))CREW.push(c)});renderCrewPick(v.i.crew);$("f-newcrew").value="";
   $("f-fdone").checked=v.f.done;$("f-extras").innerHTML="";v.f.extra.forEach(extraRow);
   $("f-as").innerHTML="";v.f.as.forEach(asRow);
@@ -142,7 +155,7 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
   const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
-    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun},
+    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun,color:getColor()},
     f:{done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
   $("saveBtn").disabled=true;
   try{
