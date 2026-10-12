@@ -30,7 +30,8 @@ const extraSum=j=>j.f.extra.reduce((a,e)=>a+(+e.people||0),0);
 const noCrewSoon=j=>!j.f.done&&j.i.start&&!j.i.crew.length&&j.i.start<=addDays(TODAY,7);
 const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
-  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange"},
+  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
+    gate:d.i?.gate||"",door:d.i?.door||"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[]},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[]},createdAt:d.created_at||""};}
 
 /* 돈: 계약금액·입금·원가 (관리자만) */
@@ -156,7 +157,7 @@ function openDay(ds){selDay=ds;
   $("dayTitle").innerHTML=`${+ds.slice(5,7)}월 ${+ds.slice(8)}일 <span class="wk">(${WD[dow(ds)]})</span>`;
   $("dayBody").innerHTML=(
     sec("시공",by("i"),x=>{const wd=workDays(x.j),k=wd.indexOf(ds)+1;
-      return`<li><i class="dot k ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.i.crew.length?`시공자 ${x.j.i.crew.map(esc).join(", ")}`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`작업 ${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div></div></li>`})+
+      return`<li><i class="dot k ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.i.crew.length?`시공자 ${x.j.i.crew.map(esc).join(", ")}`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`작업 ${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div><button class="btn ghost sm cp-msg" type="button" data-msg="${esc(x.j.id)}">시공자 문자 복사</button></div></li>`})+
     sec("실측",by("m"),x=>`<li><i class="dot" style="background:var(--c-measure)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.m.done?`<span class="tag ok">실측 완료</span>`:`<span class="tag wait">실측 예정</span>`}</div></div></li>`)+
     sec("AS",by("a"),x=>`<li><i class="dot" style="background:var(--c-as)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">담당 ${esc(x.a.crew||"미정")}${x.a.note?` · ${esc(x.a.note)}`:""}${x.a.done?` <span class="tag ok">완료</span>`:""}</div></div></li>`)+
     sec("마감 추가 투입",by("x"),x=>`<li><i class="dot ring ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">추가 ${+x.x.people}명${x.x.note?` · ${esc(x.x.note)}`:""}</div></div></li>`)
@@ -329,16 +330,56 @@ document.addEventListener("input",e=>{const el=e.target;if(el.classList&&el.clas
   if(el.closest&&el.closest("#sec-money"))moneySummary();});
 $("sec-money").addEventListener("change",moneySummary);
 
+/* 현장 출입 정보 · 담당자 번호 · 시공자에게 보낼 문자 */
+const fmtPhone=v=>v.replace(/\d{9,11}/g,d=>d.length===11?`${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`:d.startsWith("02")?(d.length===10?`02-${d.slice(2,6)}-${d.slice(6)}`:`02-${d.slice(2,5)}-${d.slice(5)}`):d.length===10?`${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`:d);
+/* 한 번 입력한 담당자 번호는 다른 현장에서 체크만 하면 되게, 모든 현장에서 모아 목록으로 */
+let MGRS=[];
+function renderMgrPick(selected){
+  MGRS=[...new Set([...[...jobs].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).flatMap(j=>j.i.mgr),...selected,...MGRS])].filter(Boolean);
+  $("f-mgr").innerHTML=MGRS.length?MGRS.map((c,n)=>`<label><input type="checkbox" id="f-m${n}" value="${esc(c)}" ${selected.includes(c)?"checked":""}>${esc(c)}</label>`).join("")
+    :`<span class="hint">아직 입력한 번호가 없어요. 아래 칸에 넣고 추가를 누르세요.</span>`;}
+const pickedMgr=()=>[...$("f-mgr").querySelectorAll("input:checked")].map(x=>x.value);
+function addMgr(){const v=fmtPhone($("f-newmgr").value.trim());if(!v)return;
+  const sel=pickedMgr();if(!sel.includes(v))sel.push(v);MGRS=[v,...MGRS.filter(x=>x!==v)];renderMgrPick(sel);$("f-newmgr").value="";updateMsg();}
+$("addMgr").onclick=addMgr;
+$("f-newmgr").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addMgr();}});
+const dKo=d=>`${+d.slice(5,7)}월 ${+d.slice(8)}일(${WD[dow(d)]})`;
+function workText(j){const wd=workDays(j);if(!wd.length)return"";if(wd.length===1)return dKo(wd[0]);
+  const skip=new Set();for(let d=wd[0];d<=wd[wd.length-1];d=addDays(d,1))if(!wd.includes(d))skip.add(WD[dow(d)]);
+  return`${dKo(wd[0])} ~ ${dKo(wd[wd.length-1])}`+(skip.size?` (${[..."토일"].filter(x=>skip.has(x)).join("·")} 제외, 작업 ${wd.length}일)`:"");}
+const msgText=o=>`[네스트퍼니처 현장 주소]\n\n시공일 : ${o.when}\n현장 주소 : ${o.addr}\n공동현관 비밀번호 : ${o.gate}\n세대현관 비밀번호 : ${o.door}\n현장 담당자 전화번호 : ${o.mgr}`;
+const jobMsg=j=>msgText({when:workText(j),addr:j.addr,gate:j.i.gate,door:j.i.door,mgr:j.i.mgr.join(", ")});
+const formMsg=()=>msgText({when:workText({i:{start:$("f-istart").value,end:$("f-iend").value||$("f-istart").value,sat:$("f-sat").checked,sun:$("f-sun").checked}}),
+  addr:$("f-addr").value.trim(),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr().join(", ")});
+function updateMsg(){$("f-msg").textContent=formMsg();}
+["f-addr","f-gate","f-door","f-istart","f-iend","f-sat","f-sun"].forEach(id=>{$(id).addEventListener("input",updateMsg);$(id).addEventListener("change",updateMsg);});
+$("f-mgr").addEventListener("change",updateMsg);
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t);return true;}catch(e){}
+  const ta=document.createElement("textarea");ta.value=t;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;top:0;left:0;opacity:0;font-size:16px";
+  document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,t.length);let ok=false;try{ok=document.execCommand("copy");}catch(e){}ta.remove();return ok;}
+function flash(btn,text,good){if(!btn.dataset.label)btn.dataset.label=btn.textContent;btn.textContent=text;btn.classList.toggle("copied",good);
+  clearTimeout(btn._t);btn._t=setTimeout(()=>{btn.textContent=btn.dataset.label;btn.classList.remove("copied");},1600);}
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("[data-cp],[data-msg],#copyMsg");if(!b)return;
+  let t="";
+  if(b.id==="copyMsg")t=formMsg();
+  else if(b.dataset.msg){const j=jobs.find(x=>x.id===b.dataset.msg);if(j)t=jobMsg(j);}
+  else t=b.dataset.cp==="f-mgr"?pickedMgr().join(", "):$(b.dataset.cp).value.trim();
+  if(!t){flash(b,"비어 있어요",false);return;}
+  flash(b,await copyText(t)?"복사됨":"복사 안 됨",true);});
+
 function openForm(j){editing=j||null;$("formTitle").textContent=j?`${j.name} 수정`:"새 현장 등록";$("delBtn").hidden=!j;$("f-err").hidden=true;$("delConfirm").hidden=true;
   const v=j||norm("",{});
   $("f-name").value=v.name;$("f-item").value=v.item;$("f-addr").value=v.addr;
+  $("f-gate").value=v.i.gate;$("f-door").value=v.i.door;$("f-newmgr").value="";renderMgrPick(v.i.mgr);
   $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
   setColor(v.i.color||"orange");colorTouched=!!j;
   v.i.crew.forEach(c=>{if(!CREW.includes(c))CREW.push(c)});renderCrewPick(v.i.crew);$("f-newcrew").value="";checkClash();
   $("f-fdone").checked=v.f.done;$("f-extras").innerHTML="";v.f.extra.forEach(extraRow);
   $("f-as").innerHTML="";v.f.as.forEach(asRow);
   $("ph-stage").value=guessStage(v);
-  pending=[];renderFiles();renderPhotos();fillMoney(j);
+  pending=[];renderFiles();renderPhotos();fillMoney(j);updateMsg();
   $("form").hidden=false;$("form").scrollIntoView({behavior:"smooth",block:"start"});$("f-name").focus({preventScroll:true});}
 const showErr=m=>{$("f-err").textContent=m;$("f-err").hidden=false};
 $("addExtra").onclick=()=>extraRow();
@@ -361,11 +402,12 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const s=$("f-istart").value,e=$("f-iend").value;
   if(s&&e&&e<s)return showErr("시공 종료일이 시작일보다 빠릅니다.");
   const sat=$("f-sat").checked,sun=$("f-sun").checked;
+  if($("f-newmgr").value.trim())addMgr();
   if(s&&!workDays({i:{start:s,end:e||s,sat,sun}}).length)return showErr("고른 기간이 모두 주말이에요. 토·일 작업을 체크하거나 날짜를 바꿔 주세요.");
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
   const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
-    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun,color:getColor()},
+    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun,color:getColor(),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr()},
     f:{done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
   const mo=isAdmin?readMoney():null;
   $("saveBtn").disabled=true;$("f-err").hidden=true;

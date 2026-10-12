@@ -284,6 +284,19 @@ th.num{font-family:var(--font);font-size:12px}
 .mo-sum b{font-family:var(--mono);font-weight:500}
 .mo-sum small{color:var(--muted)}
 .rows{display:flex;flex-direction:column;gap:8px}
+/* 출입 정보 · 복사 */
+.withcp{display:flex;gap:6px;align-items:center}
+.withcp input{flex:1;min-width:0}
+.btn.cp{white-space:nowrap}
+.btn.copied{color:var(--ok);border-color:var(--ok)}
+.btn:not(.ghost).copied{background:var(--ok);color:var(--accent-fg)}
+.mgr-add{display:flex;gap:6px;flex-wrap:wrap;max-width:520px}
+.mgr-add input{flex:1 1 200px;min-width:0}
+.msgbox{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.msg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px}
+.msg{margin:0;font-family:var(--font);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--fg)}
+.dlist li>div{flex:1;min-width:0}
+.dlist .cp-msg{margin-top:8px}
 /* 현장 사진 */
 .ph-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
 .ph-bar label.stage{flex-direction:row;align-items:center;gap:8px}
@@ -347,7 +360,21 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="grid">
       <label>고객명<input id="f-name" placeholder="예: 김OO 고객"></label>
       <label>품목<input id="f-item" placeholder="예: 붙박이장 3자"></label>
-      <label>현장 주소<input id="f-addr" placeholder="예: 송파구 OO아파트"></label>
+      <label>현장 주소<span class="withcp"><input id="f-addr" placeholder="예: 송파구 OO아파트 101동 1001호"><button class="btn ghost sm cp" type="button" data-cp="f-addr">복사</button></span></label>
+    </div>
+    <div class="sec">
+      <h3>현장 출입 · 담당자</h3>
+      <div class="grid">
+        <label>공동현관 비밀번호<span class="withcp"><input id="f-gate" placeholder="예: #1234*" autocomplete="off"><button class="btn ghost sm cp" type="button" data-cp="f-gate">복사</button></span></label>
+        <label>세대현관 비밀번호<span class="withcp"><input id="f-door" placeholder="예: 5678*" autocomplete="off"><button class="btn ghost sm cp" type="button" data-cp="f-door">복사</button></span></label>
+      </div>
+      <div class="hint">현장 담당자 전화번호를 체크하세요. 한 번 입력한 번호는 다음 현장부터 체크만 하면 돼요.</div>
+      <div class="crewpick" id="f-mgr"></div>
+      <div class="mgr-add"><input id="f-newmgr" placeholder="예: 김실장 01012345678" aria-label="새 담당자 전화번호" inputmode="text"><button class="btn ghost sm" type="button" id="addMgr">추가</button><button class="btn ghost sm cp" type="button" data-cp="f-mgr">번호 복사</button></div>
+      <div class="msgbox">
+        <div class="msg-head"><b>시공자에게 보낼 문자</b><button class="btn sm" type="button" id="copyMsg">문자 복사</button></div>
+        <pre class="msg" id="f-msg"></pre>
+      </div>
     </div>
     <div class="sec">
       <h3>실측</h3>
