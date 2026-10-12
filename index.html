@@ -218,7 +218,9 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .crewgrid .we{background:color-mix(in srgb,var(--surface) 55%,var(--line))}
 .crewgrid thead th.today{color:var(--accent);font-weight:700}
 .crewgrid td.today{background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
-.crewgrid td .ev{margin-bottom:2px;cursor:pointer}
+.crewgrid td .ev{margin-bottom:2px}
+.crewgrid td[data-day]{cursor:pointer}
+.crewgrid td[data-day]:hover{box-shadow:inset 0 0 0 1px var(--accent)}
 .crewgrid td.clash{background:var(--late-bg)}
 .clash-tag{display:block;font-size:10px;color:var(--late);font-weight:700}
 .crewgrid tbody tr{cursor:default}
@@ -477,7 +479,7 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
     <div class="crewgrid" id="crewgrid"></div>
     <p class="sub" id="crewNote"></p>
-    <p class="sub">한 줄이 시공자 한 명이에요. 시공(현장 색)과 AS(토마토색)가 함께 보이고, 같은 날 두 현장에 잡히면 빨간 칸으로 표시돼요.</p>
+    <p class="sub">한 줄이 시공자 한 명이에요. 시공(현장 색)과 AS(토마토색)가 함께 보이고, 같은 날 두 현장에 잡히면 빨간 칸으로 표시돼요. 칸을 누르면 그날 일정이 보이고, 수정은 현장 목록에서 해요.</p>
   </section>
 
   <section id="view-pay" class="view" hidden>

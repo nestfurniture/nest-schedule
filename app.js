@@ -123,7 +123,7 @@ function render(){
   if(isAdmin){renderPay();renderSales();}
 }
 /* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
-let selDay="";
+let selDay="",dayFrom=null;
 function dayItems(ds){const out=[];
   jobs.forEach(j=>{if(j.m.date===ds)out.push({t:"m",j});});
   jobs.forEach(j=>{if(workDays(j).includes(ds))out.push({t:"i",j});});
@@ -161,10 +161,10 @@ function openDay(ds){selDay=ds;
     sec("AS",by("a"),x=>`<li><i class="dot" style="background:var(--c-as)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">담당 ${esc(x.a.crew||"미정")}${x.a.note?` · ${esc(x.a.note)}`:""}${x.a.done?` <span class="tag ok">완료</span>`:""}</div></div></li>`)+
     sec("마감 추가 투입",by("x"),x=>`<li><i class="dot ring ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">추가 ${+x.x.people}명${x.x.note?` · ${esc(x.x.note)}`:""}</div></div></li>`)
   )||`<p class="sub" style="margin:0">이날은 잡힌 일정이 없어요.</p>`;
-  if($("daySheet").hidden){$("daySheet").hidden=false;document.body.style.overflow="hidden";$("dayClose").focus();}
+  if($("daySheet").hidden){dayFrom=document.activeElement;$("daySheet").hidden=false;document.body.style.overflow="hidden";$("dayClose").focus();}
 }
-function closeDay(){$("daySheet").hidden=true;document.body.style.overflow="";const was=selDay;selDay="";renderCal();
-  const cell=document.querySelector(`[data-day="${was}"]`);if(cell)cell.focus({preventScroll:true});}
+function closeDay(){$("daySheet").hidden=true;document.body.style.overflow="";selDay="";renderCal();
+  if(dayFrom&&dayFrom.isConnected&&dayFrom.focus)dayFrom.focus({preventScroll:true});dayFrom=null;}
 document.addEventListener("click",e=>{const c=e.target.closest("[data-day]");if(c)openDay(c.dataset.day);});
 document.addEventListener("keydown",e=>{
   if((e.key==="Enter"||e.key===" ")&&e.target.dataset&&e.target.dataset.day){e.preventDefault();openDay(e.target.dataset.day);return;}
@@ -188,14 +188,14 @@ function renderCrew(){
   if(!rows.length){$("crewgrid").innerHTML=`<div class="empty">등록된 시공자가 없어요. 현장 수정 화면의 '명단에 추가'로 시공자를 넣어 주세요.</div>`;$("crewNote").textContent="";return;}
   const cls=d=>[dow(d)%6===0?"we":"",d===TODAY?"today":""].join(" ");
   const chip=(x,named)=>x.t==="i"
-    ?`<div class="ev i ${kc(x.j)} ${named?"":"none"}" data-j="${esc(x.j.id)}" title="${esc(x.j.name)} 시공">${short(x.j)}</div>`
-    :`<div class="ev a ${x.a.done?"done":""}" data-j="${esc(x.j.id)}" title="${esc(x.j.name)} AS ${esc(x.a.note)}">AS ${short(x.j)}</div>`;
+    ?`<div class="ev i ${kc(x.j)} ${named?"":"none"}" title="${esc(x.j.name)} 시공">${short(x.j)}</div>`
+    :`<div class="ev a ${x.a.done?"done":""}" title="${esc(x.j.name)} AS ${esc(x.a.note)}">AS ${short(x.j)}</div>`;
   let clashN=0;
   const body=rows.map(([key,label])=>{const r=m[key]||{};const busyDays=Object.keys(r).length;
     return`<tr><th class="nm" scope="row">${label}${key&&busyDays?`<small>${busyDays}일</small>`:""}</th>${days.map(d=>{const it=r[d]||[];const c=key&&clashAt(it);if(c)clashN++;
-      return`<td class="${cls(d)} ${c?"clash":""}">${it.map(x=>chip(x,!!key)).join("")}${c?`<span class="clash-tag">겹침</span>`:""}</td>`}).join("")}</tr>`}).join("");
+      return`<td class="${cls(d)} ${c?"clash":""}" ${it.length?`data-day="${d}" tabindex="0" role="button" aria-label="${esc(key||"미배정")} ${fmt(d)} 일정 ${it.length}건"`:""}>${it.map(x=>chip(x,!!key)).join("")}${c?`<span class="clash-tag">겹침</span>`:""}</td>`}).join("")}</tr>`}).join("");
   $("crewgrid").innerHTML=`<table><thead><tr><th class="nm">시공자</th>${days.map(d=>`<th class="${cls(d)}"><span class="d">${fmt(d)}</span> <span class="wk">${WD[dow(d)]}</span></th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
-  $("crewNote").innerHTML=clashN?`<span class="tag late">이 기간 겹침 ${clashN}칸</span> 같은 날 한 사람이 두 현장에 잡혀 있어요. 빨간 칸의 현장을 눌러 시공자를 바꿔 주세요.`:"이 기간에는 겹치는 일정이 없어요.";
+  $("crewNote").innerHTML=clashN?`<span class="tag late">이 기간 겹침 ${clashN}칸</span> 같은 날 한 사람이 두 현장에 잡혀 있어요. 시공자는 현장 목록에서 그 현장을 눌러 바꿔 주세요.`:"이 기간에는 겹치는 일정이 없어요.";
 }
 $("crewPrev").onclick=()=>{crewStart=addDays(crewStart,-crewSpan());renderCrew()};
 $("crewNext").onclick=()=>{crewStart=addDays(crewStart,crewSpan());renderCrew()};
