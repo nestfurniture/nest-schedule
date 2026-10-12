@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>네스트 현장 일정</title>
+<meta name="theme-color" content="#2f5d50">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="네스트 일정">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: summary chips, tabs for job board (table → cards on phone) and month calendar; one edit panel per job */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --line:#dfe3df; --fg:#1d2420; --muted:#66706a; --accent:#2f5d50; --accent-fg:#ffffff;
+  --late:#b3402f; --late-bg:#fbe9e5; --soon:#9a6a12; --soon-bg:#fbf1dc; --ok:#2f6b45; --ok-bg:#e4f2e8;
+  --c-measure:#3d6fb6; --c-install:#2f5d50; --c-extra:#b07a1e;
+  --font:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141917; --surface:#1c2320; --line:#2e3833; --fg:#e6ebe8; --muted:#97a39c; --accent:#7cc0a9; --accent-fg:#0f1513;
+  --late:#f08a76; --late-bg:#3a201b; --soon:#e5b25a; --soon-bg:#352a15; --ok:#80c995; --ok-bg:#1b3022;
+  --c-measure:#79a6ea; --c-install:#5fae95; --c-extra:#e0aa4f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --surface:#1c2320; --line:#2e3833; --fg:#e6ebe8; --muted:#97a39c; --accent:#7cc0a9; --accent-fg:#0f1513;
+  --late:#f08a76; --late-bg:#3a201b; --soon:#e5b25a; --soon-bg:#352a15; --ok:#80c995; --ok-bg:#1b3022;
+  --c-measure:#79a6ea; --c-install:#5fae95; --c-extra:#e0aa4f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:22px;font-weight:700;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px}
+.demo{font-size:12px;color:var(--soon);background:var(--soon-bg);padding:3px 8px;border-radius:4px;display:inline-block;margin-top:4px}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--accent);color:var(--accent-fg);border:0;border-radius:6px;padding:9px 14px;font-weight:500}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn.del{background:transparent;color:var(--late);border:1px solid var(--line)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.summary{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px;display:flex;gap:6px;align-items:center}
+.chip b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.chip.late{border-color:transparent;background:var(--late-bg);color:var(--late)}
+.chip.soon{border-color:transparent;background:var(--soon-bg);color:var(--soon)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:0;padding:8px 14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab[aria-selected="true"]{color:var(--fg);border-color:var(--accent);font-weight:500}
+.d{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:11px;border-radius:3px;padding:0 6px;white-space:nowrap}
+.tag.ok{color:var(--ok);background:var(--ok-bg)}
+.tag.late{color:var(--late);background:var(--late-bg)}
+.tag.soon{color:var(--soon);background:var(--soon-bg)}
+.tag.wait{color:var(--muted);border:1px solid var(--line)}
+/* board */
+.board{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:860px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.03em;white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.job b{display:block}
+.job small{color:var(--muted);font-size:12px}
+.cell{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.crew{font-size:13px}
+/* cards */
+.cards{display:none;flex-direction:column;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;text-align:left;color:inherit}
+.card.flag{border-left:3px solid var(--late)}
+.kv{display:grid;grid-template-columns:64px 1fr;gap:4px 10px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+@media (max-width:700px){.board{display:none}.cards{display:flex}}
+/* calendar */
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+.calhead{display:flex;align-items:center;gap:8px}
+.calhead h2{margin:0;font-size:17px;min-width:120px;text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cal .dow{font-size:12px;color:var(--muted);padding:6px;border-bottom:1px solid var(--line);text-align:center}
+.day{min-height:100px;padding:4px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.day:nth-child(7n){border-right:0}
+.day .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.day.other{background:var(--bg)}
+.day.today .n{color:var(--accent-fg);background:var(--accent);border-radius:4px;padding:0 5px;align-self:flex-start}
+.ev{font-size:11px;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--surface)}
+.ev.m{background:var(--c-measure)}
+.ev.i{background:var(--c-install)}
+.ev.i.none{background:var(--late-bg);color:var(--late);border:1px dashed var(--late)}
+.ev.x{background:var(--c-extra)}
+@media (max-width:560px){.day{min-height:70px}.ev{font-size:10px;padding:0 3px}}
+/* panel */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:16px}
+.panel h2{margin:0;font-size:17px}
+.panel h3{margin:0;font-size:14px;font-weight:700}
+.sec{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+label.check{flex-direction:row;align-items:center;gap:6px;color:var(--fg);font-size:14px}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0}
+input[type="checkbox"]{width:18px;height:18px;padding:0}
+.crewpick{display:flex;flex-wrap:wrap;gap:8px}
+.crewpick label{flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--fg);font-size:14px;cursor:pointer}
+.extra-row{display:grid;grid-template-columns:150px 90px 1fr auto;gap:8px;align-items:end}
+.extra-row>*{min-width:0}.extra-row input{width:100%}
+@media (max-width:560px){.extra-row{grid-template-columns:1fr 1fr}.extra-row .note{grid-column:1/-1}}
+.row{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.row .right{display:flex;gap:8px}
+.err{color:var(--late);font-size:13px}
+.hint{font-size:12px;color:var(--muted)}
+.confirm{font-size:14px;color:var(--late);background:var(--late-bg);border-radius:6px;padding:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:8px;padding:28px 16px;text-align:center;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.btn,tbody tr{transition:background .15s}}
+
+
+.filegrp{display:flex;flex-direction:column;gap:6px}
+.fg-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.fg-btns{display:flex;gap:6px;flex-wrap:wrap}
+.fg-btns label{flex-direction:row;color:var(--fg);cursor:pointer}
+.fpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.fg-btns label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.flist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.flist li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+.flist .fname{flex:1;min-width:0;text-align:left;background:none;border:0;padding:0;color:var(--accent);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist .fmeta{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.flist .none{border-style:dashed;color:var(--muted);font-size:13px}
+.flist .fdel{background:none;border:0;color:var(--late);font-size:13px;padding:2px 4px;white-space:nowrap}
+.fcount{font-size:12px;color:var(--muted);white-space:nowrap}
+.login{max-width:360px;margin:12vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px;display:flex;flex-direction:column;gap:14px}
+.login h1{font-size:20px}
+.login img{width:56px;height:56px;border-radius:12px}
+.hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.who{font-size:12px;color:var(--muted)}
+</style>
+<style>[hidden]{display:none!important} body{margin:0;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(48px,env(safe-area-inset-bottom))}</style>
+</head>
+<body>
+<section class="login" id="login" hidden>
+  <img src="icons/icon-192.png" alt="">
+  <h1>네스트퍼니처 현장 일정</h1>
+  <form id="loginForm" style="display:flex;flex-direction:column;gap:12px">
+    <label>이메일<input type="email" id="l-email" autocomplete="username" required></label>
+    <label>비밀번호<input type="password" id="l-pw" autocomplete="current-password" required></label>
+    <div class="err" id="l-err" hidden></div>
+    <button class="btn" type="submit" id="l-btn">로그인</button>
+  </form>
+  <div class="hint">계정은 사장님이 Supabase에서 만들어 드려요.</div>
+</section>
+<section class="login" id="setup" hidden>
+  <h1>설정이 필요해요</h1>
+  <p class="sub">config.js에 Supabase 주소와 anon 키를 넣어 주세요.</p>
+</section>
+<div class="wrap" id="app" hidden>
+  <header>
+    <div>
+      <h1>네스트퍼니처 현장 일정</h1>
+      <div class="sub">실측 · 시공 · 마감</div>
+      <div class="demo" id="status" hidden></div>
+    </div>
+    <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+
+  <section class="panel" id="form" hidden>
+    <h2 id="formTitle">새 현장 등록</h2>
+    <div class="grid">
+      <label>고객명<input id="f-name" placeholder="예: 김OO 고객"></label>
+      <label>품목<input id="f-item" placeholder="예: 붙박이장 3자"></label>
+      <label>현장 주소<input id="f-addr" placeholder="예: 송파구 OO아파트"></label>
+    </div>
+    <div class="sec">
+      <h3>실측</h3>
+      <div class="grid">
+        <label>실측일<input type="date" id="f-mdate"></label>
+        <label class="check"><input type="checkbox" id="f-mdone">실측 완료</label>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>시공</h3>
+      <div class="grid">
+        <label>시공 시작일<input type="date" id="f-istart"></label>
+        <label>시공 종료일<input type="date" id="f-iend"></label>
+      </div>
+      <div class="hint">들어갈 시공자를 고르세요. 아무도 안 고르면 '미배정'으로 표시돼요.</div>
+      <div class="crewpick" id="f-crew"></div>
+      <div style="display:flex;gap:8px;max-width:360px"><input id="f-newcrew" placeholder="명단에 없는 시공자 이름" aria-label="새 시공자 이름" style="flex:1"><button class="btn ghost sm" type="button" id="addCrew">명단에 추가</button></div>
+    </div>
+    <div class="sec">
+      <h3>마감</h3>
+      <label class="check"><input type="checkbox" id="f-fdone">마감 완료</label>
+      <div class="hint">마감이 덜 끝나 인원을 더 넣은 날을 기록하세요.</div>
+      <div id="f-extras" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div><button class="btn ghost sm" id="addExtra">+ 추가 투입 기록</button></div>
+    </div>
+    <div class="sec">
+      <h3>도면 · 견적서</h3>
+      <div class="filegrp">
+        <div class="fg-head"><b>도면</b><span class="fg-btns"><label class="btn ghost sm">파일 올리기<input type="file" multiple class="fpick" data-kind="drawing"></label><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="fpick" data-kind="drawing"></label></span></div>
+        <ul class="flist" id="fl-drawing"></ul>
+      </div>
+      <div class="filegrp">
+        <div class="fg-head"><b>견적서</b><span class="fg-btns"><label class="btn ghost sm">파일 올리기<input type="file" multiple class="fpick" data-kind="estimate"></label><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="fpick" data-kind="estimate"></label></span></div>
+        <ul class="flist" id="fl-estimate"></ul>
+      </div>
+      <div class="hint">PDF와 사진은 누르면 바로 열리고, 엑셀·CAD 파일은 내려받아 열어요. 파일 하나당 50MB까지 올릴 수 있어요.</div>
+    </div>
+    <div class="err" id="f-err" hidden></div>
+    <div class="confirm" id="delConfirm" hidden>이 현장을 삭제할까요? 되돌릴 수 없어요. <button class="btn del sm" type="button" id="delYes">삭제</button> <button class="btn ghost sm" type="button" id="delNo">취소</button></div>
+    <div class="row">
+      <button class="btn del sm" id="delBtn" hidden>현장 삭제</button>
+      <div class="right" style="margin-left:auto"><button class="btn ghost" id="cancelBtn">취소</button><button class="btn" id="saveBtn">저장</button></div>
+    </div>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-board" aria-selected="true">현장 목록</button>
+    <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
+  </div>
+
+  <section id="view-board">
+    <div class="board"><table>
+      <thead><tr><th>현장</th><th>실측일</th><th>시공 기간</th><th>시공자</th><th>마감</th><th>추가 투입</th><th>도면 · 견적서</th></tr></thead>
+      <tbody id="tbody"></tbody></table></div>
+    <div class="cards" id="cards"></div>
+    <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 오른쪽 위 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
+    <p class="sub">현장을 누르면 날짜, 시공자, 마감 추가 인원을 고칠 수 있어요. 시공 7일 전까지 시공자가 안 잡혀 있으면 빨간색으로 표시됩니다.</p>
+  </section>
+
+  <section id="view-cal" hidden>
+    <div class="calhead">
+      <button class="btn ghost" id="prev" aria-label="이전 달">‹</button>
+      <h2 id="calTitle"></h2>
+      <button class="btn ghost" id="next" aria-label="다음 달">›</button>
+    </div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--c-measure)"></i>실측</span>
+      <span><i class="dot" style="background:var(--c-install)"></i>시공 (시공자 이름)</span>
+      <span><i class="dot" style="background:var(--late-bg);border:1px dashed var(--late)"></i>시공자 미배정</span>
+      <span><i class="dot" style="background:var(--c-extra)"></i>마감 추가 투입</span>
+    </div>
+    <div class="cal" id="cal"></div>
+  </section>
+</div>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
