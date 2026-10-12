@@ -122,24 +122,58 @@ function render(){
   renderCal();renderCrew();
   if(isAdmin){renderPay();renderSales();}
 }
+/* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
+let selDay="";
+function dayItems(ds){const out=[];
+  jobs.forEach(j=>{if(j.m.date===ds)out.push({t:"m",j});});
+  jobs.forEach(j=>{if(workDays(j).includes(ds))out.push({t:"i",j});});
+  jobs.forEach(j=>j.f.as.forEach(a=>{if(a.date===ds)out.push({t:"a",j,a});}));
+  jobs.forEach(j=>j.f.extra.forEach(x=>{if(x.date===ds)out.push({t:"x",j,x});}));
+  return out;}
 function renderCal(){
   $("calTitle").textContent=`${calY}년 ${calM+1}월`;
   const first=new Date(calY,calM,1),start=new Date(first);start.setDate(1-first.getDay());
   let h="일월화수목금토".split("").map(d=>`<div class="dow">${d}</div>`).join("");
-  for(let k=0;k<42;k++){const d=new Date(start);d.setDate(start.getDate()+k);
+  const cells=Math.ceil((first.getDay()+new Date(calY,calM+1,0).getDate())/7)*7;
+  for(let k=0;k<cells;k++){const d=new Date(start);d.setDate(start.getDate()+k);
     const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    let ev="";
-    jobs.forEach(j=>{
-      if(j.m.date===ds)ev+=`<div class="ev m" data-j="${esc(j.id)}" title="${esc(j.name)} 실측">실측 ${short(j)}</div>`;
-      if(workDays(j).includes(ds)){const who=j.i.crew.length?j.i.crew.join("·"):"미배정";
-        ev+=`<div class="ev i ${kc(j)} ${j.i.crew.length?"":"none"}" data-j="${esc(j.id)}" title="${esc(j.name)} 시공 · ${esc(who)}">${short(j)} · ${esc(who)}</div>`;}
-      j.f.as.forEach(a=>{if(a.date===ds)ev+=`<div class="ev a ${a.done?"done":""}" data-j="${esc(j.id)}" title="${esc(j.name)} AS · ${esc(a.crew||"담당 미정")} ${esc(a.note)}">AS ${short(j)}${a.crew?` · ${esc(a.crew)}`:""}</div>`;});
-      j.f.extra.forEach(x=>{if(x.date===ds)ev+=`<div class="ev x ${kc(j)}" data-j="${esc(j.id)}" title="${esc(j.name)} 마감 추가 ${+x.people}명 ${esc(x.note)}">+${+x.people}명 ${short(j)}</div>`;});
-    });
+    const items=dayItems(ds);
+    const ev=items.map(x=>{const j=x.j;
+      if(x.t==="m")return`<div class="ev m"><span class="evp">실측 </span>${short(j)}</div>`;
+      if(x.t==="i"){const who=j.i.crew.length?j.i.crew.join("·"):"미배정";return`<div class="ev i ${kc(j)} ${j.i.crew.length?"":"none"}">${short(j)}<span class="evc"> · ${esc(who)}</span></div>`;}
+      if(x.t==="a")return`<div class="ev a ${x.a.done?"done":""}"><span class="evp">AS </span>${short(j)}<span class="evc">${x.a.crew?` · ${esc(x.a.crew)}`:""}</span></div>`;
+      return`<div class="ev x ${kc(j)}">+${+x.x.people}명 ${short(j)}</div>`;}).join("");
     const we=d.getDay()===0||d.getDay()===6;
-    h+=`<div class="day ${d.getMonth()!==calM?"other":""} ${ds===TODAY?"today":""} ${we?"we":""}"><span class="n">${d.getDate()}</span>${ev}</div>`;}
+    h+=`<div class="day ${d.getMonth()!==calM?"other":""} ${ds===TODAY?"today":""} ${we?"we":""} ${ds===selDay?"sel":""}" data-day="${ds}" role="button" tabindex="0" aria-label="${d.getMonth()+1}월 ${d.getDate()}일 일정 ${items.length}건"><span class="n">${d.getDate()}</span>${ev}</div>`;}
   $("cal").innerHTML=h;
 }
+function openDay(ds){selDay=ds;
+  const [y,m]=ds.split("-").map(Number);if(y!==calY||m-1!==calM){calY=y;calM=m-1;}
+  renderCal();
+  const items=dayItems(ds),by=t=>items.filter(x=>x.t===t);
+  const place=j=>sub(j)?`<small>${sub(j)}</small>`:"";
+  const sec=(title,list,fn)=>list.length?`<div class="dsec"><h3>${title} <span class="hint">${list.length}곳</span></h3><ul class="dlist">${list.map(fn).join("")}</ul></div>`:"";
+  $("dayTitle").innerHTML=`${+ds.slice(5,7)}월 ${+ds.slice(8)}일 <span class="wk">(${WD[dow(ds)]})</span>`;
+  $("dayBody").innerHTML=(
+    sec("시공",by("i"),x=>{const wd=workDays(x.j),k=wd.indexOf(ds)+1;
+      return`<li><i class="dot k ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.i.crew.length?`시공자 ${x.j.i.crew.map(esc).join(", ")}`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`작업 ${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div></div></li>`})+
+    sec("실측",by("m"),x=>`<li><i class="dot" style="background:var(--c-measure)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.m.done?`<span class="tag ok">실측 완료</span>`:`<span class="tag wait">실측 예정</span>`}</div></div></li>`)+
+    sec("AS",by("a"),x=>`<li><i class="dot" style="background:var(--c-as)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">담당 ${esc(x.a.crew||"미정")}${x.a.note?` · ${esc(x.a.note)}`:""}${x.a.done?` <span class="tag ok">완료</span>`:""}</div></div></li>`)+
+    sec("마감 추가 투입",by("x"),x=>`<li><i class="dot ring ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">추가 ${+x.x.people}명${x.x.note?` · ${esc(x.x.note)}`:""}</div></div></li>`)
+  )||`<p class="sub" style="margin:0">이날은 잡힌 일정이 없어요.</p>`;
+  if($("daySheet").hidden){$("daySheet").hidden=false;document.body.style.overflow="hidden";$("dayClose").focus();}
+}
+function closeDay(){$("daySheet").hidden=true;document.body.style.overflow="";const was=selDay;selDay="";renderCal();
+  const cell=document.querySelector(`[data-day="${was}"]`);if(cell)cell.focus({preventScroll:true});}
+document.addEventListener("click",e=>{const c=e.target.closest("[data-day]");if(c)openDay(c.dataset.day);});
+document.addEventListener("keydown",e=>{
+  if((e.key==="Enter"||e.key===" ")&&e.target.dataset&&e.target.dataset.day){e.preventDefault();openDay(e.target.dataset.day);return;}
+  if($("daySheet").hidden)return;
+  if(e.key==="Escape")closeDay();});
+$("dayClose").onclick=closeDay;
+$("dayPrev").onclick=()=>openDay(addDays(selDay,-1));
+$("dayNext").onclick=()=>openDay(addDays(selDay,1));
+$("daySheet").addEventListener("click",e=>{if(e.target===$("daySheet"))closeDay();});
 
 /* 시공자별 일정판 */
 const mondayOf=d=>{const w=dow(d);return addDays(d,w===0?-6:1-w);};
