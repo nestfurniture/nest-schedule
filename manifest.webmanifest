@@ -1,15 +1,31 @@
 {
-  "name": "네스트퍼니처 현장 일정",
-  "short_name": "네스트 일정",
-  "description": "현장별 실측, 시공, 마감 일정 관리",
+  "name": "네스트퍼니처",
+  "short_name": "네스트퍼니처",
+  "description": "현장별 실측, 시공, 마감, AS 일정과 도면·견적서 관리",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f5f6f4",
-  "theme_color": "#2f5d50",
+  "background_color": "#A9471C",
+  "theme_color": "#F6F4EE",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

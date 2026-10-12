@@ -9,13 +9,21 @@ calY=now.getFullYear();calM=now.getMonth();
 const fmt=d=>d?d.slice(5).replace("-","/"):"—";
 const addDays=(d,n)=>{const t=new Date(d+"T12:00:00");t.setDate(t.getDate()+n);return `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`};
 const sub=j=>[j.item,j.addr].filter(Boolean).map(esc).join(" · ");
-const range=j=>!j.i.start?"":(j.i.end&&j.i.end!==j.i.start?`${fmt(j.i.start)}~${fmt(j.i.end)}`:fmt(j.i.start));
+const WD="일월화수목금토";
+const dow=d=>new Date(d+"T12:00:00").getDay();
+const fmtW=d=>d?`${fmt(d)}<span class="wk">(${WD[dow(d)]})</span>`:"—";
+/* 시공 작업일: 시작~종료 중 토·일은 따로 체크한 경우에만 포함 */
+function workDays(j){const out=[];if(!j.i.start)return out;const end=j.i.end&&j.i.end>=j.i.start?j.i.end:j.i.start;
+  for(let d=j.i.start,n=0;d<=end&&n<370;d=addDays(d,1),n++){const w=dow(d);if((w===6&&!j.i.sat)||(w===0&&!j.i.sun))continue;out.push(d);}return out;}
+const range=j=>{if(!j.i.start)return"";const one=!j.i.end||j.i.end===j.i.start;const n=workDays(j).length;
+  return (one?fmtW(j.i.start):`${fmtW(j.i.start)}~${fmtW(j.i.end)}`)+(one?"":` <span class="wk">· 작업 ${n}일</span>`);};
+const asOpen=j=>j.f.as.filter(a=>!a.done);
 const extraSum=j=>j.f.extra.reduce((a,e)=>a+(+e.people||0),0);
 const noCrewSoon=j=>!j.f.done&&j.i.start&&!j.i.crew.length&&j.i.start<=addDays(TODAY,7);
-const thisWeek=j=>j.i.start&&j.i.start<=addDays(TODAY,6)&&(j.i.end||j.i.start)>=TODAY;
+const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
-  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[]},
-  f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[]},createdAt:d.created_at||""};}
+  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun},
+  f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[]},createdAt:d.created_at||""};}
 
 function measureTag(j){if(!j.m.date)return`<span class="tag wait">날짜 미정</span>`;
   if(j.m.done)return`<span class="tag ok">완료</span>`;
@@ -26,6 +34,8 @@ function crewHtml(j){if(!j.i.start)return`<span class="tag wait">시공일 미�
 function finishTag(j){if(j.f.done)return`<span class="tag ok">완료</span>`;
   if(j.i.end&&j.i.end<TODAY)return`<span class="tag soon">마감 중</span>`;
   return`<span class="tag wait">시공 전</span>`;}
+function asTag(j){const o=asOpen(j);if(!o.length)return"";const next=o.map(a=>a.date).filter(Boolean).sort()[0];
+  return`<span class="tag ${next&&next<TODAY?"late":"soon"}">AS ${o.length}건${next?` · ${fmt(next)}`:""}</span>`;}
 function extraHtml(j){const n=extraSum(j);if(!n)return`<span class="hint">없음</span>`;
   return`<span class="tag soon">+${n}명 · ${j.f.extra.length}회</span>`;}
 
@@ -40,26 +50,27 @@ function render(){
   $("summary").innerHTML=`<span class="chip">진행 중 현장 <b>${active.length}</b></span>
     <span class="chip late">시공자 미배정 (7일 내) <b>${jobs.filter(noCrewSoon).length}</b></span>
     <span class="chip">이번 주 시공 <b>${jobs.filter(j=>!j.f.done&&thisWeek(j)).length}</b></span>
-    <span class="chip soon">마감 추가 투입 <b>${jobs.reduce((a,j)=>a+extraSum(j),0)}명</b></span>`;
+    <span class="chip soon">마감 추가 투입 <b>${jobs.reduce((a,j)=>a+extraSum(j),0)}명</b></span>
+    <span class="chip">AS 예정 <b>${jobs.reduce((a,j)=>a+asOpen(j).length,0)}</b></span>`;
   const key=j=>(noCrewSoon(j)?"0":"1")+(j.f.done?"1":"0")+(j.i.start||j.m.date||"9");
   const sorted=[...jobs].sort((a,b)=>key(a).localeCompare(key(b)));
   const empty=loaded&&!jobs.length;
   $("empty").hidden=!empty;
   $("tbody").innerHTML=sorted.map(j=>`<tr data-j="${esc(j.id)}" tabindex="0">
     <td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small></td>
-    <td><div class="cell"><span class="d">${fmt(j.m.date)}</span>${measureTag(j)}</div></td>
+    <td><div class="cell"><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</div></td>
     <td><span class="d">${range(j)||"—"}</span></td>
     <td><div class="cell">${crewHtml(j)}</div></td>
-    <td>${finishTag(j)}</td>
+    <td><div class="cell">${finishTag(j)}${asTag(j)}</div></td>
     <td>${extraHtml(j)}</td>
     <td>${fileCount(j)}</td></tr>`).join("");
   $("cards").innerHTML=sorted.map(j=>`<button class="card ${noCrewSoon(j)?"flag":""}" data-j="${esc(j.id)}">
     <div class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small></div>
     <dl class="kv">
-      <dt>실측</dt><dd><span class="d">${fmt(j.m.date)}</span>${measureTag(j)}</dd>
+      <dt>실측</dt><dd><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</dd>
       <dt>시공</dt><dd><span class="d">${range(j)||"—"}</span></dd>
       <dt>시공자</dt><dd>${crewHtml(j)}</dd>
-      <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}</dd>
+      <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}${asTag(j)}</dd>
       <dt>파일</dt><dd>${fileCount(j)}</dd>
     </dl></button>`).join("");
   renderCal();
@@ -74,11 +85,13 @@ function renderCal(){
     let ev="";
     jobs.forEach(j=>{
       if(j.m.date===ds)ev+=`<div class="ev m" title="${esc(j.name)} 실측">실측 ${short(j)}</div>`;
-      if(j.i.start&&ds>=j.i.start&&ds<=(j.i.end||j.i.start)){const who=j.i.crew.length?j.i.crew.join("·"):"미배정";
+      if(workDays(j).includes(ds)){const who=j.i.crew.length?j.i.crew.join("·"):"미배정";
         ev+=`<div class="ev i ${j.i.crew.length?"":"none"}" title="${esc(j.name)} 시공 · ${esc(who)}">${short(j)} · ${esc(who)}</div>`;}
+      j.f.as.forEach(a=>{if(a.date===ds)ev+=`<div class="ev a ${a.done?"done":""}" title="${esc(j.name)} AS · ${esc(a.crew||"담당 미정")} ${esc(a.note)}">AS ${short(j)}${a.crew?` · ${esc(a.crew)}`:""}</div>`;});
       j.f.extra.forEach(x=>{if(x.date===ds)ev+=`<div class="ev x" title="${esc(j.name)} 마감 추가 ${+x.people}명 ${esc(x.note)}">+${+x.people}명 ${short(j)}</div>`;});
     });
-    h+=`<div class="day ${d.getMonth()!==calM?"other":""} ${ds===TODAY?"today":""}"><span class="n">${d.getDate()}</span>${ev}</div>`;}
+    const we=d.getDay()===0||d.getDay()===6;
+    h+=`<div class="day ${d.getMonth()!==calM?"other":""} ${ds===TODAY?"today":""} ${we?"we":""}"><span class="n">${d.getDate()}</span>${ev}</div>`;}
   $("cal").innerHTML=h;
 }
 
@@ -86,6 +99,11 @@ function renderCal(){
 function renderCrewPick(selected){
   $("f-crew").innerHTML=CREW.map((c,n)=>`<label><input type="checkbox" id="f-c${n}" value="${esc(c)}" ${selected.includes(c)?"checked":""}>${esc(c)}</label>`).join("");}
 const pickedCrew=()=>[...$("f-crew").querySelectorAll("input:checked")].map(x=>x.value);
+let asSeq=0;
+function asRow(a={date:"",crew:"",note:"",done:false}){const n=asSeq++;const div=document.createElement("div");div.className="as-row";
+  const opts=["",...CREW,...(a.crew&&!CREW.includes(a.crew)?[a.crew]:[])].map(c=>`<option value="${esc(c)}" ${c===a.crew?"selected":""}>${c?esc(c):"담당 미정"}</option>`).join("");
+  div.innerHTML=`<label>AS 날짜<input type="date" id="a-d${n}" value="${esc(a.date)}"></label><label>담당<select id="a-c${n}">${opts}</select></label><label class="note">내용<input id="a-n${n}" value="${esc(a.note)}" placeholder="예: 도어 경첩 조정"></label><label class="check"><input type="checkbox" id="a-x${n}" ${a.done?"checked":""}>완료</label><button class="btn del sm" type="button">삭제</button>`;
+  div.querySelector("button").onclick=()=>div.remove();$("f-as").appendChild(div);}
 let extraSeq=0;
 function extraRow(x={date:"",people:1,note:""}){const n=extraSeq++;const div=document.createElement("div");div.className="extra-row";
   div.innerHTML=`<label>날짜<input type="date" id="x-d${n}" value="${esc(x.date)}"></label><label>추가 인원<input type="number" min="1" id="x-p${n}" value="${+x.people||1}"></label><label class="note">사유<input id="x-n${n}" value="${esc(x.note)}" placeholder="예: 도어 재조정"></label><button class="btn del sm" type="button">삭제</button>`;
@@ -93,13 +111,15 @@ function extraRow(x={date:"",people:1,note:""}){const n=extraSeq++;const div=doc
 function openForm(j){editing=j||null;$("formTitle").textContent=j?`${j.name} 수정`:"새 현장 등록";$("delBtn").hidden=!j;$("f-err").hidden=true;$("delConfirm").hidden=true;
   const v=j||norm("",{});
   $("f-name").value=v.name;$("f-item").value=v.item;$("f-addr").value=v.addr;
-  $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;
+  $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
   v.i.crew.forEach(c=>{if(!CREW.includes(c))CREW.push(c)});renderCrewPick(v.i.crew);$("f-newcrew").value="";
   $("f-fdone").checked=v.f.done;$("f-extras").innerHTML="";v.f.extra.forEach(extraRow);
+  $("f-as").innerHTML="";v.f.as.forEach(asRow);
   pending=[];renderFiles();
   $("form").hidden=false;$("form").scrollIntoView({behavior:"smooth",block:"start"});$("f-name").focus({preventScroll:true});}
 const showErr=m=>{$("f-err").textContent=m;$("f-err").hidden=false};
 $("addExtra").onclick=()=>extraRow();
+$("addAs").onclick=()=>asRow();
 $("addBtn").onclick=()=>openForm(null);
 $("cancelBtn").onclick=()=>{$("form").hidden=true};
 $("addCrew").onclick=async()=>{const nm=$("f-newcrew").value.trim();if(!nm)return;
@@ -117,10 +137,13 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   if(!name)return showErr("고객명을 입력해 주세요.");
   const s=$("f-istart").value,e=$("f-iend").value;
   if(s&&e&&e<s)return showErr("시공 종료일이 시작일보다 빠릅니다.");
+  const sat=$("f-sat").checked,sun=$("f-sun").checked;
+  if(s&&!workDays({i:{start:s,end:e||s,sat,sun}}).length)return showErr("고른 기간이 모두 주말이에요. 토·일 작업을 체크하거나 날짜를 바꿔 주세요.");
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
+  const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
-    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew()},
-    f:{done:$("f-fdone").checked,extra},updated_at:new Date().toISOString()};
+    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun},
+    f:{done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
   $("saveBtn").disabled=true;
   try{
     const q=editing?sb.from("jobs").update(data).eq("id",editing.id).select():sb.from("jobs").insert(data).select();

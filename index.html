@@ -3,37 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>네스트 현장 일정</title>
-<meta name="theme-color" content="#2f5d50">
+<title>네스트퍼니처</title>
+<meta name="theme-color" content="#F6F4EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1E1C1A" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/favicon.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="네스트 일정">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<meta name="apple-mobile-web-app-title" content="네스트퍼니처">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-/* Layout: summary chips, tabs for job board (table → cards on phone) and month calendar; one edit panel per job */
+/* Layout: summary chips, tabs for job board (table → cards on phone) and month calendar; one edit panel per job.
+   Brand: 수채화지 바탕 + 번트 오렌지 포인트 + 차콜 글자 (네스트퍼니처 인스타 최종본 기준) */
 :root{
-  --bg:#f5f6f4; --surface:#ffffff; --line:#dfe3df; --fg:#1d2420; --muted:#66706a; --accent:#2f5d50; --accent-fg:#ffffff;
-  --late:#b3402f; --late-bg:#fbe9e5; --soon:#9a6a12; --soon-bg:#fbf1dc; --ok:#2f6b45; --ok-bg:#e4f2e8;
-  --c-measure:#3d6fb6; --c-install:#2f5d50; --c-extra:#b07a1e;
-  --font:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --bg:#F6F4EE; --surface:#FCFBF8; --line:#DCD6CA; --fg:#2B2A28; --muted:#6E655B; --accent:#A9471C; --accent-fg:#F6F4EE;
+  --late:#B3261E; --late-bg:#F6DEDA; --soon:#86601A; --soon-bg:#F1E7D2; --ok:#4F6B3A; --ok-bg:#E4EADB;
+  --c-measure:#2B2A28; --c-install:#A9471C; --c-as:#5E7048; --ev-fg:#F6F4EE;
+  --font:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --display:"Cormorant Garamond",Georgia,"Noto Serif KR",serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#141917; --surface:#1c2320; --line:#2e3833; --fg:#e6ebe8; --muted:#97a39c; --accent:#7cc0a9; --accent-fg:#0f1513;
-  --late:#f08a76; --late-bg:#3a201b; --soon:#e5b25a; --soon-bg:#352a15; --ok:#80c995; --ok-bg:#1b3022;
-  --c-measure:#79a6ea; --c-install:#5fae95; --c-extra:#e0aa4f; color-scheme:dark}}
+  --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
+  --late:#F08A7E; --late-bg:#40221E; --soon:#E2B866; --soon-bg:#3A2F1A; --ok:#9DBB82; --ok-bg:#25301E;
+  --c-measure:#D8D0C4; --c-install:#D9733F; --c-as:#9DBB82; --ev-fg:#1E1C1A; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#141917; --surface:#1c2320; --line:#2e3833; --fg:#e6ebe8; --muted:#97a39c; --accent:#7cc0a9; --accent-fg:#0f1513;
-  --late:#f08a76; --late-bg:#3a201b; --soon:#e5b25a; --soon-bg:#352a15; --ok:#80c995; --ok-bg:#1b3022;
-  --c-measure:#79a6ea; --c-install:#5fae95; --c-extra:#e0aa4f; color-scheme:dark}
+  --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
+  --late:#F08A7E; --late-bg:#40221E; --soon:#E2B866; --soon-bg:#3A2F1A; --ok:#9DBB82; --ok-bg:#25301E;
+  --c-measure:#D8D0C4; --c-install:#D9733F; --c-as:#9DBB82; --ev-fg:#1E1C1A; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:20px 48px}
 .wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
-h1{margin:0;font-size:22px;font-weight:700;text-wrap:balance}
+h1{margin:0;font-weight:500;text-wrap:balance;display:flex;flex-direction:column;gap:2px}
+h1 .wm{font-family:var(--display);font-weight:600;font-size:26px;letter-spacing:.22em;line-height:1.1;color:var(--accent)}
+h1 .kr{font-size:15px;font-weight:500;color:var(--fg)}
 .sub{color:var(--muted);font-size:13px}
 .demo{font-size:12px;color:var(--soon);background:var(--soon-bg);padding:3px 8px;border-radius:4px;display:inline-block;margin-top:4px}
 button{font:inherit;cursor:pointer}
@@ -89,11 +94,15 @@ tr:last-child td{border-bottom:0}
 .day .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .day.other{background:var(--bg)}
 .day.today .n{color:var(--accent-fg);background:var(--accent);border-radius:4px;padding:0 5px;align-self:flex-start}
-.ev{font-size:11px;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--surface)}
+.ev{font-size:11px;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ev-fg);border:1px solid transparent}
 .ev.m{background:var(--c-measure)}
 .ev.i{background:var(--c-install)}
 .ev.i.none{background:var(--late-bg);color:var(--late);border:1px dashed var(--late)}
-.ev.x{background:var(--c-extra)}
+.ev.a{background:var(--c-as)}
+.ev.a.done{opacity:.5;text-decoration:line-through}
+.ev.x{background:transparent;color:var(--c-install);border-color:var(--c-install)}
+.day.we{background:color-mix(in srgb,var(--bg) 60%,var(--line))}
+.day.we.other{background:var(--bg)}
 @media (max-width:560px){.day{min-height:70px}.ev{font-size:10px;padding:0 3px}}
 /* panel */
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:16px}
@@ -108,6 +117,11 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .crewpick{display:flex;flex-wrap:wrap;gap:8px}
 .crewpick label{flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--fg);font-size:14px;cursor:pointer}
 .extra-row{display:grid;grid-template-columns:150px 90px 1fr auto;gap:8px;align-items:end}
+.as-row{display:grid;grid-template-columns:150px 120px 1fr auto auto;gap:8px;align-items:end}
+.as-row>*{min-width:0}.as-row input:not([type=checkbox]),.as-row select{width:100%}
+.as-row label.check{padding-bottom:8px;white-space:nowrap}
+@media (max-width:560px){.as-row{grid-template-columns:1fr 1fr}.as-row .note{grid-column:1/-1}}
+.wk{font-size:12px;color:var(--muted);font-family:var(--font)}
 .extra-row>*{min-width:0}.extra-row input{width:100%}
 @media (max-width:560px){.extra-row{grid-template-columns:1fr 1fr}.extra-row .note{grid-column:1/-1}}
 .row{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
@@ -133,8 +147,9 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .flist .fdel{background:none;border:0;color:var(--late);font-size:13px;padding:2px 4px;white-space:nowrap}
 .fcount{font-size:12px;color:var(--muted);white-space:nowrap}
 .login{max-width:360px;margin:12vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px;display:flex;flex-direction:column;gap:14px}
-.login h1{font-size:20px}
-.login img{width:56px;height:56px;border-radius:12px}
+.login h1 .wm{display:none}
+.login h1 .kr{font-size:20px;font-weight:700}
+.login img{width:72px;height:72px;border-radius:16px}
 .hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .who{font-size:12px;color:var(--muted)}
 </style>
@@ -142,8 +157,8 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 </head>
 <body>
 <section class="login" id="login" hidden>
-  <img src="icons/icon-192.png" alt="">
-  <h1>네스트퍼니처 현장 일정</h1>
+  <img src="icons/icon-192.png" alt="네스트퍼니처">
+  <h1><span class="wm">NEST FURNITURE</span><span class="kr">현장 일정</span></h1>
   <form id="loginForm" style="display:flex;flex-direction:column;gap:12px">
     <label>이메일<input type="email" id="l-email" autocomplete="username" required></label>
     <label>비밀번호<input type="password" id="l-pw" autocomplete="current-password" required></label>
@@ -159,8 +174,8 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 <div class="wrap" id="app" hidden>
   <header>
     <div>
-      <h1>네스트퍼니처 현장 일정</h1>
-      <div class="sub">실측 · 시공 · 마감</div>
+      <h1><span class="wm">NEST FURNITURE</span><span class="kr">현장 일정</span></h1>
+      <div class="sub">실측 · 시공 · 마감 · AS</div>
       <div class="demo" id="status" hidden></div>
     </div>
     <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
@@ -188,6 +203,11 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
         <label>시공 시작일<input type="date" id="f-istart"></label>
         <label>시공 종료일<input type="date" id="f-iend"></label>
       </div>
+      <div class="grid">
+        <label class="check"><input type="checkbox" id="f-sat">토요일도 작업</label>
+        <label class="check"><input type="checkbox" id="f-sun">일요일도 작업</label>
+      </div>
+      <div class="hint">체크하지 않으면 토·일은 시공 일정에서 빠져요. 예: 금요일 시작, 월요일 종료면 금·월만 표시돼요.</div>
       <div class="hint">들어갈 시공자를 고르세요. 아무도 안 고르면 '미배정'으로 표시돼요.</div>
       <div class="crewpick" id="f-crew"></div>
       <div style="display:flex;gap:8px;max-width:360px"><input id="f-newcrew" placeholder="명단에 없는 시공자 이름" aria-label="새 시공자 이름" style="flex:1"><button class="btn ghost sm" type="button" id="addCrew">명단에 추가</button></div>
@@ -198,6 +218,12 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
       <div class="hint">마감이 덜 끝나 인원을 더 넣은 날을 기록하세요.</div>
       <div id="f-extras" style="display:flex;flex-direction:column;gap:8px"></div>
       <div><button class="btn ghost sm" id="addExtra">+ 추가 투입 기록</button></div>
+    </div>
+    <div class="sec">
+      <h3>AS</h3>
+      <div class="hint">납품 후 AS 방문 일정을 기록하세요. 끝난 AS는 완료에 체크하면 달력에서 흐리게 보여요.</div>
+      <div id="f-as" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div><button class="btn ghost sm" id="addAs" type="button">+ AS 일정 추가</button></div>
     </div>
     <div class="sec">
       <h3>도면 · 견적서</h3>
@@ -230,7 +256,7 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
       <tbody id="tbody"></tbody></table></div>
     <div class="cards" id="cards"></div>
     <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 오른쪽 위 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
-    <p class="sub">현장을 누르면 날짜, 시공자, 마감 추가 인원을 고칠 수 있어요. 시공 7일 전까지 시공자가 안 잡혀 있으면 빨간색으로 표시됩니다.</p>
+    <p class="sub">현장을 누르면 일정과 AS를 고치고 도면·견적서를 올릴 수 있어요. 시공 7일 전까지 시공자가 안 잡혀 있으면 빨간색으로 표시됩니다.</p>
   </section>
 
   <section id="view-cal" hidden>
@@ -242,8 +268,9 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
     <div class="legend">
       <span><i class="dot" style="background:var(--c-measure)"></i>실측</span>
       <span><i class="dot" style="background:var(--c-install)"></i>시공 (시공자 이름)</span>
+      <span><i class="dot" style="background:var(--c-as)"></i>AS</span>
       <span><i class="dot" style="background:var(--late-bg);border:1px dashed var(--late)"></i>시공자 미배정</span>
-      <span><i class="dot" style="background:var(--c-extra)"></i>마감 추가 투입</span>
+      <span><i class="dot" style="border:1px solid var(--c-install)"></i>마감 추가 투입</span>
     </div>
     <div class="cal" id="cal"></div>
   </section>
