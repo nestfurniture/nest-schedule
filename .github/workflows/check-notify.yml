@@ -28,7 +28,7 @@ jobs:
             -H "Content-Type: application/json" -d '{"action":"cl_open","token":"probe_aaaaaaaaaaaaaaaa"}' | grep -E "^HTTP|error" | head -5
           echo; echo "== 6. 시방서 보관함 표(app_specs, 업데이트 5) — [] 이면 준비됨 (로그인 안 한 요청이라 내용은 안 보임)"
           curl -s -i -m 30 "$URL/rest/v1/app_specs?select=model_key&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
-          echo; echo "== 7. 시방서 자동 찾기(spec_status) — auto:true 이면 키가 들어감, auto:false 면 키 없음, v:2 이면 새 방식(업데이트 6) 코드, unknown action 이면 예전 코드"
+          echo; echo "== 7. 시방서 자동 찾기(spec_status) — auto:true 이면 키가 들어감, auto:false 면 키 없음, v:3 이면 그림 방식(업데이트 7) 코드, v:2 면 업데이트 6 코드, unknown action 이면 예전 코드"
           curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"action":"spec_status"}' | grep -E "^HTTP|auto|error" | head -5
           echo; echo "== 8. 시방서 출처 칸(업데이트 6) — [] 이면 준비됨, 42703(column does not exist) 이면 update-06.sql 실행 필요"
@@ -36,3 +36,6 @@ jobs:
           echo; echo "== 9. 서버 내부 이어 찾기(spec_step) — 403 forbidden 이면 바깥에서 못 부르게 잘 막힘"
           curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"action":"spec_step","st":{"key":"PROBE1"}}' | grep -E "^HTTP|error" | head -5
+          echo; echo "== 10. 서버 내부 그림 옮기기(spec_media) — 403 forbidden 이면 잘 막힘, 400 unknown action 이면 업데이트 7 전 코드"
+          curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+            -H "Content-Type: application/json" -d '{"action":"spec_media","key":"PROBE1"}' | grep -E "^HTTP|error" | head -5

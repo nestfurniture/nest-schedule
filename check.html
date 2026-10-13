@@ -50,9 +50,14 @@ textarea{resize:vertical}
 .spec b{display:block;margin-bottom:2px}
 .specs{display:flex;flex-wrap:wrap;gap:8px}
 .spec .warn{display:block;margin-top:6px;color:var(--late);font-weight:600}
-.spec-imgs{display:flex;flex-wrap:wrap;gap:8px}
-.spec-imgs a{display:block;width:120px;height:90px;border-radius:8px;overflow:hidden;background:#fff;border:1px solid var(--line)}
-.spec-imgs img{width:100%;height:100%;object-fit:contain;display:block}
+.spec-figs{display:flex;flex-direction:column;gap:12px}
+.spec-figs figure{margin:0}
+.spec-figs a{display:block;border-radius:8px;overflow:hidden;background:#fff;border:1px solid var(--line)}
+.spec-figs img{width:100%;height:auto;min-height:60px;display:block}
+.spec-figs figcaption{font-size:13px;color:var(--muted);margin-top:4px}
+.spec-warn{color:var(--late);font-weight:600;font-size:14px}
+.spec-more summary{cursor:pointer;color:var(--muted);font-size:14px;padding:2px 0}
+.spec-more[open] summary{margin-bottom:6px}
 .specs a{color:var(--accent);font-weight:500;font-size:14px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;text-decoration:none;background:var(--bg)}
 .dims{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .dims label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}

@@ -41,10 +41,13 @@ function sectionHtml(s) {
   const d = data.dims[s.key] || {};
   const sid = s.app ? s.app.id : s.kind === "combo" ? "combo" : "";
   const mine = sid ? specs.filter((f) => f.app === sid && f.url) : [];
-  const mySpecs = mine.filter((f) => !f.img), imgs = mine.filter((f) => f.img && !badImg.has(f.url));
+  const mySpecs = mine.filter((f) => !f.img), imgs = mine.filter((f) => f.img && !badImg.has(f.url)).slice(0, 8);
+  const specLabel = s.kind === "combo" ? "붙여서 설치할 때 확인 치수" : "시방서 확인 치수";
   return `<section class="card" data-sec="${esc(s.key)}"><h2>${esc(s.title)}</h2>
-    ${s.spec ? `<div class="spec"><b>${s.kind === "combo" ? "붙여서 설치할 때 확인 치수" : "시방서 확인 치수"}</b>${esc(s.spec)}${s.warn ? `<span class="warn">${esc(s.warn)}</span>` : ""}</div>` : ""}
-    ${imgs.length ? `<div class="spec-imgs">${imgs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" title="${esc(f.name)}"><img src="${esc(f.url)}" alt="${esc(f.name)}" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>` : ""}
+    ${imgs.length ? `<div class="spec-figs">${imgs.map((f) => `<figure><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(f.url)}" alt="${esc(f.name)}" loading="lazy" referrerpolicy="no-referrer"></a><figcaption>${esc(f.name)}</figcaption></figure>`).join("")}</div>
+      ${s.warn ? `<div class="spec-warn">${esc(s.warn)}</div>` : ""}
+      ${s.spec ? `<details class="spec-more"><summary>치수를 글자로 보기</summary><div class="spec"><b>${specLabel}</b>${esc(s.spec)}</div></details>` : ""}`
+    : s.spec ? `<div class="spec"><b>${specLabel}</b>${esc(s.spec)}${s.warn ? `<span class="warn">${esc(s.warn)}</span>` : ""}</div>` : ""}
     ${mySpecs.length ? `<div class="specs">${mySpecs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${f.link ? (f.ref ? "참고 자료" : "공식 자료") : "시방서 보기"} · ${esc(f.name)}</a>`).join("")}</div>` : ""}
     ${s.dims ? `<div><div class="lbl">실제로 잰 설치 공간 (mm)</div><div class="dims">${[["w", "폭"], ["h", "높이"], ["d", "깊이"]].map(([k, l]) => `<label>${l}<input inputmode="numeric" data-dim="${esc(s.key)}" data-dk="${k}" value="${esc(d[k] || "")}" aria-label="${esc(s.title)} ${l}"></label>`).join("")}</div></div>` : ""}
     ${s.items.map(itemHtml).join("")}
@@ -189,7 +192,7 @@ function showDone(by, at, fresh) {
 const badImg = new Set();
 document.addEventListener("error", (e) => {
   const t = e.target;
-  if (t && t.tagName === "IMG" && t.closest(".spec-imgs")) { badImg.add(t.getAttribute("src")); t.closest("a").remove(); }
+  if (t && t.tagName === "IMG" && t.closest(".spec-figs")) { badImg.add(t.getAttribute("src")); t.closest("figure").remove(); }
 }, true);
 
 /* ---------- 시작 ---------- */

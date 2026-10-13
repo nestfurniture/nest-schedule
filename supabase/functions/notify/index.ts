@@ -257,7 +257,10 @@ function comboOf(apps, lib) {
 }
 const okUrl = (u) => { try { const x = new URL(u); return x.protocol === "https:" && !!x.hostname; } catch { return false; } };
 const libList = (row, k) => (Array.isArray(row?.[k]) ? row[k] : []).filter((l) => l && okUrl(l.url)).slice(0, 4);
-const libFiles = (row) => (Array.isArray(row?.files) ? row.files : []).filter((f) => f && typeof f.path === "string" && /^lib\/spec\/\d{10,16}-[a-z0-9]{1,8}\.pdf$/.test(f.path)).slice(0, 2);
+const LIB_PDF = /^lib\/spec\/\d{10,16}-[a-z0-9]{1,8}\.pdf$/, LIB_IMG = /^lib\/spec\/\d{10,16}-[a-z0-9]{1,8}\.(jpg|png|webp|gif)$/;
+const libFiles = (row) => (Array.isArray(row?.files) ? row.files : []).filter((f) => f && typeof f.path === "string" && LIB_PDF.test(f.path)).slice(0, 2);
+// 보관함에 옮겨 둔 치수도 그림 (제조사 그림 + 설명서에서 캡처한 쪽)
+const libImgs = (row) => (Array.isArray(row?.images) ? row.images : []).filter((x) => x && typeof x.path === "string" && LIB_IMG.test(x.path)).slice(0, 10);
 // 공식 자료가 아니면 출처를 함께 보여 줌 (시공자가 현장 실측으로 한 번 더 확인하게)
 const srcOf = (row) => (row && row.official === false ? String(row.source || "공식 자료 아님").slice(0, 80) : "");
 // 시공자 화면에 보낼 현장 정보 (비밀번호·돈은 빼고). 종류·확인 치수를 비워 둔 가전은 보관함 값으로
@@ -281,16 +284,18 @@ async function clOpen(b) {
   const c = comboOf(apps, lib), combo = c ? foundOnly(await libRows([c.key]))[c.key] || null : null;
   // 가전마다(+ 붙여서 설치하는 묶음): 보관함에 저장해 둔 공식 PDF + 이 현장에만 올린 파일 + 링크 + 치수도 그림
   const srcs = [...apps.map((a) => [a.id, lib[modelKey(a.model)]]), ["combo", combo]].filter(([, r]) => r);
-  const files = [...srcs.flatMap(([id, r]) => libFiles(r).map((f) => ({ app: id, name: f.name || "시방서", path: f.path }))),
+  const files = [...srcs.flatMap(([id, r]) => libImgs(r).map((x) => ({ app: id, name: String(x.title || "치수도").slice(0, 40), path: x.path, img: true }))),
+    ...srcs.flatMap(([id, r]) => libFiles(r).map((f) => ({ app: id, name: f.name || "시방서", path: f.path }))),
     ...specs.map((f) => ({ app: f.stage, name: f.name, path: f.path }))];
   const urls = await signPaths([...files.map((f) => f.path), ...photos.map((p) => p.thumb || p.path)]);
   const extra = srcs.flatMap(([id, r]) => [
     ...libList(r, "links").map((l) => ({ app: id, name: String(l.title || (r.official === false ? "참고 자료" : "공식 홈페이지")).slice(0, 60), url: l.url, link: true, ...(r.official === false ? { ref: true } : {}) })),
-    ...libList(r, "images").map((l) => ({ app: id, name: String(l.title || "치수도").slice(0, 60), url: l.url, img: true })),
+    // 그림을 보관함에 옮겨 뒀으면 그것만, 아직이면 원래 주소로
+    ...(libImgs(r).length ? [] : libList(r, "images").filter((l) => !l.skip)).map((l) => ({ app: id, name: String(l.title || "치수도").slice(0, 60), url: l.url, img: true })),
   ]);
   return json({
     job: jobPublic(jobs[0], lib, combo), status: cl.status, data: { ...(cl.data || {}), photos }, submitted_at: cl.submitted_at, submitted_by: cl.submitted_by,
-    specs: [...files.map((f) => ({ app: f.app, name: f.name, url: urls[f.path] || "" })), ...extra],
+    specs: [...files.map((f) => ({ app: f.app, name: f.name, url: urls[f.path] || "", ...(f.img ? { img: true } : {}) })), ...extra],
     urls: Object.fromEntries(photos.map((p) => [p.path, urls[p.thumb || p.path] || ""])),
   });
 }
@@ -366,8 +371,10 @@ async function clNotify(cl, sum, by) {
    - 한 번 찾은 모델은 다시 찾지 않고, 24시간에 SPEC_DAY_CAP 개까지만 찾아서 비용이 갑자기 늘지 않게 막습니다. */
 const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const AI_MODEL = Deno.env.get("SPEC_MODEL") || "claude-opus-5-5";
+const VISION_MODEL = Deno.env.get("SPEC_VISION_MODEL") || "claude-haiku-5-5"; // 모은 그림 중 설치 치수도만 고르는 데 씀 (싸고 빠름)
 const SPEC_DAY_CAP = +(Deno.env.get("SPEC_DAY_CAP") || 30);
-const FINDER_VER = 2, ROUND_MS = +(Deno.env.get("SPEC_ROUND_MS") || 115e3), MAX_ROUNDS = 3, STALE_MS = 15 * 60e3;
+// 3 = 찾은 뒤 치수도 그림까지 보관함에 옮겨 둠 (찾기만 하고 그림 정리 전이면 2)
+const FINDER_VER = 3, FOUND_VER = 2, ROUND_MS = +(Deno.env.get("SPEC_ROUND_MS") || 115e3), MAX_ROUNDS = 3, STALE_MS = 15 * 60e3;
 const TYPE_CODES = { dish: "식기세척기", induction: "인덕션·전기레인지", fridge: "냉장고", kimchi: "김치냉장고", wine: "와인셀러", oven: "오븐·광파오븐",
   micro: "전자레인지", hood: "후드", water: "정수기", washer: "세탁기·건조기", styler: "스타일러·에어드레서·슈드레서", etc: "기타 가전" };
 const SPEC_SYSTEM = `당신은 한국의 고급 빌트인 가구 회사(주방가구·붙박이장·신발장 제작)를 돕습니다. 가구 시공자가 빌트인 가전을 시방서대로 설치했는지 현장에서 확인할 수 있도록, 주어진 모델(또는 나란히 붙여 설치하는 모델 묶음)의 설치 시방서를 찾습니다. 가구 제작과 시공에 바로 쓰이므로 치수는 자료에 적힌 값만 씁니다.
@@ -390,14 +397,15 @@ const SPEC_SYSTEM = `당신은 한국의 고급 빌트인 가구 회사(주방�
 
 찾는 요령
 - 모델명은 웹 검색으로 먼저 찾습니다 (예: "LG전자 DUE6BGL2E 설치", "삼성전자 RF85C9101AP 설치 공간", "모델명 사양").
-- LG전자: 제품 페이지 https://www.lge.co.kr/<카테고리>/<모델명 소문자> 는 스펙 표를 화면에서 나중에 불러와서 웹 읽기로는 치수가 안 보일 때가 많습니다. 그럴 땐 설치가이드 페이지(냉장고·김치냉장고·컨버터블: https://www.lge.co.kr/story/setup-guide/refrigerator-installation-guide, 식기세척기: https://www.lge.co.kr/story/user-guide/dishwashers-install-guide, 세탁기·건조기: https://www.lge.co.kr/story/setup-guide/washer-installation-guide)에서 모델명 앞 4자리(예: D646, M623, Z484)로 찾고, 검색 결과 요약과 판매처 사양표도 함께 봅니다. 외형 치수 그림 https://static.lge.co.kr/kr/images/spec/<모델명>.akor_2p.jpg
+- LG전자: 제품 페이지 https://www.lge.co.kr/<카테고리>/<모델명 소문자> 는 스펙 표를 화면에서 나중에 불러와서 웹 읽기로는 치수가 안 보일 때가 많습니다. 그럴 땐 설치가이드 페이지(냉장고·김치냉장고·컨버터블: https://www.lge.co.kr/story/setup-guide/refrigerator-installation-guide, 식기세척기: https://www.lge.co.kr/story/user-guide/dishwashers-install-guide, 세탁기·건조기: https://www.lge.co.kr/story/setup-guide/washer-installation-guide)에서 모델명 앞 4자리(예: D646, M623, Z484)로 찾고, 검색 결과 요약과 판매처 사양표도 함께 봅니다. 외형 치수 그림 https://static.lge.co.kr/kr/images/spec/<모델명>.akor_2p.jpg, 냉장고 설치가이드 그림은 모델명 앞 4자리_01~04.png(앞·위·문 열림·옆), 2대 연결은 2set_<앞4자리>_<앞4자리>_01.png 같은 이름입니다.
 - 삼성전자: 고객지원 https://www.samsung.com/sec/support/model/<모델명>/ 의 스펙과 downloadcenter.samsung.com 설명서 PDF('설치 공간 확인하기', '제품 및 설치 공간 치수' 쪽)
 - 밀레: miele.co.kr 제품 페이지의 기술 데이터, media.miele.com 의 설치 도면·설명서. SCVi=완전 빌트인(도어부착형), SCi=세미 빌트인, SCU=언더카운터
 - 웹 읽기(web_fetch)는 대화나 검색 결과에 나온 주소만 열 수 있습니다. 아래 사용자 메시지의 주소 후보는 열어 봐도 됩니다.
 
 답
+- 시공자는 글자보다 치수도 그림을 봅니다. 설치 공간·외형 치수가 그려진 그림 파일 주소(.png/.jpg)를 찾으면 images 에 꼭 넣고, 설명서 PDF는 치수 그림이 있는 쪽 번호를 pages 에 넣습니다 (예: [12, 16]).
 - 마지막에 아래 JSON 하나만 씁니다(앞뒤 설명 없이).
-{"found": true 또는 false, "official": true 또는 false, "source": "출처 한 줄", "brand": "제조사", "type": "종류 코드", "spec": "시공자가 볼 치수 요약. 한국어, mm, 한 줄에 한 항목, 최대 8줄 (예: 설치 공간 600×820~870×580 / 제품 598×815×567 / 걸레받이 높이 150 (121~150) / 도어 패널 높이 650~770, 무게 4~11kg)", "links": [{"title": "짧은 한국어 제목", "url": "https://...", "pdf": true 또는 false}], "images": [{"title": "짧은 한국어 제목", "url": "https://... 치수도 그림 주소"}], "note": "확인 못 한 항목이나 주의할 점 한 줄"}
+{"found": true 또는 false, "official": true 또는 false, "source": "출처 한 줄", "brand": "제조사", "type": "종류 코드", "spec": "시공자가 볼 치수 요약. 한국어, mm, 한 줄에 한 항목, 최대 8줄 (예: 설치 공간 600×820~870×580 / 제품 598×815×567 / 걸레받이 높이 150 (121~150) / 도어 패널 높이 650~770, 무게 4~11kg)", "links": [{"title": "짧은 한국어 제목", "url": "https://...", "pdf": true 또는 false, "pages": [PDF에서 치수 그림이 있는 쪽 번호]}], "images": [{"title": "짧은 한국어 제목", "url": "https://... 치수도 그림 주소"}], "note": "확인 못 한 항목이나 주의할 점 한 줄"}
 - 종류 코드: ${Object.entries(TYPE_CODES).map(([k, v]) => `${k}(${v})`).join(", ")}, 묶음이면 combo
 - 설명서 PDF는 #page=N 을 붙여 치수 쪽으로 바로 열리게 합니다. links는 4개, images는 4개까지. 시방서를 실제로 확인한 주소를 links 맨 앞에 둡니다.`;
 const SPEC_SCHEMA = {
@@ -405,7 +413,7 @@ const SPEC_SCHEMA = {
   properties: {
     found: { type: "boolean" }, official: { type: "boolean" }, source: { type: "string" }, brand: { type: "string" },
     type: { type: "string", enum: [...Object.keys(TYPE_CODES), "combo", ""] }, spec: { type: "string" }, note: { type: "string" },
-    links: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "url", "pdf"], properties: { title: { type: "string" }, url: { type: "string" }, pdf: { type: "boolean" } } } },
+    links: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "url", "pdf", "pages"], properties: { title: { type: "string" }, url: { type: "string" }, pdf: { type: "boolean" }, pages: { type: "array", items: { type: "integer" } } } } },
     images: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "url"], properties: { title: { type: "string" }, url: { type: "string" } } } },
   },
 };
@@ -416,13 +424,13 @@ const wait = (ms, signal) => new Promise((ok, no) => {
   const t = setTimeout(ok, ms);
   signal?.addEventListener("abort", () => { clearTimeout(t); no(new Error("aborted")); }, { once: true });
 });
-async function claude(body, signal) {
+async function claude(body, signal, fallback = true) {
   for (let i = 0; ; i++) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", signal,
-      // 안전 분류기에 막히면 Anthropic이 권하는 다른 모델로 자동 재시도 (fallbacks: "default")
-      headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "server-side-fallback-2026-07-01", "content-type": "application/json" },
-      body: JSON.stringify({ fallbacks: "default", ...body }),
+      // 안전 분류기에 막히면 Anthropic이 권하는 다른 모델로 자동 재시도 (fallbacks: "default"). 그림 고르기(Haiku)는 이 기능이 없어서 끔
+      headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(fallback ? { "anthropic-beta": "server-side-fallback-2026-07-01" } : {}) },
+      body: JSON.stringify(fallback ? { fallbacks: "default", ...body } : body),
     });
     if (r.ok) return await r.json();
     const text = (await r.text()).slice(0, 300);
@@ -473,7 +481,10 @@ async function patchSpec(key, body, filter = "") {
   }
 }
 const cleanList = (v, n) => (Array.isArray(v) ? v : []).filter((l) => l && publicUrl(l.url)).slice(0, n)
-  .map((l) => ({ title: String(l.title || "").trim().slice(0, 60), url: String(l.url).slice(0, 500), ...(l.pdf !== undefined ? { pdf: !!l.pdf } : {}) }));
+  .map((l) => ({ title: String(l.title || "").trim().slice(0, 60), url: String(l.url).slice(0, 500), ...(l.pdf !== undefined ? { pdf: !!l.pdf } : {}), ...(pagesOf(l).length ? { pages: pagesOf(l) } : {}) }));
+// 설명서 PDF에서 치수 그림이 있는 쪽 (주소의 #page=N 과 pages 목록)
+const pagesOf = (l) => [...new Set([...(Array.isArray(l?.pages) ? l.pages : []), +((String(l?.url || "").match(/#page=(\d{1,4})/) || [])[1] || 0)]
+  .map((n) => Math.floor(+n)).filter((n) => n >= 1 && n <= 2000))].slice(0, 4);
 const staleSearch = (r) => r.status === "searching" && Date.now() - new Date(r.searched_at || 0).getTime() > STALE_MS;
 const nowIso = () => new Date().toISOString();
 
@@ -578,12 +589,17 @@ async function finish(st, r) {
   const links = cleanList(r.links, 4), images = cleanList(r.images, 4).map(({ title, url }) => ({ title, url }));
   const spec = String(r.spec || "").trim().slice(0, 1000), found = usable(r);
   const saved = [];
-  if (found) for (const l of links.filter((l) => l.pdf || /\.pdf(\?|#|$)/i.test(l.url)).slice(0, 2)) { const f = await savePdf(l.url.split("#")[0], st.model, (st.deadline || Infinity) - Date.now() - 8e3); if (f) saved.push(f); }
+  if (found) for (const l of links.filter((l) => l.pdf || /\.pdf(\?|#|$)/i.test(l.url)).slice(0, 2)) {
+    const f = await savePdf(l.url.split("#")[0], st.model, (st.deadline || Infinity) - Date.now() - 8e3);
+    if (f) saved.push({ ...f, ...(l.pages ? { pages: l.pages } : {}) });
+  }
   const t = nowIso();
   await patchSpec(st.key, found
     ? { status: "found", brand: String(r.brand || "").slice(0, 40), type: st.combo ? "combo" : TYPE_CODES[r.type] ? r.type : st.type || "", spec, links, images, files: saved,
-        note: String(r.note || "").slice(0, 300), official: r.official !== false, source: String(r.source || "").slice(0, 80), ver: FINDER_VER, searched_at: t, updated_at: t }
+        note: String(r.note || "").slice(0, 300), official: r.official !== false, source: String(r.source || "").slice(0, 80), ver: FOUND_VER, searched_at: t, updated_at: t }
     : { status: "notfound", note: String(r.note || "어디에서도 이 모델의 치수를 찾지 못했어요.").slice(0, 300), ver: FINDER_VER, searched_at: t, updated_at: t });
+  // 찾았으면 치수도 그림을 보관함으로 옮기는 일은 새 실행에서 (시간 넉넉하게). 안 되면 앱이 나중에 다시 시킴
+  if (found) await relayMedia(st.key);
   // 모델 하나를 다 찾으면, 그 모델이 들어간 현장에 '붙여서 설치' 묶음이 생겼는지 보고 묶음 시방서도 찾기 시작
   if (!st.combo) {
     const jobs = await rest("jobs?select=id,i&order=updated_at.desc&limit=300").catch(() => []);
@@ -628,6 +644,152 @@ async function queue(items, force, by) {
   for (const m of started) await begin({ key: m.key, model: m.model, type: m.type === "combo" ? "" : m.type || "", combo: m.combo || null, by, round: 0, messages: null });
   return { queued: started.length };
 }
+/* ---------- 시방서를 그림으로: 치수도 그림을 보관함(job-files/lib/spec/…)에 옮겨 두고, 앱과 시공자 화면에 크게 보여 줌 ----------
+   1) 찾을 때 나온 그림 주소 + 제조사가 정해 둔 그림 주소(LG 제품 치수 그림, LG 냉장고 설치가이드 그림)를 받아 옴
+   2) 그중 설치 치수도만 Claude(Haiku)가 그림을 보고 고르고 제목을 붙임 (광고 사진·빈 그림·다른 모델 그림은 뺌)
+   3) 설명서 PDF의 치수 쪽은 사무실 앱이 그림으로 캡처해서 spec_shot 으로 보내면, 같은 방법으로 골라서 보관 */
+function imgKind(b) {
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return ["image/jpeg", "jpg"];
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return ["image/png", "png"];
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return ["image/gif", "gif"];
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return ["image/webp", "webp"];
+  return null;
+}
+const IMG_MIN = 6 * 1024, IMG_MAX = 3.5 * 1024 * 1024; // 너무 작은 건 아이콘·빈 그림, 너무 큰 건 Claude가 못 봄
+async function getImage(url, ms) {
+  if (!publicUrl(url) || ms < 2e3) return null;
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), Math.min(15e3, ms));
+  try {
+    const r = await fetch(url, { signal: ac.signal, redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (compatible; NestSchedule/1.0)" } });
+    if (!r.ok || !publicUrl(r.url)) return null;
+    const buf = new Uint8Array(await r.arrayBuffer()), k = imgKind(buf);
+    return k && buf.length >= IMG_MIN && buf.length <= IMG_MAX ? { buf, mime: k[0], ext: k[1] } : null;
+  } catch { return null; } finally { clearTimeout(t); }
+}
+async function putLib(buf, mime, ext) {
+  const path = `lib/spec/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const up = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${path}`, { method: "POST", body: buf, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": mime } });
+  return up.ok ? path : null;
+}
+const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
+const sig = async (u8) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-1", u8))).map((x) => x.toString(16).padStart(2, "0")).join("");
+const subjectOf = (row) => row.type === "combo"
+  ? `나란히 붙여 설치하는 묶음: ${row.model || String(row.model_key).split("+").join(" + ")}`
+  : `${row.model || row.model_key} (${[row.brand, TYPE_CODES[row.type]].filter(Boolean).join(" ") || "가전"})`;
+const JUDGE_SCHEMA = { type: "object", additionalProperties: false, required: ["keep"], properties: { keep: { type: "array",
+  items: { type: "object", additionalProperties: false, required: ["n", "title"], properties: { n: { type: "integer" }, title: { type: "string" } } } } } };
+// 그림을 보고 설치 치수도만 고름: [{n, title}] (n은 1부터). 실패하면 null
+async function judge(subject, imgs, signal) {
+  const content = [{ type: "text", text: `가구 시공자가 빌트인 가전을 설치할 때 볼 시방서 그림을 고르고 있어요. 대상: ${subject}
+남길 그림: 설치 공간(니치·타공) 치수도, 제품 외형 치수도, 이격거리·통풍, 문 열림 공간, 걸레받이, 도어 패널, 급배수·전원 위치, 나란히 붙여 설치하는 연결 도면처럼 치수가 적힌 그림이나 설명서 쪽.
+뺄 그림: 치수가 없는 제품 사진·광고·로고·아이콘·빈 그림, 목차·주의사항만 있는 쪽, 대상과 분명히 다른 모델 전용 그림.
+남길 그림마다 번호 n 과 짧은 한국어 제목(예: "설치 공간 치수 (앞)", "걸레받이 높이", "문 열림 공간")을 주세요. 남길 게 없으면 keep 은 빈 목록.` }];
+  imgs.forEach((im, i) => content.push({ type: "text", text: `그림 ${i + 1}${im.hint ? ` (${im.hint})` : ""}` }, { type: "image", source: { type: "base64", media_type: im.mime, data: b64(im.buf) } }));
+  const res = await claude({ model: VISION_MODEL, max_tokens: 2000, output_config: { effort: "low", format: { type: "json_schema", schema: JUDGE_SCHEMA } },
+    messages: [{ role: "user", content }] }, signal, false);
+  if (res.stop_reason === "refusal") return [];
+  try { const o = JSON.parse(textOf(res)); return Array.isArray(o.keep) ? o.keep.filter((x) => Number.isInteger(x.n) && x.n >= 1 && x.n <= imgs.length) : null; } catch { return null; }
+}
+// 받아 볼 그림 주소: 찾을 때 나온 그림 + LG가 정해 둔 그림 주소 (없으면 그냥 넘어감)
+function mediaCands(row) {
+  const out = [], seen = new Set();
+  const add = (url, title, hint) => { if (publicUrl(url) && !seen.has(url)) { seen.add(url); out.push({ url, title, hint }); } };
+  (Array.isArray(row.images) ? row.images : []).filter((x) => x && !x.path && !x.skip && x.url).forEach((x) => add(x.url, String(x.title || "치수도"), "찾은 자료"));
+  const lg = /LG|엘지/i.test(`${row.brand || ""} ${row.source || ""}`) || (Array.isArray(row.links) ? row.links : []).some((l) => /lge\.co\.kr/.test(l?.url || ""));
+  if (lg) {
+    const keys = String(row.model_key).split("+"), p4 = keys.map((k) => k.slice(0, 4));
+    if (keys.length === 1) ["2p", "1p", "3p"].forEach((x) => add(`https://static.lge.co.kr/kr/images/spec/${keys[0]}.akor_${x}.jpg`, "제품 외형 치수", "LG 제품 치수 그림"));
+    if (row.type === "combo" || FRIDGE.has(row.type)) {
+      const names = ["설치 치수 (앞)", "설치 치수 (위)", "문 열림 공간", "설치 치수 (옆)"];
+      const stems = keys.length === 1 ? [p4[0]] : keys.length === 2 ? [`2set_${p4[0]}_${p4[1]}`, `2set_${p4[1]}_${p4[0]}`] : [];
+      for (const base of ["https://www.lge.co.kr/kr/story/setup-guide/images/refrigerator/", "https://www.lge.co.kr/kr/story/user-guide/images/refrigerator/"])
+        for (const st of stems) names.forEach((t, i) => add(`${base}${st}_0${i + 1}.png`, keys.length > 1 ? `붙여서 설치 · ${t}` : t, "LG 설치가이드 그림"));
+    }
+  }
+  return out.slice(0, 24);
+}
+// 한 모델(묶음)의 그림을 보관함으로 옮김. 끝나면 ver=3 (다시 하지 않음)
+async function storeMedia(key, ms = 120e3) {
+  const row = (await libRows([key]))[key];
+  if (!row || row.status !== "found") return { stored: 0 };
+  const until = Date.now() + ms, cands = mediaCands(row), got = [], seen = new Set();
+  for (let i = 0; i < cands.length && until - Date.now() > 20e3; i += 6) {
+    const part = await Promise.all(cands.slice(i, i + 6).map((c) => getImage(c.url, until - Date.now() - 20e3).then((g) => g && { ...c, ...g })));
+    for (const g of part.filter(Boolean)) { const h = await sig(g.buf); if (!seen.has(h)) { seen.add(h); got.push(g); } }
+  }
+  let keep = [];
+  if (got.length) {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), Math.max(5e3, until - Date.now() - 5e3));
+    const picked = await judge(subjectOf(row), got.slice(0, 10), ac.signal).catch((e) => { console.error("spec judge", key, String(e).slice(0, 200)); return null; }).finally(() => clearTimeout(t));
+    keep = picked ? picked.map((p) => ({ ...got[p.n - 1], title: String(p.title || got[p.n - 1].title).trim().slice(0, 40) || got[p.n - 1].title }))
+      : got.filter((g) => g.hint === "찾은 자료"); // 고르기에 실패하면 찾을 때 나온 그림만
+  }
+  const stored = [];
+  for (const g of keep.slice(0, 6)) { const path = await putLib(g.buf, g.mime, g.ext); if (path) stored.push({ title: g.title, url: g.url, path }); }
+  // 그 사이 앱이 캡처해 넣은 그림이 있을 수 있으니 다시 읽어서 합침
+  const now = (await libRows([key]))[key] || row, tried = new Set(cands.map((c) => c.url)), done = new Set(stored.map((x) => x.url));
+  const list = Array.isArray(now.images) ? now.images.filter(Boolean) : [];
+  const images = [...list.filter((x) => x.path), ...stored, ...list.filter((x) => !x.path && !done.has(x.url)).map((x) => (tried.has(x.url) ? { ...x, skip: true } : x))].slice(0, 16);
+  await patchSpec(key, { images, ver: FINDER_VER, updated_at: nowIso() });
+  return { stored: stored.length };
+}
+async function relayMedia(key) {
+  try {
+    const r = await fetch(`${SB_URL}/functions/v1/notify`, { method: "POST",
+      headers: { Authorization: `Bearer ${SERVICE}`, apikey: SERVICE, "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_media", key }) });
+    if (r.ok) return true;
+    console.error("spec media relay", r.status, (await r.text()).slice(0, 200));
+  } catch (e) { console.error("spec media relay", String(e).slice(0, 200)); }
+  return false;
+}
+// 서버 내부용: 새 실행에서 그림 옮기기
+function specMedia(req, b) {
+  if (!SERVICE || req.headers.get("Authorization") !== `Bearer ${SERVICE}`) return json({ error: "forbidden" }, 403);
+  if (!okKey(b.key)) return json({ error: "bad" }, 400);
+  background(storeMedia(b.key).catch((e) => console.error("spec media", b.key, String(e).slice(0, 200))));
+  return json({ ok: true });
+}
+// 앱에서: 예전에 찾은 시방서의 그림 옮기기 (그림 정리 전인 줄만, 한 번에 5개까지)
+async function specStore(req, b) {
+  if (!(await userOf(req))) return json({ error: "login required" }, 401);
+  if (!AI_KEY) return json({ error: "no key" }, 503);
+  const keys = [...new Set((Array.isArray(b.keys) ? b.keys : []).filter(okKey))].slice(0, 5);
+  const rows = await libRows(keys);
+  const todo = keys.filter((k) => rows[k]?.status === "found" && (+rows[k].ver || 1) < FINDER_VER);
+  for (const k of todo) if (!(await relayMedia(k))) background(storeMedia(k, 60e3).catch(() => {}));
+  return json({ queued: todo.length });
+}
+// 앱에서: 설명서 PDF 한 쪽을 그림으로 캡처해 보냄 { key, file, page, data(jpeg base64) }, 다 보냈으면 { key, file, done:true }
+async function specShot(req, b) {
+  if (!(await userOf(req))) return json({ error: "login required" }, 401);
+  if (!AI_KEY) return json({ error: "no key" }, 503);
+  const row = okKey(b.key) ? (await libRows([b.key]))[b.key] : null;
+  const file = row && libFiles(row).find((f) => f.path === b.file);
+  if (!row || row.status !== "found" || !file) return json({ error: "bad" }, 400);
+  if (b.done) {
+    const files = (Array.isArray(row.files) ? row.files : []).map((f) => (f && f.path === b.file ? { ...f, scanned: true } : f));
+    await patchSpec(b.key, { files, updated_at: nowIso() });
+    return json({ ok: true });
+  }
+  const page = Math.floor(+b.page);
+  if (!(page >= 1 && page <= 2000) || typeof b.data !== "string" || b.data.length > 5e6) return json({ error: "bad" }, 400);
+  if (libImgs(row).some((x) => x.from === b.file && x.page === page)) return json({ kept: true, dup: true });
+  let buf;
+  try { buf = Uint8Array.from(atob(b.data), (c) => c.charCodeAt(0)); } catch { return json({ error: "bad" }, 400); }
+  const k = imgKind(buf);
+  if (!k || k[1] !== "jpg" || buf.length > IMG_MAX) return json({ error: "bad" }, 400);
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60e3);
+  const picked = await judge(subjectOf(row), [{ buf, mime: k[0], hint: `설명서 ${page}쪽` }], ac.signal)
+    .catch((e) => { console.error("spec shot judge", b.key, String(e).slice(0, 200)); return null; }).finally(() => clearTimeout(t));
+  if (!picked) return json({ error: "judge" }, 502); // 고르기를 못 했으면 앱이 다음에 다시 캡처 (scanned 안 함)
+  if (!picked.length) return json({ kept: false });
+  const path = await putLib(buf, k[0], k[1]);
+  if (!path) return json({ error: "storage" }, 500);
+  const now = (await libRows([b.key]))[b.key] || row;
+  const images = [...(Array.isArray(now.images) ? now.images.filter(Boolean) : []), { title: String(picked[0].title || `설명서 ${page}쪽`).trim().slice(0, 40), path, page, from: b.file }].slice(0, 16);
+  await patchSpec(b.key, { images, updated_at: nowIso() });
+  return json({ kept: true });
+}
 // 앱에서: 현장을 저장하면 { job }, '지금 찾기·다시 찾기'는 { models, combos, force }
 async function specFind(req, b) {
   const user = await userOf(req);
@@ -670,6 +832,9 @@ Deno.serve(async (req) => {
     if (body.action === "spec_status") return json({ auto: !!AI_KEY, cap: SPEC_DAY_CAP, v: FINDER_VER });
     if (body.action === "spec_find") return await specFind(req, body);
     if (body.action === "spec_step") return await specStep(req, body);
+    if (body.action === "spec_media") return specMedia(req, body);
+    if (body.action === "spec_store") return await specStore(req, body);
+    if (body.action === "spec_shot") return await specShot(req, body);
     return json({ error: "unknown action" }, 400);
   } catch (e) {
     console.error(e);

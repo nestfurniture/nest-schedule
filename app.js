@@ -527,7 +527,7 @@ async function loadLib(){
   if(!specChan){specChan=sb.channel("nest-specs").on("postgres_changes",{event:"*",schema:"public",table:"app_specs"},()=>libChanged()).subscribe();}
   // 찾는 중인 것이 있으면 실시간 연결이 끊겨도 바뀌도록 15초마다 다시 확인
   clearTimeout(specPoll);if(Object.values(specLib).some(l=>l.status==="searching"&&!specStale(l)))specPoll=setTimeout(libChanged,15e3);}
-async function libChanged(){await loadLib();if(loaded)render();if(!$("form").hidden)renderSpecs();}
+async function libChanged(){await loadLib();if(loaded)render();if(!$("form").hidden)renderSpecs();shootSoon();}
 // 자동 찾기가 켜져 있는지 (Anthropic 키를 Supabase Secrets에 넣었는지), 찾는 방식 버전은 몇인지 알림 서버에 물어봄
 async function specStatus(){
   if(specAuto===true||Date.now()-specAt<300e3){autoSpecs();return;}specAt=Date.now();
@@ -545,7 +545,52 @@ async function autoSpecs(){
   const combos=[];
   for(const j of jobs){const last=lastWork(j);if(last&&last<addDays(TODAY,-14)||typePending(j))continue;
     const c=NEST_CL.combo(j);if(c&&!specLib[c.key]&&!combos.some(x=>x.key===c.key))combos.push(c);}
-  if(combos.length)await findSpecs({combos:combos.slice(0,3).map(c=>c.models)},combos.slice(0,3).map(c=>c.key));}
+  if(combos.length)await findSpecs({combos:combos.slice(0,3).map(c=>c.models)},combos.slice(0,3).map(c=>c.key));
+  mediaWork();}
+// 그림 정리 전(v3 전)에 찾은 시방서: 서버에 치수도 그림을 보관함으로 옮겨 달라고 한 번 (Claude로 다시 찾지는 않음)
+let mediaRan=false;
+async function mediaWork(){
+  if(mediaRan||!specAuto||specVer<3||!lib05)return;mediaRan=true;
+  const old=Object.values(specLib).filter(l=>l.status==="found"&&"ver" in l&&(+l.ver||1)<3).slice(0,5).map(l=>l.model_key);
+  if(old.length)await specCall({action:"spec_store",keys:old});
+  shootSoon();}
+/* 설명서 PDF의 치수 쪽을 그림으로 캡처: 사무실 앱이 PDF를 열어 치수 쪽(찾을 때 알려 준 쪽 + 글자로 찾은 쪽)을 그림으로 만들어 서버에 보냄.
+   서버가 그림을 보고 설치 치수도만 보관함에 남김. PDF마다 한 번만 (scanned) */
+const PDFJS="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/";
+let shooting=false,shootTimer=null;const shotTried=new Set();
+const shootSoon=()=>{clearTimeout(shootTimer);shootTimer=setTimeout(shootPdfs,3000);};
+async function shootPdfs(){
+  if(shooting||!specAuto||specVer<3||!lib05)return;
+  const todo=[];Object.values(specLib).filter(l=>l.status==="found").forEach(l=>(Array.isArray(l.files)?l.files:[]).forEach(f=>{
+    if(f&&/^lib\/spec\/[\w-]+\.pdf$/.test(f.path||"")&&!f.scanned&&!shotTried.has(f.path))todo.push([l.model_key,f]);}));
+  if(!todo.length)return;shooting=true;
+  try{const pdfjs=await import(PDFJS+"build/pdf.min.mjs");pdfjs.GlobalWorkerOptions.workerSrc=PDFJS+"build/pdf.worker.min.mjs";
+    for(const [key,f] of todo.slice(0,3)){shotTried.add(f.path);
+      try{await shootOne(pdfjs,key,f);}catch(e){console.warn("pdf shot",f.path,e);}}}
+  catch(e){console.warn("pdf.js",e);}finally{shooting=false;}}
+async function shootOne(pdfjs,key,f){
+  const {data,error}=await sb.storage.from(BUCKET).createSignedUrl(f.path,600);if(error||!data)return;
+  const doc=await pdfjs.getDocument({url:data.signedUrl,cMapUrl:PDFJS+"cmaps/",cMapPacked:true,standardFontDataUrl:PDFJS+"standard_fonts/"}).promise;
+  const pages=await pdfPages(doc,Array.isArray(f.pages)?f.pages:[]);
+  for(const p of pages){const jpg=await pageJpeg(doc,p);if(!jpg)continue;
+    const r=await specCall({action:"spec_shot",key,file:f.path,page:p,data:jpg});if(r.error){doc.destroy();return;}} // 서버가 못 골랐으면 다음에 다시
+  await specCall({action:"spec_shot",key,file:f.path,done:true});doc.destroy();}
+// 치수 그림이 있을 만한 쪽: 찾을 때 알려 준 쪽 + 설치 공간·치수·걸레받이 같은 말이 많은 쪽 (최대 4쪽)
+async function pdfPages(doc,hint){
+  const score=new Map();hint.forEach(p=>{if(p>=1&&p<=doc.numPages)score.set(p,1000);});
+  const RX=/설치 ?공간|설치 ?치수|제품 ?치수|외형 ?치수|설치 ?도면|타공|컷아웃|걸레받이|이격 ?거리|cut.?out|plinth|niche|installation dimension/gi;
+  for(let p=1;p<=Math.min(doc.numPages,150);p++){let t="";
+    try{t=(await (await doc.getPage(p)).getTextContent()).items.map(i=>i.str).join(" ");}catch(e){continue;}
+    if(p<=4&&/목차|차례|contents/i.test(t))continue;
+    const m=(t.match(RX)||[]).length;if(m)score.set(p,(score.get(p)||0)+m*10+Math.min((t.match(/\d{3,4}/g)||[]).length,20));}
+  return[...score].sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]).sort((a,b)=>a-b);}
+async function pageJpeg(doc,p){
+  const pg=await doc.getPage(p),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:Math.min(3,1600/v1.width)});
+  const c=document.createElement("canvas");c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+  const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+  await pg.render({canvasContext:ctx,viewport:vp}).promise;
+  for(const q of [0.82,0.65,0.5]){const d=c.toDataURL("image/jpeg",q).split(",")[1];if(d.length<4.5e6)return d;}
+  return null;}
 async function specCall(body){
   try{const {data,error}=await sb.functions.invoke("notify",{body});if(!error)return{data:data||{}};
     let msg="";try{msg=(await error.context.json()).error||"";}catch(e){}return{error:msg||"server",status:error.context&&error.context.status};}
@@ -599,17 +644,30 @@ function libHtml(k,combo){
   if(l.status==="searching")return`<div class="lib-msg"><span class="spin" aria-hidden="true"></span>${what}를 찾는 중이에요 (몇 분 걸려요). 다른 일을 하셔도 돼요.</div>`;
   if(l.status==="notfound")return`<div class="lib-msg warn">${combo?"이 묶음의 연결 설치 치수를":"이 모델의 치수를"} 어디에서도 찾지 못했어요. ${combo?"":"모델명이 맞는지 확인해 주세요. "}${againBtn(k)}${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;
   const links=(Array.isArray(l.links)?l.links:[]).filter(x=>x&&okHttps(x.url)).slice(0,4);
-  const imgs=(Array.isArray(l.images)?l.images:[]).filter(x=>x&&okHttps(x.url)&&!badImg.has(x.url)).slice(0,4);
   const pdfs=(Array.isArray(l.files)?l.files:[]).filter(f=>f&&/^lib\/spec\//.test(f.path||"")).slice(0,2);
   const head=[l.brand,combo?"":NEST_CL.TYPES.find(t=>t[0]===l.type)?.[1]].filter(Boolean).join(" · ");
-  const off=l.official===false;
-  return`<div class="lib-box${off?" unofficial":""}"><div class="lib-head">${head?esc(head):""} <span class="tag ${off?"soon":"ok"}">${off?"공식 자료 아님":"시방서 있음"}</span>${againBtn(k)}</div>
-    ${l.source?`<div class="lib-src">출처: ${esc(l.source)}${off?" · 현장에서 실측으로 꼭 확인해 주세요":""}</div>`:""}
-    ${l.spec?`<div class="lib-spec">${esc(l.spec)}</div>`:""}
-    ${imgs.length?`<div class="lib-imgs">${imgs.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" title="${esc(x.title||"치수도")}"><img src="${esc(x.url)}" alt="${esc(x.title||"치수도")}" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`:""}
+  const off=l.official===false,figs=libFigs(l),wait=!figs.length&&"ver" in l&&(+l.ver||1)<3;
+  const text=`${l.spec?`<div class="lib-spec">${esc(l.spec)}</div>`:""}
     ${pdfs.length||links.length?`<div class="lib-links">${pdfs.map(f=>`<button type="button" class="fname" data-lpath="${esc(f.path)}">${esc(f.name||"설명서 PDF")}</button><span class="fmeta">보관본</span>`).join("")}${
       links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||"자료")}</a><span class="fmeta">${esc(host(x.url))}</span>`).join("")}</div>`:""}
-    ${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;}
+    ${l.note?`<div class="hint">${esc(l.note)}</div>`:""}`;
+  return`<div class="lib-box${off?" unofficial":""}"><div class="lib-head">${head?esc(head):""} <span class="tag ${off?"soon":"ok"}">${off?"공식 자료 아님":"시방서 있음"}</span>${againBtn(k)}</div>
+    ${l.source?`<div class="lib-src">출처: ${esc(l.source)}${off?" · 현장에서 실측으로 꼭 확인해 주세요":""}</div>`:""}
+    ${figs.length?`${figHtml(figs)}<details class="lib-more"><summary>글자·원본 자료 보기</summary>${text}</details>`:`${wait?`<div class="hint"><span class="spin" aria-hidden="true"></span>치수도 그림을 정리하고 있어요.</div>`:""}${text}`}</div>`;}
+// 시방서 그림: 보관함에 옮겨 둔 것(서명 주소로 열기), 아직이면 찾을 때 나온 원래 주소
+const LIB_IMG=/^lib\/spec\/[\w.-]+\.(jpg|png|webp|gif)$/;
+const libUrls=new Map();
+function libFigs(l){const list=(Array.isArray(l.images)?l.images:[]).filter(Boolean);
+  const kept=list.filter(x=>LIB_IMG.test(x.path||"")).slice(0,8).map(x=>({path:x.path,title:x.title||"치수도"}));
+  return kept.length?kept:list.filter(x=>!x.skip&&!x.path&&okHttps(x.url)&&!badImg.has(x.url)).slice(0,4).map(x=>({url:x.url,title:x.title||"치수도"}));}
+function figHtml(figs){
+  return`<div class="lib-figs">${figs.map(f=>{const c=f.path&&libUrls.get(f.path),u=f.url||(c&&c.t>Date.now()?c.u:"");
+    return`<figure><a ${u?`href="${esc(u)}"`:""} target="_blank" rel="noopener noreferrer"><img ${u?`src="${esc(u)}"`:""} ${f.path?`data-limg="${esc(f.path)}"`:`referrerpolicy="no-referrer"`} alt="${esc(f.title)}" loading="lazy"></a><figcaption>${esc(f.title)}</figcaption></figure>`;}).join("")}</div>`;}
+async function fillLibImgs(){
+  const els=[...document.querySelectorAll("img[data-limg]:not([src])")];if(!els.length)return;
+  const need=[...new Set(els.map(e=>e.dataset.limg))].filter(p=>!(libUrls.get(p)&&libUrls.get(p).t>Date.now()));
+  if(need.length){try{const {data}=await sb.storage.from(BUCKET).createSignedUrls(need,3600);(data||[]).forEach(x=>{if(x&&x.signedUrl)libUrls.set(x.path,{u:x.signedUrl,t:Date.now()+50*60e3});});}catch(e){}}
+  els.forEach(e=>{const v=libUrls.get(e.dataset.limg);if(v&&e.isConnected){e.src=v.u;const a=e.closest("a");if(a)a.href=v.u;}});}
 function renderSpecs(){
   const su=$("specSetup");
   su.innerHTML=!lib05?`시방서를 자동으로 찾으려면 Supabase 업데이트 5가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-5-시방서-자동-찾기-적용" target="_blank" rel="noopener">설정 방법 보기</a>`:
@@ -627,9 +685,10 @@ function renderSpecs(){
     ul.hidden=!ul.innerHTML;});
   // 붙여서 설치하는 묶음 (2대 이상일 때)
   const c=NEST_CL.combo({i:{apps:readApps()}}),box=$("f-combo");
-  box.hidden=!c;box.innerHTML=c?`<div class="combo-head">붙여서 설치 · ${esc(c.models.join(" + "))}</div>${libHtml(c.key,c.models)}`:"";}
+  box.hidden=!c;box.innerHTML=c?`<div class="combo-head">붙여서 설치 · ${esc(c.models.join(" + "))}</div>${libHtml(c.key,c.models)}`:"";
+  fillLibImgs();}
 // 제조사 주소가 바뀌어 안 열리는 치수도 그림은 숨김
-document.addEventListener("error",e=>{const t=e.target;if(t&&t.tagName==="IMG"&&t.closest(".lib-imgs")){badImg.add(t.getAttribute("src"));t.closest("a").remove();}},true);
+document.addEventListener("error",e=>{const t=e.target;if(t&&t.tagName==="IMG"&&t.closest(".lib-figs")&&!t.dataset.limg){badImg.add(t.getAttribute("src"));t.closest("figure").remove();}},true);
 document.addEventListener("click",async e=>{
   const ag=e.target.closest("[data-again]");
   if(ag){const k=ag.dataset.again,l=specLib[k],row=ag.closest(".app-row"),inCombo=ag.closest("#f-combo");if(!row&&!inCombo)return;
@@ -1010,7 +1069,7 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
