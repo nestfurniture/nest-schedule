@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>시공 체크리스트 · 네스트퍼니처</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#F6F4EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1E1C1A" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/favicon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* 시공자용 체크리스트: 휴대폰 한 손으로 위에서 아래로 체크. 아래 고정 줄에 진행 상황과 제출 버튼 */
+:root{
+  --bg:#F6F4EE; --surface:#FCFBF8; --line:#DCD6CA; --fg:#2B2A28; --muted:#6E655B; --accent:#A9471C; --accent-fg:#F6F4EE;
+  --late:#B3261E; --late-bg:#F6DEDA; --soon:#86601A; --soon-bg:#F1E7D2; --ok:#4F6B3A; --ok-bg:#E4EADB;
+  --font:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --display:"Cormorant Garamond",Georgia,"Noto Serif KR",serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
+  --late:#F08A7E; --late-bg:#40221E; --soon:#E2B866; --soon-bg:#3A2F1A; --ok:#9DBB82; --ok-bg:#25301E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
+  --late:#F08A7E; --late-bg:#40221E; --soon:#E2B866; --soon-bg:#3A2F1A; --ok:#9DBB82; --ok-bg:#25301E; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:1.5;
+  padding:max(18px,env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom))}
+.wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.top .wm{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.22em;color:var(--accent);line-height:1.1}
+.top .kr{font-size:14px;color:var(--muted)}
+h1{margin:0;font-size:21px}
+h2{margin:0;font-size:17px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.job .meta{display:flex;flex-direction:column;gap:2px;color:var(--muted);font-size:14px}
+.intro{margin:0;font-size:14px;color:var(--muted)}
+.state{padding:28px 0;text-align:center;color:var(--muted)}
+.state b{display:block;color:var(--fg);font-size:18px;margin-bottom:6px}
+button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.btn{background:var(--accent);color:var(--accent-fg);border:0;border-radius:8px;padding:11px 18px;font-weight:700;font-size:16px}
+.btn:disabled{opacity:.6}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:500}
+.btn.sm{padding:6px 12px;font-size:14px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,textarea{font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%;min-width:0}
+textarea{resize:vertical}
+.spec{background:var(--soon-bg);color:var(--soon);border-radius:8px;padding:10px 12px;font-size:14px}
+.spec b{display:block;margin-bottom:2px}
+.specs{display:flex;flex-wrap:wrap;gap:8px}
+.specs a{color:var(--accent);font-weight:500;font-size:14px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;text-decoration:none;background:var(--bg)}
+.dims{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dims label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.lbl{font-size:13px;color:var(--muted)}
+.item{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.item .q{font-size:15px;font-weight:500}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.seg button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;padding:10px 4px;font-size:15px;min-height:44px}
+.seg button[aria-pressed="true"].ok{background:var(--ok);border-color:var(--ok);color:var(--bg);font-weight:700}
+.seg button[aria-pressed="true"].bad{background:var(--late);border-color:var(--late);color:var(--bg);font-weight:700}
+.seg button[aria-pressed="true"].na{background:var(--muted);border-color:var(--muted);color:var(--bg);font-weight:700}
+.item.need{border-top-color:var(--late)}
+.item.need .q::after{content:" · 선택해 주세요";color:var(--late);font-size:13px;font-weight:400}
+input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)}
+.photos{display:flex;flex-direction:column;gap:8px}
+.photos.need .lbl{color:var(--late)}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:6px}
+.ph{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--line)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .x{position:absolute;top:4px;right:4px;border:0;border-radius:999px;background:rgba(20,18,16,.7);color:#fff;font-size:12px;padding:3px 8px}
+.ph .busy{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,18,16,.45);color:#fff;font-size:12px}
+.ph-btns{display:flex;gap:8px;flex-wrap:wrap}
+.ph-btns label{position:relative;overflow:hidden}
+.ph-btns input{position:absolute;inset:0;opacity:0;font-size:0}
+.req{font-size:12px;color:var(--late);font-weight:500}
+.err{background:var(--late-bg);color:var(--late);border-radius:8px;padding:10px 12px;font-size:14px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px max(16px,calc((100% - 640px)/2)) max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;z-index:5}
+.bar .prog{flex:1;min-width:0;font-size:14px}
+.bar .prog small{display:block;color:var(--muted);font-size:12px}
+.done-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.done-list li{display:flex;gap:8px;align-items:flex-start}
+.tag{display:inline-block;font-size:12px;border-radius:4px;padding:1px 7px;white-space:nowrap;flex:none}
+.tag.ok{color:var(--ok);background:var(--ok-bg)}
+.tag.bad{color:var(--late);background:var(--late-bg)}
+.tag.na{color:var(--muted);border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top"><div class="wm">NEST FURNITURE</div><div class="kr">시공 체크리스트</div></header>
+  <div class="state" id="state" role="status">불러오는 중…</div>
+  <div id="main" hidden style="display:flex;flex-direction:column;gap:14px">
+    <section class="card job" id="job"></section>
+    <p class="intro">항목마다 <b>확인</b>, <b>문제</b>, <b>해당 없음</b> 중 하나를 눌러 주세요. 문제가 있으면 무엇이 문제인지 꼭 적어 주세요. 적는 내용은 바로바로 저장돼서, 나갔다 들어와도 그대로 있어요.</p>
+    <div id="secs" style="display:flex;flex-direction:column;gap:14px"></div>
+    <section class="card"><h2>남은 작업 · 특이사항</h2><textarea id="memo" rows="3" placeholder="예: 안방 손잡이 1개 부족, 다음 주 추가 방문 필요"></textarea></section>
+    <section class="card"><h2>작성자</h2><input id="name" placeholder="이름을 적어 주세요" autocomplete="name"></section>
+    <div class="err" id="err" hidden></div>
+  </div>
+  <div id="done" hidden style="display:flex;flex-direction:column;gap:14px"></div>
+</main>
+<div class="bar" id="bar" hidden><div class="prog"><span id="prog"></span><small id="saved"></small></div><button class="btn" type="button" id="submit">제출하기</button></div>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="checklist.js"></script>
+<script src="check.js"></script>
+</body>
+</html>

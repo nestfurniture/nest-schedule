@@ -2,6 +2,7 @@
 // 네스트퍼니처 알림 보내기 (Supabase Edge Function, 이름: notify)
 // - 매일 아침/저녁 정해진 시간에 Supabase Cron이 불러서 휴대폰으로 일정 알림을 보냅니다.
 // - 앱이 알림용 공개키를 받아갈 때, 사용자가 "테스트 알림"을 누를 때도 불립니다.
+// - 시공자 체크리스트 화면(check.html)도 이 서버를 거쳐 현장 정보를 읽고, 사진을 올리고, 제출합니다.
 // 웹 푸시(VAPID + aes128gcm 암호화)를 외부 라이브러리 없이 직접 처리합니다. 알림용 키는 처음 실행할 때 만들어 DB(push_keys)에 보관합니다.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -74,15 +75,23 @@ function moneyLines(money, today) {
   if (lateN) lines.push(`입금 지연 ${lateN}건 ${man(lateAmt)}`);
   return lines;
 }
-/* slot: evening = 내일 일정, morning = 오늘 일정 + 미배정 경고 (+ 관리자에게 입금) */
-function buildMessages(slot, jobs, money, today) {
+/* 시공이 끝났는데(최근 7일) 체크리스트가 안 온 현장. 업데이트 4 전이면(cls=null) 건너뜀 */
+function noChecklist(jobs, cls, today) {
+  if (!cls) return "";
+  const done = new Set(cls.filter((c) => c.status === "submitted").map((c) => c.job_id));
+  const late = jobs.filter((j) => { const wd = workDays(j), last = wd[wd.length - 1]; return last && last < today && last >= addDays(today, -7) && !done.has(j.id); });
+  return late.length ? `체크리스트 안 온 곳 ${late.length}곳: ${late.map((j) => { const wd = workDays(j); return `${short(j)} ${md(wd[wd.length - 1])}`; }).join(", ")}` : "";
+}
+/* slot: evening = 내일 일정, morning = 오늘 일정 + 미배정 경고 + 체크리스트 미제출 (+ 관리자에게 입금) */
+function buildMessages(slot, jobs, money, today, cls = null) {
   const out = [];
   if (slot === "evening") {
     const d = addDays(today, 1), lines = dayLines(jobs, d);
     if (lines.length) out.push({ pref: "tomorrow", title: `내일 일정 · ${md(d)}`, body: lines.join("\n"), url: `${APP_URL}?day=${d}`, tag: `tomorrow-${d}` });
   } else {
-    const lines = dayLines(jobs, today), warn = unassigned(jobs, today);
+    const lines = dayLines(jobs, today), warn = unassigned(jobs, today), cl = noChecklist(jobs, cls, today);
     if (warn) lines.push(warn);
+    if (cl) lines.push(cl);
     if (lines.length) out.push({ pref: "today", title: `오늘 일정 · ${md(today)}`, body: lines.join("\n"), url: `${APP_URL}?day=${today}`, tag: `today-${today}` });
     const ml = moneyLines(money, today);
     if (ml.length) out.push({ pref: "money", admin: true, title: "입금 확인", body: ml.join("\n"), url: `${APP_URL}?tab=pay`, tag: `money-${today}` });
@@ -158,8 +167,9 @@ async function push(sub, msg, v) {
 
 /* ---------- 보내기 ---------- */
 async function loadData() {
-  const [jobs, admins, money] = await Promise.all([rest("jobs?select=*"), rest("admins?select=user_id").catch(() => []), rest("job_money?select=*").catch(() => [])]);
-  return { jobs, admins: new Set(admins.map((a) => a.user_id)), money };
+  const [jobs, admins, money, cls] = await Promise.all([rest("jobs?select=*"), rest("admins?select=user_id").catch(() => []), rest("job_money?select=*").catch(() => []),
+    rest("checklists?select=job_id,status").catch(() => null)]);
+  return { jobs, admins: new Set(admins.map((a) => a.user_id)), money, cls };
 }
 async function sendTo(subs, msgs, admins, v) {
   let sent = 0;
@@ -178,8 +188,8 @@ async function run(slot) {
   // 같은 날 같은 알림이 두 번 가지 않게 기록 (이미 있으면 건너뜀)
   const logged = await rest("push_log", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ slot, day: today }) });
   if (!logged || !logged.length) return { skipped: "already sent", slot, today };
-  const [{ jobs, admins, money }, subs, v] = await Promise.all([loadData(), rest("push_subs?select=*"), vapid()]);
-  const msgs = buildMessages(slot, jobs, money, today);
+  const [{ jobs, admins, money, cls }, subs, v] = await Promise.all([loadData(), rest("push_subs?select=*"), vapid()]);
+  const msgs = buildMessages(slot, jobs, money, today, cls);
   const sent = msgs.length ? await sendTo(subs, msgs, admins, v) : 0;
   await rest(`push_log?slot=eq.${slot}&day=eq.${today}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ sent }) });
   return { slot, today, messages: msgs.length, sent };
@@ -195,12 +205,118 @@ async function userOf(req) {
 async function test(req) {
   const user = await userOf(req);
   if (!user) return json({ error: "login required" }, 401);
-  const [{ jobs, admins, money }, subs, v] = await Promise.all([loadData(), rest(`push_subs?user_id=eq.${user.id}&select=*`), vapid()]);
+  const [{ jobs, admins, money, cls }, subs, v] = await Promise.all([loadData(), rest(`push_subs?user_id=eq.${user.id}&select=*`), vapid()]);
   if (!subs.length) return json({ sent: 0, error: "no device" });
   const today = kstToday();
-  let msgs = [...buildMessages("morning", jobs, money, today), ...buildMessages("evening", jobs, money, today)].map((m) => ({ ...m, pref: "_test" }));
+  let msgs = [...buildMessages("morning", jobs, money, today, cls), ...buildMessages("evening", jobs, money, today)].map((m) => ({ ...m, pref: "_test" }));
   if (!msgs.length) msgs = [{ pref: "_test", title: "네스트퍼니처 알림", body: "알림이 잘 연결됐어요. 오늘과 내일은 잡힌 일정이 없어요.", url: APP_URL, tag: "test" }];
   return json({ sent: await sendTo(subs, msgs, admins, v) });
+}
+
+/* ---------- 시공 체크리스트: 시공자는 로그인 없이 링크 속 열쇠(token)로만 들어옴 ---------- */
+const BUCKET = "job-files";
+const okToken = (t) => typeof t === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(t);
+async function clByToken(token) {
+  if (!okToken(token)) return null;
+  const rows = await rest(`checklists?token=eq.${token}&select=*`);
+  return rows[0] || null;
+}
+const storage = (path, init = {}) => fetch(`${SB_URL}/storage/v1/${path}`, {
+  ...init, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers || {}) },
+});
+async function signPaths(paths) {
+  paths = [...new Set(paths.filter(Boolean))];
+  if (!paths.length) return {};
+  const r = await storage(`object/sign/${BUCKET}`, { method: "POST", body: JSON.stringify({ expiresIn: 6 * 3600, paths }) });
+  if (!r.ok) return {};
+  const out = {};
+  for (const x of await r.json()) if (x && x.signedURL) out[x.path] = `${SB_URL}/storage/v1${x.signedURL}`;
+  return out;
+}
+// 시공자 화면에 보낼 현장 정보 (비밀번호·돈은 빼고)
+const jobPublic = (j) => ({ id: j.id, name: j.name, item: j.item, addr: j.addr,
+  i: { start: j.i?.start || "", end: j.i?.end || "", sat: !!j.i?.sat, sun: !!j.i?.sun, crew: j.i?.crew || [], apps: j.i?.apps || [], chk: j.i?.chk || [] } });
+const photoPrefix = (cl) => `${cl.job_id}/photo/cl-`;
+// 체크리스트 사진은 이 현장의 cl-숫자-글자(.jpg / -t.jpg) 이름만 허용 (다른 파일 주소를 끼워 넣지 못하게)
+const okPhotoPath = (cl, p) => typeof p === "string" && p.startsWith(photoPrefix(cl)) && /^cl-\d{10,16}-[a-z0-9]{1,8}(-t)?\.jpg$/.test(p.slice(photoPrefix(cl).length - 3));
+const okPhoto = (cl, x) => x && typeof x === "object" && okPhotoPath(cl, x.path) && (!x.thumb || okPhotoPath(cl, x.thumb));
+const plainObj = (o) => o && typeof o === "object" && !Array.isArray(o) ? o : {};
+async function clOpen(b) {
+  const cl = await clByToken(b.token);
+  if (!cl) return json({ error: "not found" }, 404);
+  const [jobs, specs] = await Promise.all([rest(`jobs?id=eq.${cl.job_id}&select=*`), rest(`files?job_id=eq.${cl.job_id}&kind=eq.spec&select=name,path,stage,mime`)]);
+  if (!jobs.length) return json({ error: "not found" }, 404);
+  const photos = (Array.isArray(cl.data?.photos) ? cl.data.photos : []).filter((p) => okPhoto(cl, p));
+  const urls = await signPaths([...specs.map((f) => f.path), ...photos.map((p) => p.thumb || p.path)]);
+  return json({
+    job: jobPublic(jobs[0]), status: cl.status, data: { ...(cl.data || {}), photos }, submitted_at: cl.submitted_at, submitted_by: cl.submitted_by,
+    specs: specs.map((f) => ({ app: f.stage, name: f.name, url: urls[f.path] || "" })),
+    urls: Object.fromEntries(photos.map((p) => [p.path, urls[p.thumb || p.path] || ""])),
+  });
+}
+async function clOpenOnly(b) {
+  const cl = await clByToken(b.token);
+  if (!cl) return [null, json({ error: "not found" }, 404)];
+  if (cl.status === "submitted") return [null, json({ error: "submitted" }, 409)];
+  return [cl, null];
+}
+async function clUpload(b) {
+  const [cl, bad] = await clOpenOnly(b);
+  if (bad) return bad;
+  const base = `${photoPrefix(cl)}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sign = async (p) => {
+    const r = await storage(`object/upload/sign/${BUCKET}/${p}`, { method: "POST" });
+    if (!r.ok) throw new Error(`upload sign ${r.status} ${await r.text()}`);
+    return new URL(`${SB_URL}/storage/v1${(await r.json()).url}`).searchParams.get("token");
+  };
+  const [token, thumbToken] = await Promise.all([sign(`${base}.jpg`), sign(`${base}-t.jpg`)]);
+  return json({ path: `${base}.jpg`, thumb: `${base}-t.jpg`, token, thumbToken });
+}
+async function clPhoto(b) {
+  const [cl, bad] = await clOpenOnly(b);
+  if (bad) return bad;
+  const path = String(b.path || ""), thumb = String(b.thumb || "");
+  if (!okPhotoPath(cl, path) || (thumb && !okPhotoPath(cl, thumb))) return json({ error: "bad path" }, 400);
+  await rest("files", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
+    job_id: cl.job_id, kind: "photo", stage: "시공 후", thumb, path, name: String(b.name || "체크리스트 사진.jpg").slice(0, 80),
+    size: +b.size || 0, mime: "image/jpeg", uploaded_by: `체크리스트 · ${String(b.by || "시공자").slice(0, 30)}`,
+  }) });
+  const urls = await signPaths([thumb || path]);
+  return json({ url: urls[thumb || path] || "" });
+}
+async function clRemove(b) {
+  const [cl, bad] = await clOpenOnly(b);
+  if (bad) return bad;
+  const path = String(b.path || "");
+  if (!okPhotoPath(cl, path)) return json({ error: "bad path" }, 400);
+  const q = `files?job_id=eq.${cl.job_id}&path=eq.${encodeURIComponent(path)}`;
+  const rows = await rest(`${q}&select=thumb`);
+  await storage(`object/${BUCKET}`, { method: "DELETE", body: JSON.stringify({ prefixes: [path, ...rows.map((r) => r.thumb)].filter(Boolean) }) });
+  await rest(q, { method: "DELETE" });
+  return json({ ok: true });
+}
+async function clSave(b) {
+  const [cl, bad] = await clOpenOnly(b);
+  if (bad) return bad;
+  const raw = plainObj(b.data);
+  if (JSON.stringify(raw).length > 200000) return json({ error: "too big" }, 413);
+  // 시공자가 쓸 수 있는 칸만 저장 ('조치 완료' 같은 사무실 표시는 못 바꾸게)
+  const data = { items: plainObj(raw.items), dims: plainObj(raw.dims), memo: String(raw.memo || "").slice(0, 4000), name: String(raw.name || "").slice(0, 30),
+    photos: (Array.isArray(raw.photos) ? raw.photos : []).filter((p) => okPhoto(cl, p)).map((p) => ({ key: String(p.key || "").slice(0, 80), path: p.path, thumb: p.thumb || "" })) };
+  const now = new Date().toISOString(), patch = { data, updated_at: now };
+  const by = String(b.name || data.name || "").trim().slice(0, 30);
+  if (b.submit) Object.assign(patch, { status: "submitted", submitted_at: now, submitted_by: by });
+  await rest(`checklists?job_id=eq.${cl.job_id}&status=eq.open`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch) });
+  if (b.submit) await clNotify(cl, b.summary || {}, by).catch((e) => console.error("checklist push", e));
+  return json({ ok: true, status: b.submit ? "submitted" : "open" });
+}
+// 제출되면 알림을 켠 모든 기기로 (설정에서 '체크리스트 제출'을 끈 기기는 빼고)
+async function clNotify(cl, sum, by) {
+  const [jobs, subs, v] = await Promise.all([rest(`jobs?id=eq.${cl.job_id}&select=name`), rest("push_subs?select=*"), vapid()]);
+  const bad = (Array.isArray(sum.bad) ? sum.bad : []).map((x) => String(x).slice(0, 80)).slice(0, 4);
+  const n = Math.max(+sum.badCount || 0, bad.length);
+  const body = (n ? `문제 ${n}건 · ${bad.join(" / ")}` : "문제 없음") + (by ? `\n작성 ${by}` : "");
+  await sendTo(subs, [{ pref: "checklist", title: `체크리스트 제출 · ${jobs[0]?.name || "현장"}`, body: body.slice(0, 400), url: `${APP_URL}?job=${cl.job_id}`, tag: `cl-${cl.job_id}` }], new Set(), v);
 }
 
 Deno.serve(async (req) => {
@@ -210,6 +326,11 @@ Deno.serve(async (req) => {
     if (body.action === "key") return json({ publicKey: (await vapid()).pub });
     if (body.action === "test") return await test(req);
     if (body.action === "run" && (body.slot === "morning" || body.slot === "evening")) return json(await run(body.slot));
+    if (body.action === "cl_open") return await clOpen(body);
+    if (body.action === "cl_upload") return await clUpload(body);
+    if (body.action === "cl_photo") return await clPhoto(body);
+    if (body.action === "cl_remove") return await clRemove(body);
+    if (body.action === "cl_save") return await clSave(body);
     return json({ error: "unknown action" }, 400);
   } catch (e) {
     console.error(e);

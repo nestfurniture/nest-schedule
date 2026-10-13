@@ -31,7 +31,9 @@ const noCrewSoon=j=>!j.f.done&&j.i.start&&!j.i.crew.length&&j.i.start<=addDays(T
 const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
   m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
-    gate:d.i?.gate||"",door:d.i?.door||"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[]},
+    gate:d.i?.gate||"",door:d.i?.door||"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],
+    apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"etc",model:a.model||"",spec:a.spec||""})),
+    chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[]},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[]},createdAt:d.created_at||""};}
 
 /* 돈: 계약금액·입금·원가 (관리자만) */
@@ -95,6 +97,9 @@ function render(){
     <span class="chip soon">마감 추가 투입 <b>${jobs.reduce((a,j)=>a+extraSum(j),0)}명</b></span>
     <span class="chip">AS 예정 <b>${jobs.reduce((a,j)=>a+asOpen(j).length,0)}</b></span>`;
   if(clashes.length)chips+=`<button class="chip late" type="button" data-tab="crew">시공자 겹침 <b>${clashes.length}</b></button>`;
+  const clBad=jobs.filter(j=>clNeeds(j)==="bad").length,clLate=jobs.filter(j=>clNeeds(j)==="late").length;
+  if(clBad)chips+=`<span class="chip late">체크리스트 문제 <b>${clBad}</b></span>`;
+  if(clLate)chips+=`<span class="chip soon">체크리스트 미제출 <b>${clLate}</b></span>`;
   if(isAdmin){const t=payTotals();chips+=`<button class="chip" type="button" data-tab="pay">미수금 <b>${man(t.unpaid)}</b></button>`;
     if(t.lateN)chips+=`<button class="chip late" type="button" data-tab="pay">입금 지연 <b>${t.lateN}</b></button>`;}
   $("summary").innerHTML=chips;
@@ -108,7 +113,7 @@ function render(){
     <td><div class="cell"><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</div></td>
     <td><span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span></td>
     <td><div class="cell">${crewHtml(j)}</div></td>
-    <td><div class="cell">${finishTag(j)}${asTag(j)}</div></td>
+    <td><div class="cell">${finishTag(j)}${asTag(j)}${clTag(j)}</div></td>
     <td>${extraHtml(j)}</td>
     <td>${fileCount(j)}</td>${isAdmin?`<td>${payTag(j)}</td>`:""}</tr>`).join("");
   $("cards").innerHTML=sorted.map(j=>`<button class="card ${noCrewSoon(j)?"flag":""}" data-j="${esc(j.id)}">
@@ -117,7 +122,7 @@ function render(){
       <dt>실측</dt><dd><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</dd>
       <dt>시공</dt><dd><span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span></dd>
       <dt>시공자</dt><dd>${crewHtml(j)}</dd>
-      <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}${asTag(j)}</dd>
+      <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}${asTag(j)}${clTag(j)}</dd>
       <dt>파일</dt><dd>${fileCount(j)}</dd>${isAdmin?`<dt>수금</dt><dd>${payTag(j)}</dd>`:""}
     </dl></button>`).join("");
   renderCal();renderCrew();
@@ -157,7 +162,7 @@ function openDay(ds){selDay=ds;
   $("dayTitle").innerHTML=`${+ds.slice(5,7)}월 ${+ds.slice(8)}일 <span class="wk">(${WD[dow(ds)]})</span>`;
   $("dayBody").innerHTML=(
     sec("시공",by("i"),x=>{const wd=workDays(x.j),k=wd.indexOf(ds)+1;
-      return`<li><i class="dot k ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.i.crew.length?`시공자 ${x.j.i.crew.map(esc).join(", ")}`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`작업 ${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div><button class="btn ghost sm cp-msg" type="button" data-msg="${esc(x.j.id)}">시공자 문자 복사</button></div></li>`})+
+      return`<li><i class="dot k ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.i.crew.length?`시공자 ${x.j.i.crew.map(esc).join(", ")}`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`작업 ${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div><button class="btn ghost sm cp-msg" type="button" data-msg="${esc(x.j.id)}">시공자 문자 복사</button>${clOf(x.j.id)?` <button class="btn ghost sm cp-msg" type="button" data-clmsg="${esc(x.j.id)}">체크리스트 문자 복사</button>`:""}</div></li>`})+
     sec("실측",by("m"),x=>`<li><i class="dot" style="background:var(--c-measure)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">${x.j.m.done?`<span class="tag ok">실측 완료</span>`:`<span class="tag wait">실측 예정</span>`}</div></div></li>`)+
     sec("AS",by("a"),x=>`<li><i class="dot" style="background:var(--c-as)"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">담당 ${esc(x.a.crew||"미정")}${x.a.note?` · ${esc(x.a.note)}`:""}${x.a.done?` <span class="tag ok">완료</span>`:""}</div></div></li>`)+
     sec("마감 추가 투입",by("x"),x=>`<li><i class="dot ring ${kc(x.j)}"></i><div><b>${esc(x.j.name)}</b>${place(x.j)}<div class="dmeta">추가 ${+x.x.people}명${x.x.note?` · ${esc(x.x.note)}`:""}</div></div></li>`)
@@ -361,9 +366,10 @@ async function copyText(t){
 function flash(btn,text,good){if(!btn.dataset.label)btn.dataset.label=btn.textContent;btn.textContent=text;btn.classList.toggle("copied",good);
   clearTimeout(btn._t);btn._t=setTimeout(()=>{btn.textContent=btn.dataset.label;btn.classList.remove("copied");},1600);}
 document.addEventListener("click",async e=>{
-  const b=e.target.closest("[data-cp],[data-msg],#copyMsg");if(!b)return;
+  const b=e.target.closest("[data-cp],[data-msg],[data-clmsg],#copyMsg");if(!b)return;
   let t="";
   if(b.id==="copyMsg")t=formMsg();
+  else if(b.dataset.clmsg){const j=jobs.find(x=>x.id===b.dataset.clmsg),c=clOf(b.dataset.clmsg);if(j&&c)t=clMsg(j,c);}
   else if(b.dataset.msg){const j=jobs.find(x=>x.id===b.dataset.msg);if(j)t=jobMsg(j);}
   else t=b.dataset.cp==="f-mgr"?pickedMgr().join(", "):$(b.dataset.cp).value.trim();
   if(!t){flash(b,"비어 있어요",false);return;}
@@ -379,7 +385,8 @@ function openForm(j){editing=j||null;$("formTitle").textContent=j?`${j.name} 수
   $("f-fdone").checked=v.f.done;$("f-extras").innerHTML="";v.f.extra.forEach(extraRow);
   $("f-as").innerHTML="";v.f.as.forEach(asRow);
   $("ph-stage").value=guessStage(v);
-  pending=[];renderFiles();renderPhotos();fillMoney(j);updateMsg();
+  $("f-apps").innerHTML="";v.i.apps.forEach(appRow);$("f-chk").value=v.i.chk.join("\n");
+  pending=[];renderFiles();renderPhotos();renderCl();fillMoney(j);updateMsg();
   $("form").hidden=false;$("form").scrollIntoView({behavior:"smooth",block:"start"});$("f-name").focus({preventScroll:true});}
 const showErr=m=>{$("f-err").textContent=m;$("f-err").hidden=false};
 $("addExtra").onclick=()=>extraRow();
@@ -407,7 +414,8 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
   const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
-    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun,color:getColor(),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr()},
+    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew:pickedCrew(),sat,sun,color:getColor(),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
+      apps:readApps(),chk:$("f-chk").value.split("\n").map(x=>x.trim()).filter(Boolean)},
     f:{done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
   const mo=isAdmin?readMoney():null;
   $("saveBtn").disabled=true;$("f-err").hidden=true;
@@ -421,10 +429,13 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
       if(me){render();showErr("현장은 저장됐는데 수금·원가를 저장하지 못했어요. 저장을 한 번 더 눌러 주세요.");return;}
       money[row.id]=mo;}
     render();
+    if(row)await dropOrphanSpecs(editing);
     if(row&&pending.length){
       $("saveBtn").textContent="파일 올리는 중…";
       const queue=pending;pending=[];renderFiles();renderPhotos();
-      for(const p of queue)p.kind==="photo"?await uploadPhoto(row.id,p.file,p.stage):await uploadOne(row.id,p.kind,p.file);
+      const appIds=new Set(editing.i.apps.map(a=>a.id));
+      for(const p of queue){if(p.kind==="photo")await uploadPhoto(row.id,p.file,p.stage);
+        else if(p.kind!=="spec"||appIds.has(p.stage))await uploadOne(row.id,p.kind,p.file,p.stage);}
       if(!$("f-err").hidden)return;
     }
     $("form").hidden=true;
@@ -453,19 +464,20 @@ function renderFiles(){
     h+=wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("");
     if(!h)h=`<li class="none">${kind==="drawing"?"아직 올린 도면이 없어요.":"아직 올린 견적서가 없어요."}</li>`;
     $("fl-"+kind).innerHTML=h;}
+  renderSpecs();
 }
 function safeExt(name){const m=/\.([A-Za-z0-9]{1,8})$/.exec(name||"");return m?m[1].toLowerCase():"bin";}
 const rid=()=>`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-async function uploadOne(jobId,kind,file){
-  const tmp={kind,file,busy:true};pending.push(tmp);renderFiles();
+async function uploadOne(jobId,kind,file,stage=""){
+  const tmp={kind,file,stage,busy:true};pending.push(tmp);renderFiles();
   try{
     const path=`${jobId}/${kind}/${rid()}.${safeExt(file.name)}`;
     const {error:ue}=await sb.storage.from(BUCKET).upload(path,file,{contentType:file.type||"application/octet-stream",upsert:false});
     if(ue)throw ue;
-    const {data,error}=await sb.from("files").insert({job_id:jobId,kind,name:file.name||"이름 없는 파일",path,size:file.size||0,mime:file.type||"",uploaded_by:userEmail}).select();
+    const {data,error}=await sb.from("files").insert({job_id:jobId,kind,...(stage?{stage}:{}),name:file.name||"이름 없는 파일",path,size:file.size||0,mime:file.type||"",uploaded_by:userEmail}).select();
     if(error){await sb.storage.from(BUCKET).remove([path]);throw error;}
     if(data&&data[0]&&!files.find(f=>f.id===data[0].id))files.push(data[0]);
-  }catch(e){showErr(`"${file.name}" 파일을 올리지 못했어요. 인터넷 연결을 확인하고 다시 올려 주세요.`);}
+  }catch(e){showErr(kind==="spec"&&!cl04?"시방서를 올리려면 Supabase 업데이트 4가 먼저 필요해요. 시공 체크리스트 칸의 안내를 봐 주세요.":`"${file.name}" 파일을 올리지 못했어요. 인터넷 연결을 확인하고 다시 올려 주세요.`);}
   finally{pending=pending.filter(p=>p!==tmp);renderFiles();render();}
 }
 document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("fpick"))return;
@@ -495,6 +507,92 @@ async function removeFile(f){
   const {error:se}=await sb.storage.from(BUCKET).remove([f.path,f.thumb].filter(Boolean));
   const {error}=se?{error:se}:await sb.from("files").delete().eq("id",f.id);
   if(error)return false;files=files.filter(x=>x!==f);return true;}
+
+/* 가전 · 시방서: 가전마다 종류·모델명·확인 치수, 시방서 파일은 files(kind=spec, stage=가전 번호)로 보관 */
+const appId=()=>Math.random().toString(36).slice(2,9);
+function appRow(a){a=a||{id:appId(),type:"dish",model:"",spec:""};
+  const r=document.createElement("div");r.className="app-row";r.dataset.app=a.id;
+  r.innerHTML=`<div class="app-top"><select aria-label="가전 종류">${NEST_CL.TYPES.map(([k,n])=>`<option value="${k}" ${k===a.type?"selected":""}>${n}</option>`).join("")}</select>
+    <input class="app-model" placeholder="모델명 (예: DUE6BBLF)" aria-label="모델명" value="${esc(a.model)}">
+    <button class="btn ghost sm app-del" type="button">빼기</button></div>
+    <input class="app-spec" placeholder="시방서 확인 치수 (예: 폭 600~602 · 높이 815~875 · 상부 통풍 10mm)" aria-label="시방서 확인 치수" value="${esc(a.spec)}">
+    <div class="app-files"><ul class="flist" data-spec="${esc(a.id)}"></ul><span class="fg-btns"><label class="btn ghost sm">시방서 올리기<input type="file" multiple accept="image/*,application/pdf" class="specpick" data-app="${esc(a.id)}"></label><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="specpick" data-app="${esc(a.id)}"></label></span></div>`;
+  r.querySelector(".app-del").onclick=()=>{pending=pending.filter(p=>!(p.kind==="spec"&&p.stage===a.id));r.remove();};
+  $("f-apps").appendChild(r);renderSpecs();}
+$("addApp").onclick=()=>{appRow();const rows=$("f-apps").children;rows[rows.length-1].querySelector(".app-model").focus();};
+const readApps=()=>[...$("f-apps").children].map(r=>({id:r.dataset.app,type:r.querySelector("select").value,model:r.querySelector(".app-model").value.trim(),spec:r.querySelector(".app-spec").value.trim()}));
+function renderSpecs(){
+  $("f-apps").querySelectorAll("[data-spec]").forEach(ul=>{const id=ul.dataset.spec;
+    const saved=editing?filesOf(editing.id,"spec").filter(f=>f.stage===id):[],wait=pending.filter(p=>p.kind==="spec"&&p.stage===id);
+    ul.innerHTML=saved.map(f=>`<li><button type="button" class="fname" data-fid="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><span class="fmeta">${fsize(+f.size||0)}</span><button type="button" class="fdel" data-fdel="${esc(f.id)}">삭제</button></li>`).join("")+
+      wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("")||
+      `<li class="none">시방서를 올려 두면 시공자가 현장에서 바로 볼 수 있어요.</li>`;});}
+document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("specpick"))return;
+  const app=inp.dataset.app,list=[...inp.files];inp.value="";$("f-err").hidden=true;
+  const saved=editing&&editing.i.apps.some(a=>a.id===app);
+  for(const file of list){
+    if(file.size>MAX_BYTES){showErr(`"${file.name}"은(는) 50MB가 넘어서 올릴 수 없어요.`);continue;}
+    if(saved)await uploadOne(editing.id,"spec",file,app);else{pending.push({kind:"spec",file,stage:app});renderSpecs();}}});
+// 뺀 가전의 시방서 파일은 저장할 때 같이 지움
+async function dropOrphanSpecs(j){const ids=new Set(j.i.apps.map(a=>a.id));
+  for(const f of filesOf(j.id,"spec").filter(f=>!ids.has(f.stage)))await removeFile(f);}
+
+/* 시공 체크리스트: 현장마다 링크 하나 (check.html?t=열쇠). 시공자는 로그인 없이 작성·제출 */
+let checks={},cl04=true;
+const clOf=id=>checks[id]||null;
+const clUrl=t=>new URL(`check.html?t=${t}`,location.href.split(/[?#]/)[0]).href;
+const clMsg=(j,c)=>`[네스트퍼니처 시공 체크리스트]\n\n현장 : ${j.name}\n시공이 끝나면 아래 링크를 열어 체크리스트를 작성해 주세요.\n${clUrl(c.token)}`;
+const clSum=j=>{const c=clOf(j.id);return c?NEST_CL.summary(j,c.data):null;};
+const lastWork=j=>{const wd=workDays(j);return wd[wd.length-1]||"";};
+// bad = 제출됐는데 문제가 있고 아직 조치 안 함, late = 시공 끝난 지 14일 안인데 제출 안 됨
+function clNeeds(j){const c=clOf(j.id);
+  if(c&&c.status==="submitted")return clSum(j).bad.length&&!(c.data||{}).fixed?"bad":"";
+  const last=lastWork(j);return last&&last<TODAY&&last>=addDays(TODAY,-14)?"late":"";}
+function clTag(j){const c=clOf(j.id),need=clNeeds(j);
+  if(c&&c.status==="submitted"){const n=clSum(j).bad.length;
+    return need==="bad"?`<span class="tag late">체크 문제 ${n}</span>`:`<span class="tag ok">체크 완료${n?" · 조치함":""}</span>`;}
+  return need==="late"?`<span class="tag soon">체크 미제출</span>`:"";}
+const RES=NEST_CL.RESULT;
+const whenKo=ts=>{if(!ts)return"";const d=new Date(ts);return`${d.getMonth()+1}월 ${d.getDate()}일 ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+function clDetailHtml(j,c){const d=c.data||{},it=d.items||{},dims=d.dims||{},photos=d.photos||[];
+  return NEST_CL.sections(j).map(s=>`<div class="cl-sec"><h4>${esc(s.title)}</h4>${s.dims&&NEST_CL.dimsText(dims[s.key])?`<div class="hint">잰 치수: ${esc(NEST_CL.dimsText(dims[s.key]))}</div>`:""}${
+    s.items.map(x=>{const r=it[x.key]||{};return`<div class="cl-it"><span class="r tag ${r.v==="bad"?"late":r.v==="ok"?"ok":"wait"}">${RES[r.v]||"안 함"}</span><div>${esc(x.label)}${r.note?`<div class="note">${esc(r.note)}</div>`:""}</div></div>`;}).join("")}${
+    s.photo?`<div class="hint">사진 ${photos.filter(p=>p.key===s.key).length}장</div>`:""}</div>`).join("")+
+    (d.memo?`<div class="cl-sec"><h4>남은 작업 · 특이사항</h4><div class="note" style="white-space:pre-wrap">${esc(d.memo)}</div></div>`:"")+
+    `<p class="hint">체크리스트 사진은 아래 현장 사진의 '시공 후'에 함께 들어 있어요.</p>`;}
+function renderCl(){const box=$("cl-box");
+  if(!cl04){box.innerHTML=`<div class="update">시공 체크리스트를 쓰려면 Supabase 업데이트 4가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-04.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>`;return;}
+  if(!editing){box.innerHTML=`<p class="hint" style="margin:0">현장을 저장하면 체크리스트 링크를 만들 수 있어요.</p>`;return;}
+  const j=editing,c=clOf(j.id);
+  if(!c){box.innerHTML=`<div class="cl-row"><span class="tag wait">링크 없음</span><button class="btn sm" type="button" id="clMake">체크리스트 링크 만들기</button></div>`;return;}
+  const s=NEST_CL.summary(j,c.data);
+  if(c.status!=="submitted"){
+    box.innerHTML=`<div class="cl-row"><span class="tag wait">${s.done?`작성 중 ${s.done}/${s.total}`:"작성 전"}</span><button class="btn sm" type="button" data-clmsg="${esc(j.id)}">체크리스트 문자 복사</button><a class="btn ghost sm" href="${esc(clUrl(c.token))}" target="_blank" rel="noopener">열어 보기</a></div>
+      <p class="hint" style="margin:6px 0 0">시공자에게 문자를 보내면, 시공이 끝난 뒤 링크에서 체크하고 제출해요. 제출되면 알림이 와요.</p>
+      <p class="hint" style="margin:4px 0 0">링크가 다른 사람에게 잘못 갔다면 <button class="cl-renew" type="button" id="clRenew">링크 새로 만들기</button> (예전 링크는 바로 막혀요)</p>`;return;}
+  const fixed=(c.data||{}).fixed;
+  box.innerHTML=`<div class="cl-row"><span class="tag ${s.bad.length&&!fixed?"late":"ok"}">${s.bad.length?`문제 ${s.bad.length}건`:"문제 없음"}</span><span>${whenKo(c.submitted_at)} 제출${c.submitted_by?` · ${esc(c.submitted_by)}`:""}</span><button class="btn ghost sm" type="button" id="clReopen">다시 작성하게 열기</button></div>`+
+    (s.bad.length?`<ul class="cl-bad">${s.bad.map(b=>`<li><b>${esc(b.sec)}</b> · ${esc(b.label)}${b.note?`<div class="note">${esc(b.note)}</div>`:""}</li>`).join("")}</ul>
+      <label class="check cl-fixed"><input type="checkbox" id="clFixed" ${fixed?"checked":""}>문제 조치 완료${fixed?` <span class="hint">(${fmt(fixed)})</span>`:""}</label>`:"")+
+    `<details class="cl-detail"><summary>전체 결과 보기</summary>${clDetailHtml(j,c)}</details>`;}
+function b64uRand(n){const a=crypto.getRandomValues(new Uint8Array(n));return btoa(String.fromCharCode(...a)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+async function clUpdate(jobId,patch){const {data,error}=await sb.from("checklists").update(patch).eq("job_id",jobId).select();
+  if(error||!data||!data[0])return false;checks[jobId]=data[0];renderCl();render();return true;}
+document.addEventListener("click",async e=>{
+  if(e.target.closest("#clMake")){const b=e.target.closest("#clMake"),j=editing;if(!j)return;b.disabled=true;
+    const {data,error}=await sb.from("checklists").insert({job_id:j.id,token:b64uRand(18)}).select();b.disabled=false;
+    if(error||!data||!data[0]){showErr("체크리스트 링크를 만들지 못했어요. 잠시 후 다시 눌러 주세요.");return;}
+    checks[j.id]=data[0];renderCl();render();return;}
+  const rn=e.target.closest("#clRenew");
+  if(rn&&editing){if(rn.dataset.armed!=="1"){rn.dataset.armed="1";rn.textContent="한 번 더 누르면 바뀌어요";setTimeout(()=>{if(rn.isConnected){rn.dataset.armed="";rn.textContent="링크 새로 만들기";}},4000);return;}
+    rn.disabled=true;if(!await clUpdate(editing.id,{token:b64uRand(18)}))showErr("링크를 바꾸지 못했어요. 잠시 후 다시 눌러 주세요.");return;}
+  const ro=e.target.closest("#clReopen");
+  if(ro&&editing){if(ro.dataset.armed!=="1"){ro.dataset.armed="1";ro.textContent="정말 다시 열기";setTimeout(()=>{if(ro.isConnected){ro.dataset.armed="";ro.textContent="다시 작성하게 열기";}},4000);return;}
+    ro.disabled=true;const c=clOf(editing.id),d={...(c.data||{})};delete d.fixed;
+    if(!await clUpdate(editing.id,{status:"open",submitted_at:null,data:d}))showErr("다시 열지 못했어요. 잠시 후 다시 눌러 주세요.");}});
+document.addEventListener("change",async e=>{if(e.target.id!=="clFixed"||!editing)return;const c=clOf(editing.id);if(!c)return;
+  const d={...(c.data||{})};if(e.target.checked)d.fixed=TODAY;else delete d.fixed;
+  if(!await clUpdate(editing.id,{data:d})){e.target.checked=!e.target.checked;showErr("저장하지 못했어요. 다시 눌러 주세요.");}});
 
 /* 현장 사진: 단계별로 묶어 보관. 휴대폰 사진은 줄여서(긴 변 2000px) 올리고 작은 미리보기도 함께 저장 */
 const urlCache=new Map();
@@ -631,9 +729,17 @@ function backupSheets(){
       rows:list.flatMap(j=>moneyOf(j.id).pays.map(p=>[j.name,p.label,p.amount,p.due,OX(p.paid),p.paidOn]))});
     sheets.push({name:"원가",cols:[["현장",18,"s"],["항목",16,"s"],["금액",14,"w"],["메모",36,"s"]],
       rows:list.flatMap(j=>moneyOf(j.id).costs.map(x=>[j.name,x.cat,x.amount,x.note]))});}
-  const KIND={drawing:"도면",estimate:"견적서",photo:"사진"},nameOf=id=>(jobs.find(j=>j.id===id)||{}).name||"";
-  sheets.push({name:"사진·파일 목록",cols:[["현장",18,"s"],["종류",8,"s"],["단계",9,"s"],["파일 이름",32,"s"],["올린 사람",22,"s"],["올린 날",12,"d"]],
-    rows:files.map(f=>[nameOf(f.job_id),KIND[f.kind]||f.kind,f.kind==="photo"?(f.stage||""):"",f.name||"",f.uploaded_by||"",(f.created_at||"").slice(0,10)])});
+  const clRows=[];
+  list.forEach(j=>{const c=clOf(j.id);if(!c)return;const d=c.data||{},it=d.items||{},dims=d.dims||{},day=(c.submitted_at||"").slice(0,10),st=c.status==="submitted"?"제출":"작성 중";
+    NEST_CL.sections(j).forEach(sec=>{
+      if(sec.dims&&NEST_CL.dimsText(dims[sec.key]))clRows.push([j.name,st,sec.title,"잰 치수",NEST_CL.dimsText(dims[sec.key]),"",c.submitted_by||"",day]);
+      sec.items.forEach(x=>{const r=it[x.key]||{};clRows.push([j.name,st,sec.title,x.label,NEST_CL.RESULT[r.v]||"",r.note||"",c.submitted_by||"",day]);});});
+    if(d.memo)clRows.push([j.name,st,"남은 작업 · 특이사항","",d.memo,"",c.submitted_by||"",day]);});
+  if(clRows.length)sheets.push({name:"체크리스트",cols:[["현장",18,"s"],["상태",8,"s"],["구분",22,"s"],["항목",36,"s"],["결과",10,"s"],["메모",30,"s"],["작성자",10,"s"],["제출일",12,"d"]],rows:clRows});
+  const KIND={drawing:"도면",estimate:"견적서",photo:"사진",spec:"시방서"},nameOf=id=>(jobs.find(j=>j.id===id)||{}).name||"",
+    appOf=f=>{const a=(((jobs.find(j=>j.id===f.job_id)||{}).i||{}).apps||[]).find(a=>a.id===f.stage);return a?NEST_CL.typeName(a.type)+(a.model?` ${a.model}`:""):"";};
+  sheets.push({name:"사진·파일 목록",cols:[["현장",18,"s"],["종류",8,"s"],["단계·가전",14,"s"],["파일 이름",32,"s"],["올린 사람",22,"s"],["올린 날",12,"d"]],
+    rows:files.map(f=>[nameOf(f.job_id),KIND[f.kind]||f.kind,f.kind==="photo"?(f.stage||""):f.kind==="spec"?appOf(f):"",f.name||"",f.uploaded_by||"",(f.created_at||"").slice(0,10)])});
   sheets.push({name:"시공자 명단",cols:[["시공자",16,"s"]],rows:CREW.map(c=>[c])});
   return sheets;}
 const XLS_KEY="nest-backup-day";
@@ -749,8 +855,10 @@ document.querySelectorAll("#pushPrefs [data-pref]").forEach(c=>c.onchange=savePr
 /* 알림을 눌러 열었을 때: ?day=날짜 → 달력에서 그날, ?tab=pay → 수금 */
 let pendingLink=location.search;
 function applyLink(q){
-  const p=new URLSearchParams(q.includes("?")?q.slice(q.indexOf("?")):q),day=p.get("day"),t=p.get("tab");
-  if(day&&/^\d{4}-\d{2}-\d{2}$/.test(day)){if(!$("pushSheet").hidden)closePush();tab("cal");openDay(day);}
+  const p=new URLSearchParams(q.includes("?")?q.slice(q.indexOf("?")):q),day=p.get("day"),t=p.get("tab"),jid=p.get("job");
+  const jj=jid&&jobs.find(x=>x.id===jid);
+  if(jj){if(!$("pushSheet").hidden)closePush();if(!$("daySheet").hidden)closeDay();tab("board");openForm(jj);setTimeout(()=>$("sec-cl").scrollIntoView({block:"start"}),400);}
+  else if(day&&/^\d{4}-\d{2}-\d{2}$/.test(day)){if(!$("pushSheet").hidden)closePush();tab("cal");openDay(day);}
   else if(t&&VIEWS.includes(t)){if(!$("daySheet").hidden)closeDay();tab(t);}
   if(location.search)history.replaceState(null,"",location.pathname+location.hash);}
 if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{
@@ -766,14 +874,16 @@ async function checkAdmin(){
   $("who").textContent=userEmail+(isAdmin?" · 관리자":"");
 }
 async function loadAll(){
-  const [{data:j,error:e1},{data:c},{data:fl},mo]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]})]);
+  const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*")]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
   jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
+  cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
+  if(!ck.error){checks={};(ck.data||[]).forEach(r=>{checks[r.job_id]=r});}
   loaded=true;render();renderBackup();
-  if(!$("form").hidden&&editing){renderFiles();renderPhotos();}
+  if(!$("form").hidden&&editing){renderFiles();renderPhotos();renderCl();}
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
 let channel=null;
@@ -783,7 +893,7 @@ async function startApp(session){
   let t="board";try{t=localStorage.getItem("nest-tab")||"board"}catch(e){}
   tab(VIEWS.includes(t)?t:"board");
   loadAll();
-  if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
+  if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
 function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
