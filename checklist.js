@@ -41,6 +41,12 @@
   ];
   const TYPE = Object.fromEntries(TYPES.map(([k, name, items]) => [k, { name, items }]));
   const typeName = (k) => (TYPE[k] || TYPE.etc).name;
+  // 시방서 보관함: 모델명은 대문자로, 띄어쓰기·하이픈 등은 빼고 비교 (알림 서버 notify와 같은 규칙)
+  const modelKey = (s) => String(s || "").toUpperCase().replace(/[^0-9A-Z가-힣]/g, "");
+  let libOf = () => null;
+  const useLib = (fn) => { libOf = fn || (() => null); };
+  // 종류를 '자동'으로 두면 보관함에서 찾은 종류로, 그것도 없으면 기타 가전으로
+  const appType = (a) => (TYPE[a.type] ? a.type : TYPE[(libOf(modelKey(a.model)) || {}).type] ? libOf(modelKey(a.model)).type : "etc");
   const hash = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) >>> 0; return h.toString(36); };
   const RESULT = { ok: "확인", bad: "문제", na: "해당 없음" };
 
@@ -48,8 +54,8 @@
   function sections(job) {
     const i = (job && job.i) || {}, out = [];
     (i.apps || []).forEach((a) => {
-      const t = TYPE[a.type] || TYPE.etc;
-      out.push({ key: `app:${a.id}`, kind: "app", title: t.name + (a.model ? ` · ${a.model}` : ""), app: a, spec: a.spec || "",
+      const t = TYPE[appType(a)], lib = libOf(modelKey(a.model)) || {};
+      out.push({ key: `app:${a.id}`, kind: "app", title: t.name + (a.model ? ` · ${a.model}` : ""), app: a, spec: a.spec || lib.spec || "",
         items: t.items.map((k) => ({ key: `app:${a.id}:${k}`, label: ITEMS[k] })), dims: true, photo: "설치 사진 (통풍구·연결부가 보이게)" });
     });
     out.push({ key: "common", kind: "common", title: "가구 마감", items: COMMON.map(([k, l]) => ({ key: `common:${k}`, label: l })), photo: "완성 사진 (전체가 보이게)" });
@@ -74,5 +80,5 @@
     return { secs, total, done, bad, missing, noPhoto, badNote, ready: !missing.length && !noPhoto.length && !badNote.length };
   }
   const dimsText = (d) => d && (d.w || d.h || d.d) ? `폭 ${d.w || "-"} · 높이 ${d.h || "-"} · 깊이 ${d.d || "-"} (mm)` : "";
-  window.NEST_CL = { ITEMS, TYPES, COMMON, RESULT, typeName, sections, summary, dimsText };
+  window.NEST_CL = { ITEMS, TYPES, COMMON, RESULT, typeName, modelKey, useLib, appType, sections, summary, dimsText };
 })();

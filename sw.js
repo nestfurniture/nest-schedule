@@ -1,6 +1,6 @@
 // 앱 화면 파일만 캐시해서 빠르게 열리게 합니다. 일정 데이터는 항상 서버에서 받아옵니다.
-const CACHE = "nest-schedule-v13";
-const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/badge-96.png", "icons/apple-touch-icon.png", "icons/favicon.png", "vendor/supabase.js", "checklist.js", "check.html", "check.js"];
+const CACHE = "nest-schedule-v14";
+const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/badge-96.png", "icons/apple-touch-icon.png", "icons/favicon.png", "vendor/supabase.js", "checklist.js", "check.html", "check.js", "specs.json"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));

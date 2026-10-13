@@ -32,7 +32,7 @@ const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
   m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
     gate:d.i?.gate||"",door:d.i?.door||"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],
-    apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"etc",model:a.model||"",spec:a.spec||""})),
+    apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||""})),
     chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[]},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[]},createdAt:d.created_at||""};}
 
@@ -508,25 +508,53 @@ async function removeFile(f){
   const {error}=se?{error:se}:await sb.from("files").delete().eq("id",f.id);
   if(error)return false;files=files.filter(x=>x!==f);return true;}
 
-/* 가전 · 시방서: 가전마다 종류·모델명·확인 치수, 시방서 파일은 files(kind=spec, stage=가전 번호)로 보관 */
+/* 가전 · 시방서: 가전마다 종류·모델명(+ 이 현장만 다른 치수).
+   시방서는 모델별로 specs.json(앱과 같이 올라가는 파일)에 모아 둠. Claude가 제조사 공식 홈페이지에서 찾아 넣고,
+   같은 모델을 쓰는 모든 현장의 시공 체크리스트에 자동으로 붙음. 공식 자료가 없으면 이 현장에만 파일을 직접 올릴 수 있음 */
+let specLib={},specAt=0;
+NEST_CL.useLib(k=>specLib[k]||null);
+const libOf=model=>specLib[NEST_CL.modelKey(model)]||null;
+async function loadSpecs(force){
+  if(!force&&Date.now()-specAt<60e3)return;specAt=Date.now();
+  try{const r=await fetch("specs.json",{cache:"no-cache"});if(!r.ok)return;const j=await r.json();
+    specLib=j&&j.models&&typeof j.models==="object"?j.models:{};}catch(e){return;}
+  if(loaded)render();if(!$("form").hidden)renderSpecs();}
 const appId=()=>Math.random().toString(36).slice(2,9);
-function appRow(a){a=a||{id:appId(),type:"dish",model:"",spec:""};
+function appRow(a){a=a||{id:appId(),type:"",model:"",spec:""};
   const r=document.createElement("div");r.className="app-row";r.dataset.app=a.id;
-  r.innerHTML=`<div class="app-top"><select aria-label="가전 종류">${NEST_CL.TYPES.map(([k,n])=>`<option value="${k}" ${k===a.type?"selected":""}>${n}</option>`).join("")}</select>
-    <input class="app-model" placeholder="모델명 (예: DUE6BBLF)" aria-label="모델명" value="${esc(a.model)}">
+  r.innerHTML=`<div class="app-top"><select aria-label="가전 종류"><option value="" ${a.type?"":"selected"}>종류 자동</option>${NEST_CL.TYPES.map(([k,n])=>`<option value="${k}" ${k===a.type?"selected":""}>${n}</option>`).join("")}</select>
+    <input class="app-model" placeholder="모델명 (예: DUE6BGH)" aria-label="모델명" value="${esc(a.model)}" autocapitalize="characters" spellcheck="false">
     <button class="btn ghost sm app-del" type="button">빼기</button></div>
-    <input class="app-spec" placeholder="시방서 확인 치수 (예: 폭 600~602 · 높이 815~875 · 상부 통풍 10mm)" aria-label="시방서 확인 치수" value="${esc(a.spec)}">
-    <div class="app-files"><ul class="flist" data-spec="${esc(a.id)}"></ul><span class="fg-btns"><label class="btn ghost sm">시방서 올리기<input type="file" multiple accept="image/*,application/pdf" class="specpick" data-app="${esc(a.id)}"></label><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="specpick" data-app="${esc(a.id)}"></label></span></div>`;
+    <div class="app-lib" data-lib="${esc(a.id)}"></div>
+    <input class="app-spec" aria-label="이 현장만 다른 확인 치수" value="${esc(a.spec)}">
+    <div class="app-files"><ul class="flist" data-spec="${esc(a.id)}"></ul><span class="fg-btns"><label class="btn ghost sm">파일 직접 올리기<input type="file" multiple accept="image/*,application/pdf" class="specpick" data-app="${esc(a.id)}"></label></span></div>`;
   r.querySelector(".app-del").onclick=()=>{pending=pending.filter(p=>!(p.kind==="spec"&&p.stage===a.id));r.remove();};
+  r.querySelector(".app-model").addEventListener("input",()=>renderSpecs());
   $("f-apps").appendChild(r);renderSpecs();}
 $("addApp").onclick=()=>{appRow();const rows=$("f-apps").children;rows[rows.length-1].querySelector(".app-model").focus();};
 const readApps=()=>[...$("f-apps").children].map(r=>({id:r.dataset.app,type:r.querySelector("select").value,model:r.querySelector(".app-model").value.trim(),spec:r.querySelector(".app-spec").value.trim()}));
+const host=u=>{try{return new URL(u).hostname.replace(/^www\./,"")}catch(e){return""}};
+// 가전 한 줄 아래: 찾아 둔 종류·치수·공식 링크, 아직 안 찾았으면 안내
+function libHtml(model){
+  if(!NEST_CL.modelKey(model))return`<div class="lib-msg">모델명만 적어 두면 Claude가 제조사 공식 홈페이지에서 시방서를 찾아 붙여 드려요.</div>`;
+  const l=libOf(model);
+  if(!l)return`<div class="lib-msg">아직 시방서를 찾지 않은 모델이에요. 저장한 뒤 Claude에게 "시방서 찾아줘"라고 말해 주세요.</div>`;
+  if(l.found===false)return`<div class="lib-msg warn">공식 홈페이지에서 이 모델을 찾지 못했어요. 모델명이 맞는지 확인해 주세요.${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;
+  const links=(Array.isArray(l.links)?l.links:[]).filter(x=>x&&/^https:\/\//.test(x.url||""));
+  const head=[l.brand,NEST_CL.TYPES.find(t=>t[0]===l.type)?.[1]].filter(Boolean).join(" · ");
+  return`<div class="lib-box">${head?`<div class="lib-head">${esc(head)} <span class="tag ok">시방서 있음</span></div>`:""}
+    ${l.spec?`<div class="lib-spec">${esc(l.spec)}</div>`:""}
+    ${links.length?`<div class="lib-links">${links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||"공식 자료")}</a><span class="fmeta">${esc(host(x.url))}</span>`).join("")}</div>`:""}
+    ${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;}
 function renderSpecs(){
-  $("f-apps").querySelectorAll("[data-spec]").forEach(ul=>{const id=ul.dataset.spec;
+  $("f-apps").querySelectorAll(".app-row").forEach(r=>{const id=r.dataset.app,model=r.querySelector(".app-model").value,l=libOf(model);
+    r.querySelector("[data-lib]").innerHTML=libHtml(model);
+    r.querySelector(".app-spec").placeholder=l&&l.spec?"이 현장만 다른 치수 (비우면 위 치수)":"확인 치수 직접 적기 (예: 폭 600~602 · 높이 815~875)";
+    const ul=r.querySelector("[data-spec]");
     const saved=editing?filesOf(editing.id,"spec").filter(f=>f.stage===id):[],wait=pending.filter(p=>p.kind==="spec"&&p.stage===id);
     ul.innerHTML=saved.map(f=>`<li><button type="button" class="fname" data-fid="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><span class="fmeta">${fsize(+f.size||0)}</span><button type="button" class="fdel" data-fdel="${esc(f.id)}">삭제</button></li>`).join("")+
-      wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("")||
-      `<li class="none">시방서를 올려 두면 시공자가 현장에서 바로 볼 수 있어요.</li>`;});}
+      wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("");
+    ul.hidden=!ul.innerHTML;});}
 document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("specpick"))return;
   const app=inp.dataset.app,list=[...inp.files];inp.value="";$("f-err").hidden=true;
   const saved=editing&&editing.i.apps.some(a=>a.id===app);
@@ -737,7 +765,7 @@ function backupSheets(){
     if(d.memo)clRows.push([j.name,st,"남은 작업 · 특이사항","",d.memo,"",c.submitted_by||"",day]);});
   if(clRows.length)sheets.push({name:"체크리스트",cols:[["현장",18,"s"],["상태",8,"s"],["구분",22,"s"],["항목",36,"s"],["결과",10,"s"],["메모",30,"s"],["작성자",10,"s"],["제출일",12,"d"]],rows:clRows});
   const KIND={drawing:"도면",estimate:"견적서",photo:"사진",spec:"시방서"},nameOf=id=>(jobs.find(j=>j.id===id)||{}).name||"",
-    appOf=f=>{const a=(((jobs.find(j=>j.id===f.job_id)||{}).i||{}).apps||[]).find(a=>a.id===f.stage);return a?NEST_CL.typeName(a.type)+(a.model?` ${a.model}`:""):"";};
+    appOf=f=>{const a=(((jobs.find(j=>j.id===f.job_id)||{}).i||{}).apps||[]).find(a=>a.id===f.stage);return a?NEST_CL.typeName(NEST_CL.appType(a))+(a.model?` ${a.model}`:""):"";};
   sheets.push({name:"사진·파일 목록",cols:[["현장",18,"s"],["종류",8,"s"],["단계·가전",14,"s"],["파일 이름",32,"s"],["올린 사람",22,"s"],["올린 날",12,"d"]],
     rows:files.map(f=>[nameOf(f.job_id),KIND[f.kind]||f.kind,f.kind==="photo"?(f.stage||""):f.kind==="spec"?appOf(f):"",f.name||"",f.uploaded_by||"",(f.created_at||"").slice(0,10)])});
   sheets.push({name:"시공자 명단",cols:[["시공자",16,"s"]],rows:CREW.map(c=>[c])});
@@ -882,7 +910,7 @@ async function loadAll(){
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
   cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
   if(!ck.error){checks={};(ck.data||[]).forEach(r=>{checks[r.job_id]=r});}
-  loaded=true;render();renderBackup();
+  loaded=true;render();renderBackup();loadSpecs();
   if(!$("form").hidden&&editing){renderFiles();renderPhotos();renderCl();}
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }

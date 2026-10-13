@@ -144,6 +144,15 @@ textarea{width:100%;resize:vertical;line-height:1.5}
 .app-files{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;justify-content:space-between}
 .app-files .flist{flex:1;min-width:200px;margin:0}
 @media (max-width:560px){.app-top{grid-template-columns:minmax(0,1fr) auto}.app-top .app-model{grid-column:1/-1;grid-row:2}}
+.lib-msg{font-size:13px;color:var(--muted)}
+.lib-msg.warn{color:var(--soon)}
+.lib-box{background:var(--soon-bg);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.lib-head{font-weight:700;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.lib-spec{white-space:pre-line}
+.lib-links{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.lib-links a{color:var(--accent);font-weight:500}
+.lib-links .fmeta{font-size:12px;color:var(--muted)}
+.app-files .flist[hidden]{display:none}
 .cl-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cl-renew{font:inherit;font-size:inherit;color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
 .cl-bad{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -438,12 +447,6 @@ th.num{font-family:var(--font);font-size:12px}
       <div class="warn-box" id="f-clash" hidden></div>
     </div>
     <div class="sec">
-      <h3>가전 · 시방서</h3>
-      <div class="hint">빌트인 가전마다 종류와 모델명, 시방서에서 꼭 맞춰야 할 치수를 적고 시방서 파일을 올려 두세요. 시공자 체크리스트에 그대로 나와요.</div>
-      <div class="apps" id="f-apps"></div>
-      <div><button class="btn ghost sm" type="button" id="addApp">+ 가전 추가</button></div>
-    </div>
-    <div class="sec">
       <h3>마감</h3>
       <label class="check"><input type="checkbox" id="f-fdone">마감 완료</label>
       <div class="hint">마감이 덜 끝나 인원을 더 넣은 날을 기록하세요.</div>
@@ -455,12 +458,6 @@ th.num{font-family:var(--font);font-size:12px}
       <div class="hint">납품 후 AS 방문 일정을 기록하세요. 끝난 AS는 완료에 체크하면 달력에서 흐리게 보여요.</div>
       <div id="f-as" style="display:flex;flex-direction:column;gap:8px"></div>
       <div><button class="btn ghost sm" id="addAs" type="button">+ AS 일정 추가</button></div>
-    </div>
-    <div class="sec" id="sec-cl">
-      <h3>시공 체크리스트</h3>
-      <div id="cl-box"></div>
-      <label>이 현장만 추가로 확인할 것 (한 줄에 하나씩)<textarea id="f-chk" rows="3" placeholder="예: 아일랜드 상판 이음매 확인&#10;안방 붙박이장 조명 스위치 작동"></textarea></label>
-      <div class="hint">시공자는 시공을 마치고 링크를 열어 가전별 시방서 확인, 가구 마감, 사진을 체크해서 제출해요. 로그인은 필요 없어요.</div>
     </div>
     <div class="sec">
       <h3>현장 사진</h3>
@@ -482,6 +479,18 @@ th.num{font-family:var(--font);font-size:12px}
         <ul class="flist" id="fl-estimate"></ul>
       </div>
       <div class="hint">PDF와 사진은 누르면 바로 열리고, 엑셀·CAD 파일은 내려받아 열어요. 파일 하나당 50MB까지 올릴 수 있어요.</div>
+    </div>
+    <div class="sec">
+      <h3>가전 · 시방서</h3>
+      <div class="hint">도면을 보고 빌트인 가전 모델명만 적어 두세요. 시방서는 Claude가 제조사 공식 홈페이지에서 찾아 붙이고, 같은 모델은 다음 현장부터 자동으로 붙어요. 시공자 체크리스트에 그대로 나와요.</div>
+      <div class="apps" id="f-apps"></div>
+      <div><button class="btn ghost sm" type="button" id="addApp">+ 가전 추가</button></div>
+    </div>
+    <div class="sec" id="sec-cl">
+      <h3>시공 체크리스트</h3>
+      <div id="cl-box"></div>
+      <label>이 현장만 추가로 확인할 것 (한 줄에 하나씩)<textarea id="f-chk" rows="3" placeholder="예: 아일랜드 상판 이음매 확인&#10;안방 붙박이장 조명 스위치 작동"></textarea></label>
+      <div class="hint">시공자는 시공을 마치고 링크를 열어 가전별 시방서 확인, 가구 마감, 사진을 체크해서 제출해요. 로그인은 필요 없어요.</div>
     </div>
     <div class="sec admin-only" id="sec-money" hidden>
       <h3>수금 · 원가 <span class="hint">관리자 계정에만 보여요</span></h3>

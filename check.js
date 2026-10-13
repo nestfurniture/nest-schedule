@@ -42,7 +42,7 @@ function sectionHtml(s) {
   const mySpecs = s.app ? specs.filter((f) => f.app === s.app.id && f.url) : [];
   return `<section class="card" data-sec="${esc(s.key)}"><h2>${esc(s.title)}</h2>
     ${s.spec ? `<div class="spec"><b>시방서 확인 치수</b>${esc(s.spec)}</div>` : ""}
-    ${mySpecs.length ? `<div class="specs">${mySpecs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener">시방서 보기 · ${esc(f.name)}</a>`).join("")}</div>` : ""}
+    ${mySpecs.length ? `<div class="specs">${mySpecs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${f.link ? "공식 자료" : "시방서 보기"} · ${esc(f.name)}</a>`).join("")}</div>` : ""}
     ${s.dims ? `<div><div class="lbl">실제로 잰 설치 공간 (mm)</div><div class="dims">${[["w", "폭"], ["h", "높이"], ["d", "깊이"]].map(([k, l]) => `<label>${l}<input inputmode="numeric" data-dim="${esc(s.key)}" data-dk="${k}" value="${esc(d[k] || "")}" aria-label="${esc(s.title)} ${l}"></label>`).join("")}</div></div>` : ""}
     ${s.items.map(itemHtml).join("")}
     ${s.photo ? photosHtml(s) : ""}</section>`;
@@ -181,6 +181,22 @@ function showDone(by, at, fresh) {
   window.scrollTo(0, 0);
 }
 
+/* ---------- 시방서 보관함(specs.json): 모델명으로 찾아 둔 종류·치수·공식 링크를 붙임 ---------- */
+async function loadSpecs() {
+  try {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), 6000);
+    const res = await fetch("specs.json", { cache: "no-cache", signal: ac.signal }); clearTimeout(t);
+    const lib = res.ok ? ((await res.json()) || {}).models || {} : {};
+    CL.useLib((k) => lib[k] || null);
+    (job.i.apps || []).forEach((a) => {
+      const l = lib[CL.modelKey(a.model)];
+      if (!l || l.found === false) return;
+      (Array.isArray(l.links) ? l.links : []).filter((x) => x && /^https:\/\//.test(x.url || "")).slice(0, 4)
+        .forEach((x) => specs.push({ app: a.id, name: x.title || "공식 자료", url: x.url, link: true }));
+    });
+  } catch (e) {}
+}
+
 /* ---------- 시작 ---------- */
 (async function start() {
   if (!TOKEN) { fail("링크가 올바르지 않아요", "사무실에서 받은 링크를 다시 눌러 주세요."); return; }
@@ -192,6 +208,7 @@ function showDone(by, at, fresh) {
     return;
   }
   job = r.job; specs = r.specs || []; urls = r.urls || {};
+  await loadSpecs();
   const d = r.data || {};
   data = { items: d.items || {}, dims: d.dims || {}, photos: Array.isArray(d.photos) ? d.photos : [], memo: d.memo || "", name: d.name || "" };
   document.title = `시공 체크리스트 · ${job.name}`;
