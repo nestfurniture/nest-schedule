@@ -39,12 +39,13 @@ function photosHtml(s) {
 }
 function sectionHtml(s) {
   const d = data.dims[s.key] || {};
-  const mine = s.app ? specs.filter((f) => f.app === s.app.id && f.url) : [];
+  const sid = s.app ? s.app.id : s.kind === "combo" ? "combo" : "";
+  const mine = sid ? specs.filter((f) => f.app === sid && f.url) : [];
   const mySpecs = mine.filter((f) => !f.img), imgs = mine.filter((f) => f.img && !badImg.has(f.url));
   return `<section class="card" data-sec="${esc(s.key)}"><h2>${esc(s.title)}</h2>
-    ${s.spec ? `<div class="spec"><b>시방서 확인 치수</b>${esc(s.spec)}</div>` : ""}
+    ${s.spec ? `<div class="spec"><b>${s.kind === "combo" ? "붙여서 설치할 때 확인 치수" : "시방서 확인 치수"}</b>${esc(s.spec)}${s.warn ? `<span class="warn">${esc(s.warn)}</span>` : ""}</div>` : ""}
     ${imgs.length ? `<div class="spec-imgs">${imgs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" title="${esc(f.name)}"><img src="${esc(f.url)}" alt="${esc(f.name)}" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>` : ""}
-    ${mySpecs.length ? `<div class="specs">${mySpecs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${f.link ? "공식 자료" : "시방서 보기"} · ${esc(f.name)}</a>`).join("")}</div>` : ""}
+    ${mySpecs.length ? `<div class="specs">${mySpecs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${f.link ? (f.ref ? "참고 자료" : "공식 자료") : "시방서 보기"} · ${esc(f.name)}</a>`).join("")}</div>` : ""}
     ${s.dims ? `<div><div class="lbl">실제로 잰 설치 공간 (mm)</div><div class="dims">${[["w", "폭"], ["h", "높이"], ["d", "깊이"]].map(([k, l]) => `<label>${l}<input inputmode="numeric" data-dim="${esc(s.key)}" data-dk="${k}" value="${esc(d[k] || "")}" aria-label="${esc(s.title)} ${l}"></label>`).join("")}</div></div>` : ""}
     ${s.items.map(itemHtml).join("")}
     ${s.photo ? photosHtml(s) : ""}</section>`;

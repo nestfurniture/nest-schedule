@@ -236,20 +236,36 @@ async function signPaths(paths) {
 }
 // 시방서 보관함(app_specs): 모델명은 대문자로, 띄어쓰기·하이픈 등은 빼고 비교 (앱의 checklist.js와 같은 규칙)
 const modelKey = (s) => String(s || "").toUpperCase().replace(/[^0-9A-Z가-힣]/g, "");
+// 붙여서 설치하는 가전 묶음의 열쇠: 모델 열쇠를 정렬해 + 로 이음 (예: M623GBB042+Z322GB3S)
+const comboKey = (models) => models.map(modelKey).filter(Boolean).sort().join("+");
+const okKey = (k) => typeof k === "string" && /^[0-9A-Z가-힣]{3,60}(\+[0-9A-Z가-힣]{3,60}){0,5}$/.test(k);
 const inList = (keys) => encodeURIComponent(`in.(${keys.map((k) => `"${k}"`).join(",")})`);
-async function specLib(apps) {
-  const keys = [...new Set(apps.map((a) => modelKey(a.model)).filter(Boolean))];
+// 보관함의 모델별 줄 (찾는 중·못 찾음 포함). update-06 전이어도 되게 * 로 읽음
+async function libRows(keys) {
+  keys = [...new Set(keys.filter(okKey))];
   if (!keys.length) return {};
-  const rows = await rest(`app_specs?select=model_key,type,spec,links,images,files,status&model_key=${inList(keys)}`).catch(() => []);
-  return Object.fromEntries(rows.filter((r) => r.status === "found").map((r) => [r.model_key, r]));
+  const rows = await rest(`app_specs?select=*&model_key=${inList(keys)}`).catch(() => []);
+  return Object.fromEntries(rows.map((r) => [r.model_key, r]));
+}
+const foundOnly = (rows) => Object.fromEntries(Object.entries(rows).filter(([, r]) => r.status === "found"));
+// 냉장고·김치냉장고·와인셀러는 기본으로 '붙여서 설치' 묶음. 앱에서 체크를 끄면(join:false) 빠지고, 다른 가전도 체크하면(join:true) 들어감
+const FRIDGE = new Set(["fridge", "kimchi", "wine"]);
+const typeOf = (a, lib) => (TYPE_CODES[a.type] ? a.type : (lib[modelKey(a.model)] || {}).type || "");
+function comboOf(apps, lib) {
+  const members = apps.filter((a) => modelKey(a.model).length >= 3 && (a.join === true || (a.join !== false && FRIDGE.has(typeOf(a, lib)))));
+  return members.length >= 2 ? { key: comboKey(members.map((a) => a.model)), members } : null;
 }
 const okUrl = (u) => { try { const x = new URL(u); return x.protocol === "https:" && !!x.hostname; } catch { return false; } };
 const libList = (row, k) => (Array.isArray(row?.[k]) ? row[k] : []).filter((l) => l && okUrl(l.url)).slice(0, 4);
 const libFiles = (row) => (Array.isArray(row?.files) ? row.files : []).filter((f) => f && typeof f.path === "string" && /^lib\/spec\/\d{10,16}-[a-z0-9]{1,8}\.pdf$/.test(f.path)).slice(0, 2);
+// 공식 자료가 아니면 출처를 함께 보여 줌 (시공자가 현장 실측으로 한 번 더 확인하게)
+const srcOf = (row) => (row && row.official === false ? String(row.source || "공식 자료 아님").slice(0, 80) : "");
 // 시공자 화면에 보낼 현장 정보 (비밀번호·돈은 빼고). 종류·확인 치수를 비워 둔 가전은 보관함 값으로
-const jobPublic = (j, lib = {}) => ({ id: j.id, name: j.name, item: j.item, addr: j.addr,
+const jobPublic = (j, lib = {}, combo = null) => ({ id: j.id, name: j.name, item: j.item, addr: j.addr,
   i: { start: j.i?.start || "", end: j.i?.end || "", sat: !!j.i?.sat, sun: !!j.i?.sun, crew: j.i?.crew || [], chk: j.i?.chk || [],
-    apps: (j.i?.apps || []).map((a) => { const l = lib[modelKey(a.model)] || {}; return { ...a, type: a.type || l.type || "", spec: a.spec || l.spec || "" }; }) } });
+    apps: (j.i?.apps || []).map((a) => { const l = lib[modelKey(a.model)] || {};
+      return { id: a.id, type: a.type || l.type || "", model: a.model || "", spec: a.spec || l.spec || "", src: a.spec ? "" : srcOf(l), ...(typeof a.join === "boolean" ? { join: a.join } : {}) }; }),
+    comboSpec: combo?.spec || "", comboSrc: srcOf(combo) } });
 const photoPrefix = (cl) => `${cl.job_id}/photo/cl-`;
 // 체크리스트 사진은 이 현장의 cl-숫자-글자(.jpg / -t.jpg) 이름만 허용 (다른 파일 주소를 끼워 넣지 못하게)
 const okPhotoPath = (cl, p) => typeof p === "string" && p.startsWith(photoPrefix(cl)) && /^cl-\d{10,16}-[a-z0-9]{1,8}(-t)?\.jpg$/.test(p.slice(photoPrefix(cl).length - 3));
@@ -261,17 +277,19 @@ async function clOpen(b) {
   const [jobs, specs] = await Promise.all([rest(`jobs?id=eq.${cl.job_id}&select=*`), rest(`files?job_id=eq.${cl.job_id}&kind=eq.spec&select=name,path,stage,mime`)]);
   if (!jobs.length) return json({ error: "not found" }, 404);
   const photos = (Array.isArray(cl.data?.photos) ? cl.data.photos : []).filter((p) => okPhoto(cl, p));
-  const apps = jobs[0].i?.apps || [], lib = await specLib(apps), libOf = (a) => lib[modelKey(a.model)];
-  // 가전마다: 보관함에 저장해 둔 공식 PDF + 이 현장에만 올린 파일 + 공식 링크 + 치수도 그림
-  const files = [...apps.flatMap((a) => libFiles(libOf(a)).map((f) => ({ app: a.id, name: f.name || "시방서", path: f.path }))),
+  const apps = jobs[0].i?.apps || [], lib = foundOnly(await libRows(apps.map((a) => modelKey(a.model))));
+  const c = comboOf(apps, lib), combo = c ? foundOnly(await libRows([c.key]))[c.key] || null : null;
+  // 가전마다(+ 붙여서 설치하는 묶음): 보관함에 저장해 둔 공식 PDF + 이 현장에만 올린 파일 + 링크 + 치수도 그림
+  const srcs = [...apps.map((a) => [a.id, lib[modelKey(a.model)]]), ["combo", combo]].filter(([, r]) => r);
+  const files = [...srcs.flatMap(([id, r]) => libFiles(r).map((f) => ({ app: id, name: f.name || "시방서", path: f.path }))),
     ...specs.map((f) => ({ app: f.stage, name: f.name, path: f.path }))];
   const urls = await signPaths([...files.map((f) => f.path), ...photos.map((p) => p.thumb || p.path)]);
-  const extra = apps.flatMap((a) => [
-    ...libList(libOf(a), "links").map((l) => ({ app: a.id, name: String(l.title || "공식 홈페이지").slice(0, 60), url: l.url, link: true })),
-    ...libList(libOf(a), "images").map((l) => ({ app: a.id, name: String(l.title || "치수도").slice(0, 60), url: l.url, img: true })),
+  const extra = srcs.flatMap(([id, r]) => [
+    ...libList(r, "links").map((l) => ({ app: id, name: String(l.title || (r.official === false ? "참고 자료" : "공식 홈페이지")).slice(0, 60), url: l.url, link: true, ...(r.official === false ? { ref: true } : {}) })),
+    ...libList(r, "images").map((l) => ({ app: id, name: String(l.title || "치수도").slice(0, 60), url: l.url, img: true })),
   ]);
   return json({
-    job: jobPublic(jobs[0], lib), status: cl.status, data: { ...(cl.data || {}), photos }, submitted_at: cl.submitted_at, submitted_by: cl.submitted_by,
+    job: jobPublic(jobs[0], lib, combo), status: cl.status, data: { ...(cl.data || {}), photos }, submitted_at: cl.submitted_at, submitted_by: cl.submitted_by,
     specs: [...files.map((f) => ({ app: f.app, name: f.name, url: urls[f.path] || "" })), ...extra],
     urls: Object.fromEntries(photos.map((p) => [p.path, urls[p.thumb || p.path] || ""])),
   });
@@ -341,45 +359,58 @@ async function clNotify(cl, sum, by) {
   await sendTo(subs, [{ pref: "checklist", title: `체크리스트 제출 · ${jobs[0]?.name || "현장"}`, body: body.slice(0, 400), url: `${APP_URL}?job=${cl.job_id}`, tag: `cl-${cl.job_id}` }], new Set(), v);
 }
 
-/* ---------- 시방서 자동 찾기: 모델명으로 제조사 공식 홈페이지를 검색해 보관함(app_specs)에 저장 ----------
+/* ---------- 시방서 자동 찾기: 모델명(또는 붙여서 설치하는 모델 묶음)으로 시방서를 찾아 보관함(app_specs)에 저장 ----------
    Claude API(웹 검색·웹 읽기)를 씁니다. Supabase → Edge Functions → Secrets 에 ANTHROPIC_API_KEY 를 넣어야 켜져요.
-   한 번 찾은 모델은 다시 찾지 않고, 24시간에 SPEC_DAY_CAP 개까지만 찾아서 비용이 갑자기 늘지 않게 막습니다. */
+   - 제조사 공식 자료를 먼저 찾고, 없으면 판매처·설명서 공유 사이트·같은 시리즈 모델까지 넓혀서라도 찾습니다 (공식이 아니면 출처 표시).
+   - 서버 한 번 실행 시간(무료 요금제 150초)을 넘지 않게, 한 번에 2분 안쪽만 찾고 이어서 찾을 게 있으면 자기 자신을 다시 불러 계속합니다 (최대 3번).
+   - 한 번 찾은 모델은 다시 찾지 않고, 24시간에 SPEC_DAY_CAP 개까지만 찾아서 비용이 갑자기 늘지 않게 막습니다. */
 const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const AI_MODEL = Deno.env.get("SPEC_MODEL") || "claude-opus-5-5";
 const SPEC_DAY_CAP = +(Deno.env.get("SPEC_DAY_CAP") || 30);
+const FINDER_VER = 2, ROUND_MS = +(Deno.env.get("SPEC_ROUND_MS") || 115e3), MAX_ROUNDS = 3, STALE_MS = 15 * 60e3;
 const TYPE_CODES = { dish: "식기세척기", induction: "인덕션·전기레인지", fridge: "냉장고", kimchi: "김치냉장고", wine: "와인셀러", oven: "오븐·광파오븐",
   micro: "전자레인지", hood: "후드", water: "정수기", washer: "세탁기·건조기", styler: "스타일러·에어드레서·슈드레서", etc: "기타 가전" };
-const SPEC_SYSTEM = `당신은 한국의 고급 빌트인 가구 회사(주방가구·붙박이장·신발장 제작)를 돕습니다. 가구 시공자가 빌트인 가전을 제조사 시방서대로 설치했는지 현장에서 확인할 수 있도록, 주어진 모델의 설치 시방서를 찾습니다.
+const SPEC_SYSTEM = `당신은 한국의 고급 빌트인 가구 회사(주방가구·붙박이장·신발장 제작)를 돕습니다. 가구 시공자가 빌트인 가전을 시방서대로 설치했는지 현장에서 확인할 수 있도록, 주어진 모델(또는 나란히 붙여 설치하는 모델 묶음)의 설치 시방서를 찾습니다. 가구 제작과 시공에 바로 쓰이므로 치수는 자료에 적힌 값만 씁니다.
 
-원칙
-- 제조사 공식 사이트 자료만 씁니다 (lge.co.kr, samsung.com/sec, downloadcenter.samsung.com, miele.co.kr, media.miele.com, 각 브랜드의 공식 한국·본사 사이트). 쇼핑몰·오픈마켓·블로그·카페 수치는 쓰지 않습니다.
-- 정확히 그 모델(또는 같은 모델의 지역 표기) 자료만 씁니다. 비슷한 모델로 추측하지 않습니다. 공식 자료가 시리즈 공통 도면이면 note에 그렇게 밝힙니다.
-- 치수는 원문(스펙 표, 설명서, 치수도)에서 읽은 값만 적습니다. 그림 속 치수가 무엇을 가리키는지 확실하지 않으면 해석하지 말고 "도면 참조"라고 적습니다.
+자료를 찾는 순서 (앞 단계에서 충분하면 거기서 멈춤)
+1. 제조사 한국 공식 사이트: 제품 페이지 스펙 표, 설치 가이드, 사용설명서·설치설명서 PDF (lge.co.kr, samsung.com/sec, downloadcenter.samsung.com, miele.co.kr, media.miele.com, bosch-home.co.kr, siemens-home.bsh-group.com, gaggenau.com, smeg, electrolux, fisherpaykel, liebherr 등)
+2. 같은 제조사의 해외 공식 사이트·공식 설명서 저장소 (같은 모델의 지역 표기 포함)
+3. 공식 자료가 없을 때만: 대형 판매처 상세페이지의 제조사 제공 사양표(롯데하이마트, 전자랜드, 다나와, 쿠팡, SSG, 11번가 등), 설명서 공유 사이트(manualslib 등), 치수가 분명한 설치 후기·블로그
+4. 그래도 없으면: 같은 시리즈에서 색상·옵션 코드만 다른 모델의 자료 (note에 어떤 모델 기준인지 밝힘)
+- 3·4단계 자료를 쓰면 official=false, source 에 출처를 짧게 적습니다 (예: "다나와 상품정보", "같은 시리즈 M623GBB041 공식 자료"). 1·2단계면 official=true, source 에 "LG전자 공식 홈페이지"처럼 적습니다.
+- 어디에서도 치수를 하나도 못 찾았을 때만 found=false 입니다. 사람이 검색해서 나오는 모델은 반드시 찾아야 합니다.
+
+읽는 법
 - 제품 외형 치수와 설치 공간(니치·타공) 치수를 구분합니다. 가구 타공은 설치 공간 기준입니다.
-- 식기세척기는 걸레받이(하부장 받침) 높이를 반드시 찾습니다: 기준 높이, 허용 범위, 깊이 조건, 절단 필요 여부, 높이 조절 다리 범위. 못 찾으면 note에 못 찾았다고 적습니다.
-- 도어부착형(완전 빌트인·패널 부착형) 가전은 전면 패널 높이 범위와 무게 범위(kg), 패널 두께 제한을 찾습니다.
-- 그 밖에 이격거리(좌우·상·후면), 통풍구, 도어 열림 공간, 전원·급배수 위치, 높이 조절 범위를 찾습니다.
+- 그림 속 치수가 무엇을 가리키는지 확실하지 않으면 해석하지 말고 "도면 참조"라고 적습니다.
+- 식기세척기: 걸레받이(하부장 받침) 높이의 기준값·허용 범위·깊이 조건·절단 필요 여부, 높이 조절 다리 범위.
+- 도어부착형(완전 빌트인·패널 부착형): 전면 패널 높이 범위, 무게 범위(kg), 두께 제한.
+- 공통: 이격거리(좌우·위·뒤), 통풍구, 도어 열림 공간, 전원·급배수 위치, 높이 조절 범위.
+- 나란히 붙여 설치하는 묶음(냉장고·김치냉장고·냉동 컨버터블·와인셀러 등): 묶음 전체 설치 공간(폭·높이·깊이), 제품 사이 간격, 연결(페어링) 키트 모델명과 필요 여부, 좌우·위·뒤 이격, 문 열림 공간. LG 오브제컬렉션 냉장고 설치 가이드와 삼성 비스포크 냉장고 설명서에는 조합별 설치 공간 표가 있습니다. 묶음 자료가 없으면 각 모델의 시방서와 제조사가 정한 제품 사이 간격으로 계산하고 note에 "개별 시방서로 계산"이라고 밝힙니다.
 
 찾는 요령
-- LG전자: 제품 페이지 https://www.lge.co.kr/<카테고리>/<모델명 소문자> (스펙 표에 제품 크기·걸레받이 높이), 설치가이드 https://www.lge.co.kr/story/user-guide/dishwashers-install-guide (식기세척기 걸레받이 도면), https://www.lge.co.kr/story/user-guide/objetcollection-refrigerator-install-guide (냉장고·김치냉장고·컨버터블), 설명서 https://www.lge.co.kr/support/product-manuals?mktModelCd=<모델명>.AKOR
+- 모델명은 웹 검색으로 먼저 찾습니다 (예: "LG전자 DUE6BGL2E 설치", "삼성전자 RF85C9101AP 설치 공간", "모델명 사양").
+- LG전자: 제품 페이지 https://www.lge.co.kr/<카테고리>/<모델명 소문자> 는 스펙 표를 화면에서 나중에 불러와서 웹 읽기로는 치수가 안 보일 때가 많습니다. 그럴 땐 설치가이드 페이지(냉장고·김치냉장고·컨버터블: https://www.lge.co.kr/story/setup-guide/refrigerator-installation-guide, 식기세척기: https://www.lge.co.kr/story/user-guide/dishwashers-install-guide, 세탁기·건조기: https://www.lge.co.kr/story/setup-guide/washer-installation-guide)에서 모델명 앞 4자리(예: D646, M623, Z484)로 찾고, 검색 결과 요약과 판매처 사양표도 함께 봅니다. 외형 치수 그림 https://static.lge.co.kr/kr/images/spec/<모델명>.akor_2p.jpg
 - 삼성전자: 고객지원 https://www.samsung.com/sec/support/model/<모델명>/ 의 스펙과 downloadcenter.samsung.com 설명서 PDF('설치 공간 확인하기', '제품 및 설치 공간 치수' 쪽)
-- 밀레: miele.co.kr 제품 페이지의 기술 데이터(설치 너비·높이·깊이, 전면 패널 무게), media.miele.com 의 설치 도면·드릴 템플릿·설명서. SCVi=완전 빌트인(도어부착형), SCi=세미 빌트인, SCU=언더카운터
-- 그 밖의 브랜드(보쉬, 지멘스, 가게나우, 일렉트로룩스, SK매직, 쿠쿠 등): 공식 한국 사이트의 제품·고객지원 페이지와 설치 설명서 PDF
+- 밀레: miele.co.kr 제품 페이지의 기술 데이터, media.miele.com 의 설치 도면·설명서. SCVi=완전 빌트인(도어부착형), SCi=세미 빌트인, SCU=언더카운터
+- 웹 읽기(web_fetch)는 대화나 검색 결과에 나온 주소만 열 수 있습니다. 아래 사용자 메시지의 주소 후보는 열어 봐도 됩니다.
 
 답
 - 마지막에 아래 JSON 하나만 씁니다(앞뒤 설명 없이).
-{"found": true 또는 false, "brand": "제조사", "type": "종류 코드", "spec": "시공자가 볼 치수 요약. 한국어, mm, 한 줄에 한 항목, 최대 6줄 (예: 설치 공간 600×820~870×580 / 제품 598×815×567 / 걸레받이 높이 150 (121~150) / 도어 패널 높이 650~770, 무게 4~11kg)", "links": [{"title": "짧은 한국어 제목", "url": "https://...", "pdf": true 또는 false}], "images": [{"title": "짧은 한국어 제목", "url": "https://... 공식 치수도 그림 주소"}], "note": "확인 못 한 항목이나 주의할 점 한 줄"}
-- 종류 코드: ${Object.entries(TYPE_CODES).map(([k, v]) => `${k}(${v})`).join(", ")}
-- 설명서 PDF는 #page=N 을 붙여 치수 쪽으로 바로 열리게 합니다. links는 4개, images는 4개까지.
-- 공식 자료를 못 찾으면 found=false 로 하고 note에 확인한 경로를 한 줄로 적습니다.`;
+{"found": true 또는 false, "official": true 또는 false, "source": "출처 한 줄", "brand": "제조사", "type": "종류 코드", "spec": "시공자가 볼 치수 요약. 한국어, mm, 한 줄에 한 항목, 최대 8줄 (예: 설치 공간 600×820~870×580 / 제품 598×815×567 / 걸레받이 높이 150 (121~150) / 도어 패널 높이 650~770, 무게 4~11kg)", "links": [{"title": "짧은 한국어 제목", "url": "https://...", "pdf": true 또는 false}], "images": [{"title": "짧은 한국어 제목", "url": "https://... 치수도 그림 주소"}], "note": "확인 못 한 항목이나 주의할 점 한 줄"}
+- 종류 코드: ${Object.entries(TYPE_CODES).map(([k, v]) => `${k}(${v})`).join(", ")}, 묶음이면 combo
+- 설명서 PDF는 #page=N 을 붙여 치수 쪽으로 바로 열리게 합니다. links는 4개, images는 4개까지. 시방서를 실제로 확인한 주소를 links 맨 앞에 둡니다.`;
 const SPEC_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["found", "brand", "type", "spec", "links", "images", "note"],
+  type: "object", additionalProperties: false, required: ["found", "official", "source", "brand", "type", "spec", "links", "images", "note"],
   properties: {
-    found: { type: "boolean" }, brand: { type: "string" }, type: { type: "string", enum: [...Object.keys(TYPE_CODES), ""] }, spec: { type: "string" }, note: { type: "string" },
+    found: { type: "boolean" }, official: { type: "boolean" }, source: { type: "string" }, brand: { type: "string" },
+    type: { type: "string", enum: [...Object.keys(TYPE_CODES), "combo", ""] }, spec: { type: "string" }, note: { type: "string" },
     links: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "url", "pdf"], properties: { title: { type: "string" }, url: { type: "string" }, pdf: { type: "boolean" } } } },
     images: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "url"], properties: { title: { type: "string" }, url: { type: "string" } } } },
   },
 };
+const WIDEN = "아직 치수를 찾지 못했어요. 여기서 멈추지 말고 범위를 넓혀 다시 찾아 주세요: 제조사 해외 공식 사이트·공식 설명서 PDF → 판매처 상세페이지(롯데하이마트, 전자랜드, 다나와, 쿠팡, SSG 등)의 제조사 제공 사양표 → 설명서 공유 사이트 → 치수가 분명한 설치 후기·블로그 → 같은 시리즈(색상·옵션 코드만 다른) 모델 자료. 공식이 아니면 official=false 와 source 에 출처를 적고, 마지막에 같은 JSON 하나만 답해 주세요.";
+const SHORT = "\n\n(지난번에는 시간이 부족해서 끊겼어요. 이번에는 검색을 3번 이내로 하고, 찾은 자료로 바로 답해 주세요.)";
 
 const wait = (ms, signal) => new Promise((ok, no) => {
   const t = setTimeout(ok, ms);
@@ -406,27 +437,6 @@ function pickJson(t) {
   if (a < 0 || b <= a) return null;
   try { const o = JSON.parse(t.slice(a, b + 1)); return o && typeof o === "object" && "found" in o ? o : null; } catch { return null; }
 }
-async function askSpec(m, signal) {
-  const tools = [
-    { type: "web_search_20260209", name: "web_search", max_uses: 5, user_location: { type: "approximate", country: "KR", timezone: "Asia/Seoul" } },
-    { type: "web_fetch_20260209", name: "web_fetch", max_uses: 5 },
-  ];
-  const messages = [{ role: "user", content: `모델명: ${m.model}${m.type ? `\n종류: ${TYPE_CODES[m.type]}` : ""}\n이 모델의 설치 시방서를 제조사 공식 홈페이지에서 찾아 주세요.` }];
-  let res;
-  for (let i = 0; i < 5; i++) {
-    res = await claude({ model: AI_MODEL, max_tokens: 16000, output_config: { effort: "medium" }, system: SPEC_SYSTEM, tools, messages }, signal);
-    if (res.stop_reason !== "pause_turn") break;
-    messages.push({ role: "assistant", content: res.content }); // 서버 쪽 검색이 길어지면 그대로 이어서
-  }
-  if (res.stop_reason === "refusal") return null;
-  const text = textOf(res);
-  const out = pickJson(text);
-  if (out || !text.trim()) return out;
-  // 답이 JSON 모양이 아니면 도구 없이 한 번 더: 정해진 JSON 형식으로만 정리
-  const fix = await claude({ model: AI_MODEL, max_tokens: 4000, output_config: { effort: "low", format: { type: "json_schema", schema: SPEC_SCHEMA } },
-    messages: [{ role: "user", content: `아래 조사 결과를 JSON으로 정리해 주세요. 결과에 없는 내용은 만들지 마세요.\n\n${text.slice(0, 12000)}` }] }, signal);
-  return fix.stop_reason === "refusal" ? null : pickJson(textOf(fix));
-}
 // 사설 주소·IP 주소는 받지 않음 (https 공개 주소만)
 function publicUrl(u) {
   try {
@@ -436,11 +446,12 @@ function publicUrl(u) {
     return h.includes(".") && !/^[\d.]+$/.test(h) && !h.includes(":") && !/(^|\.)(localhost|local|internal|supabase\.co)$/.test(h);
   } catch { return false; }
 }
-// 공식 PDF는 보관함에 복사해 둠 (제조사 주소가 바뀌어도 볼 수 있게). PDF가 아니거나 20MB가 넘으면 링크만
-async function savePdf(url, m, signal) {
-  if (!publicUrl(url)) return null;
+// 시방서 PDF는 보관함에 복사해 둠 (주소가 바뀌어도 볼 수 있게). PDF가 아니거나 20MB가 넘으면 링크만
+async function savePdf(url, name, ms) {
+  if (!publicUrl(url) || ms < 3e3) return null;
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), Math.min(20e3, ms));
   try {
-    const r = await fetch(url, { signal, redirect: "follow" });
+    const r = await fetch(url, { signal: ac.signal, redirect: "follow" });
     if (!r.ok || !publicUrl(r.url)) return null;
     const buf = new Uint8Array(await r.arrayBuffer());
     const isPdf = buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
@@ -450,61 +461,198 @@ async function savePdf(url, m, signal) {
       method: "POST", body: buf, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/pdf" },
     });
     if (!up.ok) return null;
-    return { path, name: `${m.model} 설명서.pdf`, mime: "application/pdf", size: buf.length };
-  } catch { return null; }
+    return { path, name: `${name.slice(0, 50)} 설명서.pdf`, mime: "application/pdf", size: buf.length };
+  } catch { return null; } finally { clearTimeout(t); }
 }
-const patchSpec = (key, body) => rest(`app_specs?model_key=eq.${encodeURIComponent(key)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(body) });
+// 보관함 줄 고치기. update-06(official·source·ver 칸)을 아직 안 했으면 그 칸만 빼고 다시
+async function patchSpec(key, body, filter = "") {
+  const go = (b) => rest(`app_specs?model_key=eq.${encodeURIComponent(key)}${filter}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(b) });
+  try { return await go(body); } catch (e) {
+    if (!/official|source|"ver"|PGRST204/.test(String(e))) throw e;
+    const { official, source, ver, ...rest06 } = body; return await go(rest06);
+  }
+}
 const cleanList = (v, n) => (Array.isArray(v) ? v : []).filter((l) => l && publicUrl(l.url)).slice(0, n)
   .map((l) => ({ title: String(l.title || "").trim().slice(0, 60), url: String(l.url).slice(0, 500), ...(l.pdf !== undefined ? { pdf: !!l.pdf } : {}) }));
-async function lookup(m) {
-  const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 130e3);
-  const now = () => new Date().toISOString();
+const staleSearch = (r) => r.status === "searching" && Date.now() - new Date(r.searched_at || 0).getTime() > STALE_MS;
+const nowIso = () => new Date().toISOString();
+
+// 첫 질문: 모델 하나, 또는 붙여서 설치하는 묶음. 웹 읽기로 바로 열 수 있게 주소 후보도 함께
+function askText(st) {
+  const lines = [];
+  if (st.combo) {
+    lines.push("아래 가전들을 나란히 붙여(연결해) 빌트인으로 설치합니다. 이 묶음 그대로 설치할 때의 시방서를 찾아 주세요 (묶음 전체 설치 공간, 제품 사이 간격·연결 키트, 이격, 문 열림).");
+    st.combo.forEach((m, i) => lines.push(`${i + 1}) ${m.model}${m.brand || m.type ? ` (${[m.brand, TYPE_CODES[m.type]].filter(Boolean).join(" ")})` : ""}${m.spec ? `\n   개별 시방서: ${m.spec.replace(/\n/g, " / ")}` : ""}`));
+  } else {
+    lines.push(`모델명: ${st.model}${st.type ? `\n종류: ${TYPE_CODES[st.type]}` : ""}`, "이 모델의 설치 시방서를 찾아 주세요.");
+  }
+  const models = st.combo ? st.combo.map((m) => m.model) : [st.model], types = st.combo ? st.combo.map((m) => m.type) : [st.type];
+  const urls = [];
+  const has = (...t) => types.some((x) => !x || t.includes(x));
+  if (has("fridge", "kimchi", "wine")) urls.push("https://www.lge.co.kr/story/setup-guide/refrigerator-installation-guide");
+  if (has("dish")) urls.push("https://www.lge.co.kr/story/user-guide/dishwashers-install-guide");
+  if (has("washer", "styler")) urls.push("https://www.lge.co.kr/story/setup-guide/washer-installation-guide");
+  const LG_CAT = { dish: "dishwashers", fridge: "refrigerators", kimchi: "kimchi-refrigerators", wine: "refrigerators" };
+  models.forEach((m, i) => {
+    const k = modelKey(m), cat = types[i] ? LG_CAT[types[i]] : "refrigerators";
+    if (cat) urls.push(`https://www.lge.co.kr/${cat}/${k.toLowerCase()}`);
+    urls.push(`https://www.samsung.com/sec/support/model/${k}/`);
+  });
+  lines.push("", "열어 볼 수 있는 주소 후보 (맞지 않으면 무시하고 검색으로 찾으세요):", ...urls.map((u) => `- ${u}`));
+  return lines.join("\n") + (st.short ? SHORT : "");
+}
+const specTools = () => [
+  { type: "web_search_20260209", name: "web_search", max_uses: 6, user_location: { type: "approximate", country: "KR", timezone: "Asia/Seoul" } },
+  { type: "web_fetch_20260209", name: "web_fetch", max_uses: 5, max_content_tokens: 40000 },
+];
+// 다음 차례는 새 실행(새 시간)으로: 자기 자신(notify)을 서비스 키로 다시 부름. 안 되면 여기서 그대로
+const background = (p) => { if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(p); else return p; };
+async function relay(st) {
   try {
-    const r = (await askSpec(m, ac.signal)) || {};
-    const links = cleanList(r.links, 4), images = cleanList(r.images, 4).map(({ title, url }) => ({ title, url }));
-    const spec = String(r.spec || "").trim().slice(0, 800);
-    const found = r.found === true && (links.length > 0 || spec.length > 0);
-    const saved = [];
-    if (found) for (const l of links.filter((l) => l.pdf || /\.pdf(\?|#|$)/i.test(l.url)).slice(0, 2)) { const f = await savePdf(l.url.split("#")[0], m, ac.signal); if (f) saved.push(f); }
-    await patchSpec(m.key, found
-      ? { status: "found", brand: String(r.brand || "").slice(0, 40), type: TYPE_CODES[r.type] ? r.type : m.type, spec, links, images, files: saved,
-          note: String(r.note || "").slice(0, 300), searched_at: now(), updated_at: now() }
-      : { status: "notfound", note: String(r.note || "공식 홈페이지에서 이 모델을 찾지 못했어요.").slice(0, 300), searched_at: now(), updated_at: now() });
+    const r = await fetch(`${SB_URL}/functions/v1/notify`, { method: "POST",
+      headers: { Authorization: `Bearer ${SERVICE}`, apikey: SERVICE, "Content-Type": "application/json" }, body: JSON.stringify({ action: "spec_step", st }) });
+    if (r.ok) return true;
+    console.error("spec relay", r.status, (await r.text()).slice(0, 200));
+  } catch (e) { console.error("spec relay", String(e).slice(0, 200)); }
+  return false;
+}
+async function begin(st) { if (!(await relay(st))) await background(step(st)); }
+async function next(st) {
+  if (await relay(st)) return;
+  await patchSpec(st.key, { status: "error", note: "찾다가 멈췄어요. '다시 찾기'를 눌러 주세요.", ver: FINDER_VER, updated_at: nowIso() }).catch(() => {});
+}
+async function specStep(req, b) {
+  if (!SERVICE || req.headers.get("Authorization") !== `Bearer ${SERVICE}`) return json({ error: "forbidden" }, 403);
+  const st = plainObj(b.st);
+  if (!okKey(st.key) || !Array.isArray(st.messages) && st.messages != null) return json({ error: "bad" }, 400);
+  background(step(st));
+  return json({ ok: true });
+}
+// 한 차례: Claude가 검색·읽기를 하고 답을 냄. 끊기면(시간·pause_turn) 다음 차례로, 못 찾았으면 범위를 넓혀 한 번 더
+async function step(st) {
+  st.round = (st.round || 0) + 1; st.deadline = Date.now() + ROUND_MS + 25e3; // 이 실행이 끝나야 할 때 (150초 안쪽)
+  if (!st.messages) st.messages = [{ role: "user", content: [{ type: "text", text: askText(st) }] }];
+  const ac = new AbortController(), timer = setTimeout(() => ac.abort(), ROUND_MS);
+  try {
+    let res;
+    try {
+      res = await claude({ model: AI_MODEL, max_tokens: 16000, output_config: { effort: "medium" }, system: SPEC_SYSTEM, tools: specTools(), messages: st.messages }, ac.signal);
+    } catch (e) {
+      if (!ac.signal.aborted || st.round >= MAX_ROUNDS) throw e;
+      // 시간이 다 됨: 아직 첫 질문뿐이면 검색을 줄이라고 덧붙여서, 아니면 같은 대화 그대로 다음 실행에서 다시
+      if (st.messages.length === 1 && !st.short) { st.short = true; st.messages[0].content[0].text += SHORT; }
+      return await next(st);
+    }
+    if (res.stop_reason === "pause_turn") {
+      st.messages.push({ role: "assistant", content: res.content });
+      if (st.round < MAX_ROUNDS) return await next(st);
+      return await finish(st, pickJson(textOf(res)));
+    }
+    if (res.stop_reason === "refusal") return await finish(st, null);
+    st.messages.push({ role: "assistant", content: res.content });
+    const text = textOf(res);
+    let out = pickJson(text);
+    if (!out && text.trim() && !ac.signal.aborted) {
+      // 답이 JSON 모양이 아니면 도구 없이 한 번 더: 정해진 JSON 형식으로만 정리
+      const fix = await claude({ model: AI_MODEL, max_tokens: 4000, output_config: { effort: "low", format: { type: "json_schema", schema: SPEC_SCHEMA } },
+        messages: [{ role: "user", content: `아래 조사 결과를 JSON으로 정리해 주세요. 결과에 없는 내용은 만들지 마세요.\n\n${text.slice(0, 12000)}` }] }, ac.signal).catch(() => null);
+      out = fix && fix.stop_reason !== "refusal" ? pickJson(textOf(fix)) : null;
+    }
+    if (!usable(out) && !st.widened && st.round < MAX_ROUNDS) {
+      st.widened = true;
+      st.messages.push({ role: "user", content: [{ type: "text", text: WIDEN }] });
+      return await next(st);
+    }
+    return await finish(st, out);
   } catch (e) {
-    console.error("spec lookup", m.model, String(e).slice(0, 300));
-    await patchSpec(m.key, { status: "error", note: "찾다가 멈췄어요. 잠시 후 다시 찾아 주세요.", updated_at: now() }).catch(() => {});
+    console.error("spec lookup", st.model, String(e).slice(0, 300));
+    // 크레딧·키 문제는 '다시 찾기'로 안 풀리니 이유를 적어 둠
+    const why = /credit|billing|balance/i.test(String(e)) ? "Claude API 크레딧이 모자라요. Claude Console(platform.claude.com)에서 남은 크레딧을 확인해 주세요."
+      : /claude 40[13] /.test(String(e)) ? "Claude API 키가 맞지 않아요. Supabase Secrets의 ANTHROPIC_API_KEY를 확인해 주세요." : "찾다가 멈췄어요. '다시 찾기'를 눌러 주세요.";
+    await patchSpec(st.key, { status: "error", note: why, ver: FINDER_VER, updated_at: nowIso() }).catch(() => {});
   } finally { clearTimeout(timer); }
 }
-const staleSearch = (r) => r.status === "searching" && Date.now() - new Date(r.searched_at || 0).getTime() > 10 * 60e3;
+const usable = (r) => !!r && r.found === true && (String(r.spec || "").trim().length > 0 || cleanList(r.links, 4).length > 0);
+async function finish(st, r) {
+  r = r || {};
+  const links = cleanList(r.links, 4), images = cleanList(r.images, 4).map(({ title, url }) => ({ title, url }));
+  const spec = String(r.spec || "").trim().slice(0, 1000), found = usable(r);
+  const saved = [];
+  if (found) for (const l of links.filter((l) => l.pdf || /\.pdf(\?|#|$)/i.test(l.url)).slice(0, 2)) { const f = await savePdf(l.url.split("#")[0], st.model, (st.deadline || Infinity) - Date.now() - 8e3); if (f) saved.push(f); }
+  const t = nowIso();
+  await patchSpec(st.key, found
+    ? { status: "found", brand: String(r.brand || "").slice(0, 40), type: st.combo ? "combo" : TYPE_CODES[r.type] ? r.type : st.type || "", spec, links, images, files: saved,
+        note: String(r.note || "").slice(0, 300), official: r.official !== false, source: String(r.source || "").slice(0, 80), ver: FINDER_VER, searched_at: t, updated_at: t }
+    : { status: "notfound", note: String(r.note || "어디에서도 이 모델의 치수를 찾지 못했어요.").slice(0, 300), ver: FINDER_VER, searched_at: t, updated_at: t });
+  // 모델 하나를 다 찾으면, 그 모델이 들어간 현장에 '붙여서 설치' 묶음이 생겼는지 보고 묶음 시방서도 찾기 시작
+  if (!st.combo) {
+    const jobs = await rest("jobs?select=id,i&order=updated_at.desc&limit=300").catch(() => []);
+    for (const j of jobs.filter((j) => (j.i?.apps || []).some((a) => modelKey(a.model) === st.key))) {
+      const c = await comboWork(j);
+      if (c) await queue([c], false, st.by || "").catch((e) => console.error("combo", String(e).slice(0, 200)));
+    }
+  }
+}
+// 현장의 '붙여서 설치' 묶음 (종류를 아직 찾는 중인 가전이 있으면 다 찾은 뒤에)
+async function comboWork(job) {
+  const apps = (job.i?.apps || []).filter((a) => a && modelKey(a.model).length >= 3);
+  const rows = await libRows(apps.map((a) => modelKey(a.model))), lib = foundOnly(rows);
+  // 묶음에 들어갈 수 있는 가전(종류 모름·냉장고류·체크한 가전) 중 아직 찾는 중인 게 있으면, 다 찾은 뒤에 (각자 시방서를 묶음 찾기에 넘겨 주려고)
+  const maybe = (a) => a.join === true || (a.join !== false && (!TYPE_CODES[a.type] || FRIDGE.has(a.type)));
+  const busy = (a) => { const r = rows[modelKey(a.model)]; return r?.status === "searching" && !staleSearch(r); };
+  if (apps.some((a) => maybe(a) && busy(a))) return null;
+  const c = comboOf(apps, lib);
+  return c && okKey(c.key) ? { key: c.key, model: c.members.map((a) => a.model).join(" + ").slice(0, 120), type: "combo",
+    combo: c.members.map((a) => { const l = lib[modelKey(a.model)] || {}; return { model: String(a.model).slice(0, 60), type: typeOf(a, lib), brand: l.brand || "", spec: String(l.spec || "").slice(0, 600) }; }) } : null;
+}
+// 찾기 시작: 처음 보는 것만 (force = '다시 찾기'면 이미 있는 것도. 찾는 중인 것은 건너뜀). 여러 기기가 동시에 눌러도 한 번만 시작
+async function queue(items, force, by) {
+  const seen = new Set();
+  items = items.filter((m) => okKey(m.key) && !seen.has(m.key) && seen.add(m.key));
+  if (!items.length) return { queued: 0 };
+  const rows = await libRows(items.map((m) => m.key));
+  const todo = items.filter((m) => !rows[m.key] || (force && (rows[m.key].status !== "searching" || staleSearch(rows[m.key]))));
+  if (!todo.length) return { queued: 0 };
+  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const used = (await rest(`app_specs?select=model_key&searched_at=gte.${encodeURIComponent(since)}`)).length;
+  if (used + todo.length > SPEC_DAY_CAP) return { error: "limit" };
+  const t = nowIso(), old = new Date(Date.now() - STALE_MS).toISOString(), mark = { status: "searching", searched_at: t, note: "", updated_by: by, updated_at: t };
+  const started = [];
+  for (const m of todo) {
+    const got = rows[m.key]
+      ? await patchSpec(m.key, mark, `&or=${encodeURIComponent(`(status.neq.searching,searched_at.lt."${old}")`)}`)
+      : await rest("app_specs?on_conflict=model_key", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+          body: JSON.stringify({ model_key: m.key, model: m.model, type: m.type || "", ...mark }) });
+    if (Array.isArray(got) && got.length) started.push(m);
+  }
+  for (const m of started) await begin({ key: m.key, model: m.model, type: m.type === "combo" ? "" : m.type || "", combo: m.combo || null, by, round: 0, messages: null });
+  return { queued: started.length };
+}
+// 앱에서: 현장을 저장하면 { job }, '지금 찾기·다시 찾기'는 { models, combos, force }
 async function specFind(req, b) {
   const user = await userOf(req);
   if (!user) return json({ error: "login required" }, 401);
   if (!AI_KEY) return json({ error: "no key" }, 503);
-  const seen = new Set(), list = [];
-  for (const x of Array.isArray(b.models) ? b.models.slice(0, 10) : []) {
-    const model = String(x && x.model || "").trim().slice(0, 60), key = modelKey(model);
-    if (key.length < 3 || seen.has(key)) continue;
-    seen.add(key); list.push({ model, key, type: TYPE_CODES[x.type] ? x.type : "" });
+  const by = String(user.email || "").slice(0, 80), items = [];
+  const one = (x) => { const model = String(x && x.model || "").trim().slice(0, 60); return { model, key: modelKey(model), type: TYPE_CODES[x && x.type] ? x.type : "" }; };
+  for (const x of Array.isArray(b.models) ? b.models.slice(0, 10) : []) { const m = one(x); if (m.key.length >= 3) items.push(m); }
+  let job = null;
+  if (typeof b.job === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(b.job)) {
+    job = (await rest(`jobs?id=eq.${encodeURIComponent(b.job)}&select=id,i`))[0] || null;
+    for (const a of (job?.i?.apps || []).slice(0, 12)) { const m = one(a); if (m.key.length >= 3) items.push(m); }
   }
-  if (!list.length) return json({ queued: 0 });
-  const rows = await rest(`app_specs?select=model_key,status,searched_at&model_key=${inList(list.map((m) => m.key))}`);
-  const by = Object.fromEntries(rows.map((r) => [r.model_key, r]));
-  // 처음 보는 모델은 바로 찾고, 이미 있는 모델은 '다시 찾기'를 눌렀을 때만 (찾는 중이면 건너뜀)
-  const todo = list.filter((m) => !by[m.key] || (b.force && (by[m.key].status !== "searching" || staleSearch(by[m.key]))));
-  if (!todo.length) return json({ queued: 0 });
-  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
-  const used = (await rest(`app_specs?select=model_key&searched_at=gte.${encodeURIComponent(since)}`)).length;
-  if (used + todo.length > SPEC_DAY_CAP) return json({ error: "limit", cap: SPEC_DAY_CAP }, 429);
-  const now = new Date().toISOString(), email = String(user.email || "").slice(0, 80);
-  for (const m of todo) {
-    if (by[m.key]) await patchSpec(m.key, { status: "searching", searched_at: now, note: "", updated_by: email, updated_at: now });
-    else await rest("app_specs?on_conflict=model_key", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
-      body: JSON.stringify({ model_key: m.key, model: m.model, type: m.type, status: "searching", searched_at: now, updated_by: email, updated_at: now }) });
+  for (const list of Array.isArray(b.combos) ? b.combos.slice(0, 3) : []) {
+    const ms = (Array.isArray(list) ? list.slice(0, 6) : []).map((x) => one(typeof x === "string" ? { model: x } : x)).filter((m) => m.key.length >= 3);
+    if (ms.length < 2) continue;
+    const lib = foundOnly(await libRows(ms.map((m) => m.key)));
+    items.push({ key: comboKey(ms.map((m) => m.model)), model: ms.map((m) => m.model).join(" + ").slice(0, 120), type: "combo",
+      combo: ms.map((m) => { const l = lib[m.key] || {}; return { model: m.model, type: m.type || l.type || "", brand: l.brand || "", spec: String(l.spec || "").slice(0, 600) }; }) });
   }
-  const work = Promise.all(todo.map(lookup));
-  // 답은 바로 돌려주고 찾는 일은 뒤에서 계속 (끝나면 앱 화면이 저절로 바뀜)
-  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;
-  return json({ queued: todo.length });
+  const r = await queue(items, !!b.force, by);
+  if (r.error) return json({ error: r.error, cap: SPEC_DAY_CAP }, 429);
+  // 저장한 현장의 묶음은, 묶음에 든 가전 종류를 다 알면 바로 (모르면 그 가전을 다 찾은 뒤 finish 에서)
+  if (job) { const c = await comboWork(job); if (c) { const q = await queue([c], false, by); if (q.queued) r.queued += q.queued; } }
+  return json(r);
 }
 
 Deno.serve(async (req) => {
@@ -519,8 +667,9 @@ Deno.serve(async (req) => {
     if (body.action === "cl_photo") return await clPhoto(body);
     if (body.action === "cl_remove") return await clRemove(body);
     if (body.action === "cl_save") return await clSave(body);
-    if (body.action === "spec_status") return json({ auto: !!AI_KEY, cap: SPEC_DAY_CAP });
+    if (body.action === "spec_status") return json({ auto: !!AI_KEY, cap: SPEC_DAY_CAP, v: FINDER_VER });
     if (body.action === "spec_find") return await specFind(req, body);
+    if (body.action === "spec_step") return await specStep(req, body);
     return json({ error: "unknown action" }, 400);
   } catch (e) {
     console.error(e);

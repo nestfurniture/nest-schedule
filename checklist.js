@@ -39,6 +39,15 @@
     ["damage", "보양을 걷고 벽·바닥 찍힘이 없는지 봤어요"],
     ["clean", "청소와 남은 자재 정리를 끝냈어요"],
   ];
+  // 냉장고·김치냉장고 등을 나란히 붙여(연결해) 설치할 때 묶음으로 따로 확인
+  const COMBO = [
+    ["space", "합친 설치 공간(폭·높이·깊이)이 연결 시방서와 맞아요"],
+    ["gap", "제품 사이 간격·연결 키트를 시방서대로 설치했어요"],
+    ["vent", "좌우·위·뒤 통풍 간격을 시방서대로 띄웠어요"],
+    ["line", "제품 높이와 앞면 라인이 나란히 맞아요"],
+    ["door", "문을 끝까지 열어도 옆 제품·장과 부딪히지 않아요"],
+  ];
+  const FRIDGE = ["fridge", "kimchi", "wine"];
   const TYPE = Object.fromEntries(TYPES.map(([k, name, items]) => [k, { name, items }]));
   const typeName = (k) => (TYPE[k] || TYPE.etc).name;
   // 시방서 보관함: 모델명은 대문자로, 띄어쓰기·하이픈 등은 빼고 비교 (알림 서버 notify와 같은 규칙)
@@ -47,17 +56,36 @@
   const useLib = (fn) => { libOf = fn || (() => null); };
   // 종류를 '자동'으로 두면 보관함에서 찾은 종류로, 그것도 없으면 기타 가전으로
   const appType = (a) => (TYPE[a.type] ? a.type : TYPE[(libOf(modelKey(a.model)) || {}).type] ? libOf(modelKey(a.model)).type : "etc");
+  // 붙여서 설치하는 묶음: 냉장고·김치냉장고·와인셀러는 기본으로 들어가고, 체크를 끄면(join:false) 빠짐. 다른 가전도 체크하면(join:true) 들어감
+  // (알림 서버 notify의 comboOf와 같은 규칙)
+  const comboKey = (models) => models.map(modelKey).filter(Boolean).sort().join("+");
+  const joinable = (a) => FRIDGE.includes(appType(a));
+  const inCombo = (a) => modelKey(a.model).length >= 3 && (a.join === true || (a.join !== false && joinable(a)));
+  function combo(job) {
+    const i = (job && job.i) || {}, apps = (i.apps || []).filter(inCombo);
+    if (apps.length < 2) return null;
+    const key = comboKey(apps.map((a) => a.model)), lib = libOf(key) || {};
+    const official = i.comboSrc ? false : lib.official !== false;
+    return { key, apps, models: apps.map((a) => a.model), spec: i.comboSpec || lib.spec || "", src: i.comboSrc || (lib.official === false ? lib.source || "공식 자료 아님" : ""), official };
+  }
+  // 공식 자료가 아닌 치수면 출처와 함께 한 줄 경고
+  const srcWarn = (src) => src ? `공식 자료가 아니에요 (출처: ${src}). 현장에서 실측으로 꼭 확인해 주세요.` : "";
   const hash = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) >>> 0; return h.toString(36); };
   const RESULT = { ok: "확인", bad: "문제", na: "해당 없음" };
 
-  // 현장 하나의 체크리스트 묶음: 가전마다 한 묶음 + 가구 마감 + 이 현장 추가 확인
+  // 현장 하나의 체크리스트 묶음: 가전마다 한 묶음 + 붙여서 설치하는 가전 묶음 + 가구 마감 + 이 현장 추가 확인
   function sections(job) {
     const i = (job && job.i) || {}, out = [];
     (i.apps || []).forEach((a) => {
       const t = TYPE[appType(a)], lib = libOf(modelKey(a.model)) || {};
-      out.push({ key: `app:${a.id}`, kind: "app", title: t.name + (a.model ? ` · ${a.model}` : ""), app: a, spec: a.spec || lib.spec || "",
+      // 출처: 시공자 화면은 알림 서버가 a.src로 알려 줌, 사무실 앱은 보관함에서 (사무실이 직접 적은 치수면 경고 없음)
+      const src = a.src || (a.spec ? "" : lib.official === false ? lib.source || "공식 자료 아님" : "");
+      out.push({ key: `app:${a.id}`, kind: "app", title: t.name + (a.model ? ` · ${a.model}` : ""), app: a, spec: a.spec || lib.spec || "", warn: (a.spec || lib.spec) ? srcWarn(src) : "",
         items: t.items.map((k) => ({ key: `app:${a.id}:${k}`, label: ITEMS[k] })), dims: true, photo: "설치 사진 (통풍구·연결부가 보이게)" });
     });
+    const c = combo(job);
+    if (c) out.push({ key: "combo", kind: "combo", title: `붙여서 설치 · ${c.models.join(" + ")}`, spec: c.spec, warn: c.spec ? srcWarn(c.src) : "", combo: c,
+      items: COMBO.map(([k, l]) => ({ key: `combo:${k}`, label: l })), dims: true, photo: "붙여서 설치한 사진 (제품 사이 간격·옆면이 보이게)" });
     out.push({ key: "common", kind: "common", title: "가구 마감", items: COMMON.map(([k, l]) => ({ key: `common:${k}`, label: l })), photo: "완성 사진 (전체가 보이게)" });
     const ex = (i.chk || []).map((s) => String(s).trim()).filter(Boolean);
     if (ex.length) out.push({ key: "extra", kind: "extra", title: "이 현장 추가 확인", items: ex.map((l) => ({ key: `extra:${hash(l)}`, label: l })) });
@@ -80,5 +108,5 @@
     return { secs, total, done, bad, missing, noPhoto, badNote, ready: !missing.length && !noPhoto.length && !badNote.length };
   }
   const dimsText = (d) => d && (d.w || d.h || d.d) ? `폭 ${d.w || "-"} · 높이 ${d.h || "-"} · 깊이 ${d.d || "-"} (mm)` : "";
-  window.NEST_CL = { ITEMS, TYPES, COMMON, RESULT, typeName, modelKey, useLib, appType, sections, summary, dimsText };
+  window.NEST_CL = { ITEMS, TYPES, COMMON, COMBO, RESULT, typeName, modelKey, comboKey, useLib, appType, joinable, inCombo, combo, sections, summary, dimsText };
 })();

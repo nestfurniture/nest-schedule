@@ -154,6 +154,12 @@ textarea{width:100%;resize:vertical;line-height:1.5}
 .lib-links .fmeta{font-size:12px;color:var(--muted)}
 .app-files .flist[hidden]{display:none}
 .lib-head .lib-again{margin-left:auto}
+.lib-src{font-size:13px;color:var(--muted)}
+.lib-box.unofficial .lib-src{color:var(--soon);font-weight:500}
+.app-join{font-size:14px}
+.app-join[hidden],.combo-box[hidden]{display:none}
+.combo-box{border:1px solid var(--accent);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.combo-head{font-weight:700}
 .lib-again{background:none;border:0;padding:2px 0;color:var(--accent);font:inherit;font-size:13px;font-weight:500;text-decoration:underline;cursor:pointer}
 .lib-again:disabled{color:var(--muted);cursor:default}
 .lib-imgs{display:flex;flex-wrap:wrap;gap:6px}
@@ -492,9 +498,10 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
     <div class="sec">
       <h3>가전 · 시방서</h3>
-      <div class="hint">도면을 보고 빌트인 가전 모델명만 적고 저장하세요. 앱이 제조사 공식 홈페이지에서 시방서를 찾아 붙이고(1~2분), 같은 모델은 다음 현장부터 바로 붙어요. 시공자 체크리스트에 그대로 나와요.</div>
+      <div class="hint">도면을 보고 빌트인 가전 모델명만 적고 저장하세요. 앱이 시방서를 찾아 붙여요(몇 분). 제조사 공식 자료를 먼저 찾고, 없으면 다른 출처에서라도 찾아 출처를 함께 보여 줘요. 냉장고·김치냉장고를 붙여서 설치하면 그 묶음의 시방서도 찾아요. 같은 모델은 다음 현장부터 바로 붙고, 시공자 체크리스트에 그대로 나와요.</div>
       <div class="update" id="specSetup" hidden></div>
       <div class="apps" id="f-apps"></div>
+      <div class="combo-box" id="f-combo" hidden></div>
       <div><button class="btn ghost sm" type="button" id="addApp">+ 가전 추가</button></div>
     </div>
     <div class="sec" id="sec-cl">

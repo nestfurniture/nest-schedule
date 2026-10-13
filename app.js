@@ -32,7 +32,7 @@ const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
   m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
     gate:d.i?.gate||"",door:d.i?.door||"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],
-    apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||""})),
+    apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||"",...(typeof a.join==="boolean"?{join:a.join}:{})})),
     chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[]},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[]},createdAt:d.created_at||""};}
 
@@ -429,7 +429,8 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
       if(me){render();showErr("현장은 저장됐는데 수금·원가를 저장하지 못했어요. 저장을 한 번 더 눌러 주세요.");return;}
       money[row.id]=mo;}
     render();
-    if(row)findSpecs(editing.i.apps); // 처음 보는 가전 모델은 시방서 찾기 시작 (기다리지 않음)
+    // 처음 보는 가전 모델과 '붙여서 설치' 묶음은 시방서 찾기 시작 (기다리지 않음)
+    if(row&&editing.i.apps.some(a=>NEST_CL.modelKey(a.model).length>=3))findSpecs({job:row.id},[...new Set(editing.i.apps.map(a=>NEST_CL.modelKey(a.model)).filter(k=>k.length>=3&&!specLib[k]))]);
     if(row)await dropOrphanSpecs(editing);
     if(row&&pending.length){
       $("saveBtn").textContent="파일 올리는 중…";
@@ -510,44 +511,55 @@ async function removeFile(f){
   if(error)return false;files=files.filter(x=>x!==f);return true;}
 
 /* 가전 · 시방서: 가전마다 종류·모델명(+ 이 현장만 다른 치수).
-   모델명을 적고 저장하면 알림 서버(notify)가 제조사 공식 홈페이지에서 시방서를 찾아 보관함(app_specs)에 모델별로 저장함.
-   한 번 찾은 모델은 다시 찾지 않고 같은 모델을 쓰는 모든 현장의 시공 체크리스트에 자동으로 붙음.
-   공식 자료가 없으면 이 현장에만 파일을 직접 올릴 수 있음 */
-let specLib={},lib05=true,specAuto=null,specAt=0,specChan=null,specPoll=null;
+   모델명을 적고 저장하면 알림 서버(notify)가 시방서를 찾아 보관함(app_specs)에 모델별로 저장함. 제조사 공식 자료를 먼저 찾고,
+   없으면 다른 출처에서라도 찾아 출처를 함께 보여 줌. 냉장고·김치냉장고·와인셀러는 기본으로 '붙여서 설치' 묶음이 되어 묶음 시방서도 찾음.
+   한 번 찾은 것은 다시 찾지 않고 같은 모델(묶음)을 쓰는 모든 현장의 시공 체크리스트에 자동으로 붙음.
+   그래도 없으면 이 현장에만 파일을 직접 올릴 수 있음 */
+let specLib={},lib05=true,specAuto=null,specVer=0,specAt=0,specChan=null,specPoll=null,specAutoRan=false;
 NEST_CL.useLib(k=>{const l=specLib[k];return l&&l.status==="found"?l:null;});
 const libRow=model=>specLib[NEST_CL.modelKey(model)]||null;
 const libOf=model=>{const l=libRow(model);return l&&l.status==="found"?l:null;};
-const specStale=l=>l.status==="searching"&&Date.now()-new Date(l.searched_at||0).getTime()>10*60e3;
+const specStale=l=>l.status==="searching"&&Date.now()-new Date(l.searched_at||0).getTime()>15*60e3;
 async function loadLib(){
   const {data,error}=await sb.from("app_specs").select("*");
   if(error){lib05=!/app_specs|42P01|PGRST20/i.test(`${error.code} ${error.message}`);return;}
   lib05=true;specLib={};(data||[]).forEach(r=>{specLib[r.model_key]=r});
   if(!specChan){specChan=sb.channel("nest-specs").on("postgres_changes",{event:"*",schema:"public",table:"app_specs"},()=>libChanged()).subscribe();}
-  // 찾는 중인 모델이 있으면 실시간 연결이 끊겨도 바뀌도록 15초마다 다시 확인
+  // 찾는 중인 것이 있으면 실시간 연결이 끊겨도 바뀌도록 15초마다 다시 확인
   clearTimeout(specPoll);if(Object.values(specLib).some(l=>l.status==="searching"&&!specStale(l)))specPoll=setTimeout(libChanged,15e3);}
 async function libChanged(){await loadLib();if(loaded)render();if(!$("form").hidden)renderSpecs();}
-// 자동 찾기가 켜져 있는지 (Anthropic 키를 Supabase Secrets에 넣었는지) 알림 서버에 물어봄
+// 자동 찾기가 켜져 있는지 (Anthropic 키를 Supabase Secrets에 넣었는지), 찾는 방식 버전은 몇인지 알림 서버에 물어봄
 async function specStatus(){
-  if(specAuto===true||Date.now()-specAt<300e3)return;specAt=Date.now();
-  try{const {data,error}=await sb.functions.invoke("notify",{body:{action:"spec_status"}});specAuto=!error&&!!(data&&data.auto);}catch(e){specAuto=false;}
-  if(!$("form").hidden)renderSpecs();}
+  if(specAuto===true||Date.now()-specAt<300e3){autoSpecs();return;}specAt=Date.now();
+  try{const {data,error}=await sb.functions.invoke("notify",{body:{action:"spec_status"}});specAuto=!error&&!!(data&&data.auto);specVer=+(data&&data.v)||1;}catch(e){specAuto=false;}
+  if(!$("form").hidden)renderSpecs();
+  autoSpecs();}
+// 종류를 아직 찾는 중인 가전이 있는 현장 (묶음은 다 찾은 뒤에 정함)
+// 묶음에 들어갈 수 있는 가전(종류 모름·냉장고류·체크한 가전)을 아직 찾는 중이면 묶음은 기다림 (알림 서버 comboWork와 같은 규칙)
+const typePending=j=>j.i.apps.some(a=>(a.join===true||a.join!==false&&(!a.type||NEST_CL.joinable(a)))&&(specLib[NEST_CL.modelKey(a.model)]||{}).status==="searching");
+// 새 방식(v2)이 켜진 뒤 한 번: 예전 방식으로 못 찾은 모델은 다시 찾고, 진행 중인 현장의 '붙여서 설치' 묶음 중 아직 안 찾은 것도 찾기 시작
+async function autoSpecs(){
+  if(specAutoRan||!specAuto||specVer<2||!lib05||!loaded)return;specAutoRan=true;
+  const old=Object.values(specLib).filter(l=>"ver" in l&&(+l.ver||1)<2&&(l.status==="notfound"||l.status==="error")&&!String(l.model_key).includes("+"));
+  if(old.length)await findSpecs({models:old.slice(0,10).map(l=>({model:l.model||l.model_key,type:l.type||""})),force:true},old.slice(0,10).map(l=>l.model_key));
+  const combos=[];
+  for(const j of jobs){const last=lastWork(j);if(last&&last<addDays(TODAY,-14)||typePending(j))continue;
+    const c=NEST_CL.combo(j);if(c&&!specLib[c.key]&&!combos.some(x=>x.key===c.key))combos.push(c);}
+  if(combos.length)await findSpecs({combos:combos.slice(0,3).map(c=>c.models)},combos.slice(0,3).map(c=>c.key));}
 async function specCall(body){
   try{const {data,error}=await sb.functions.invoke("notify",{body});if(!error)return{data:data||{}};
     let msg="";try{msg=(await error.context.json()).error||"";}catch(e){}return{error:msg||"server",status:error.context&&error.context.status};}
   catch(e){return{error:"offline"};}}
-// 처음 보는 모델만 찾기 시작 (force = '다시 찾기'를 누름: 못 찾음·멈춤·이미 찾은 모델도 다시). 답을 기다리지 않아도 됨: 다 찾으면 화면이 저절로 바뀜
 function specErr(m){if(!$("form").hidden){showErr(m);return;}
   const st=$("status");st.textContent=m;st.hidden=false;setTimeout(()=>{if(st.textContent===m)st.hidden=true;},10e3);}
-async function findSpecs(apps,force){
+// 찾기 시작: body = {job} (저장한 현장의 새 모델·묶음) 또는 {models|combos, force} ('지금 찾기'·'다시 찾기'). keys = 화면에 바로 '찾는 중'으로 보일 것
+// 답을 기다리지 않아도 됨: 다 찾으면 화면이 저절로 바뀜
+async function findSpecs(body,keys){
   if(!lib05||!specAuto)return;
-  const models=[],seen=new Set();
-  for(const a of apps){const k=NEST_CL.modelKey(a.model);if(k.length<3||seen.has(k))continue;seen.add(k);
-    if(!force&&specLib[k])continue;models.push({model:a.model,type:a.type||""});}
-  if(!models.length)return;
   const now=new Date().toISOString();
-  models.forEach(m=>{const k=NEST_CL.modelKey(m.model);specLib[k]={...(specLib[k]||{model_key:k,model:m.model}),status:"searching",searched_at:now,note:""};});
-  if(!$("form").hidden)renderSpecs();
-  const r=await specCall({action:"spec_find",models,force:!!force});
+  keys.forEach(k=>{specLib[k]={...(specLib[k]||{model_key:k,model:k}),status:"searching",searched_at:now,note:""};});
+  if(keys.length&&!$("form").hidden)renderSpecs();
+  const r=await specCall({action:"spec_find",...body});
   if(r.error){
     if(r.error==="no key")specAuto=false;
     specErr(r.error==="limit"?"시방서는 하루에 정해 둔 개수까지만 찾아요. 내일 다시 찾아 주세요.":r.error==="no key"?"시방서 자동 찾기가 아직 꺼져 있어요. README의 \"업데이트 5\"를 봐 주세요.":
@@ -555,42 +567,48 @@ async function findSpecs(apps,force){
   await libChanged();}
 const appId=()=>Math.random().toString(36).slice(2,9);
 function appRow(a){a=a||{id:appId(),type:"",model:"",spec:""};
-  const r=document.createElement("div");r.className="app-row";r.dataset.app=a.id;
+  const r=document.createElement("div");r.className="app-row";r.dataset.app=a.id;r.dataset.join=a.join===true?"1":a.join===false?"0":"";
   r.innerHTML=`<div class="app-top"><select aria-label="가전 종류"><option value="" ${a.type?"":"selected"}>종류 자동</option>${NEST_CL.TYPES.map(([k,n])=>`<option value="${k}" ${k===a.type?"selected":""}>${n}</option>`).join("")}</select>
     <input class="app-model" placeholder="모델명 (예: DUE6BGH)" aria-label="모델명" value="${esc(a.model)}" autocapitalize="characters" spellcheck="false">
     <button class="btn ghost sm app-del" type="button">빼기</button></div>
     <div class="app-lib" data-lib="${esc(a.id)}"></div>
+    <label class="check app-join" hidden><input type="checkbox">옆 냉장고·김치냉장고와 붙여서 설치</label>
     <input class="app-spec" aria-label="이 현장만 다른 확인 치수" value="${esc(a.spec)}">
     <div class="app-files"><ul class="flist" data-spec="${esc(a.id)}"></ul><span class="fg-btns"><label class="btn ghost sm">파일 직접 올리기<input type="file" multiple accept="image/*,application/pdf" class="specpick" data-app="${esc(a.id)}"></label></span></div>`;
-  r.querySelector(".app-del").onclick=()=>{pending=pending.filter(p=>!(p.kind==="spec"&&p.stage===a.id));r.remove();};
+  r.querySelector(".app-del").onclick=()=>{pending=pending.filter(p=>!(p.kind==="spec"&&p.stage===a.id));r.remove();renderSpecs();};
   r.querySelector(".app-model").addEventListener("input",()=>renderSpecs());
+  r.querySelector("select").addEventListener("change",()=>renderSpecs());
+  r.querySelector(".app-join input").addEventListener("change",e=>{r.dataset.join=e.target.checked?"1":"0";renderSpecs();});
   $("f-apps").appendChild(r);renderSpecs();}
 $("addApp").onclick=()=>{appRow();const rows=$("f-apps").children;rows[rows.length-1].querySelector(".app-model").focus();};
-const readApps=()=>[...$("f-apps").children].map(r=>({id:r.dataset.app,type:r.querySelector("select").value,model:r.querySelector(".app-model").value.trim(),spec:r.querySelector(".app-spec").value.trim()}));
+const readApps=()=>[...$("f-apps").children].map(r=>({id:r.dataset.app,type:r.querySelector("select").value,model:r.querySelector(".app-model").value.trim(),spec:r.querySelector(".app-spec").value.trim(),
+  ...(r.dataset.join?{join:r.dataset.join==="1"}:{})}));
 const host=u=>{try{return new URL(u).hostname.replace(/^www\./,"")}catch(e){return""}};
 const badImg=new Set();
 const okHttps=u=>/^https:\/\/[^\s"'<>]+$/.test(u||"");
 const againBtn=(k,label="다시 찾기")=>specAuto?`<button type="button" class="lib-again" data-again="${esc(k)}">${label}</button>`:"";
-// 가전 한 줄 아래: 찾는 중 / 찾은 종류·치수·치수도·설명서·공식 링크 / 못 찾음
-function libHtml(model){
-  const k=NEST_CL.modelKey(model);
-  if(!k)return specAuto&&lib05?`<div class="lib-msg">모델명을 적고 저장하면 제조사 공식 홈페이지에서 시방서를 찾아 붙여요.</div>`:"";
+// 가전(또는 붙여서 설치 묶음) 아래: 찾는 중 / 찾은 종류·치수·치수도·설명서·링크·출처 / 못 찾음
+function libHtml(k,combo){
+  const what=combo?"이 묶음의 연결 설치 시방서":"시방서";
+  if(!k)return specAuto&&lib05?`<div class="lib-msg">모델명을 적고 저장하면 시방서를 찾아 붙여요.</div>`:"";
   const l=specLib[k];
   if(!l||(l.status==="searching"&&specStale(l))||l.status==="error"||!l.status){
-    if(!lib05||!specAuto)return`<div class="lib-msg">아직 시방서를 찾지 않은 모델이에요.</div>`;
-    if(!l||!l.status)return k.length<3?"":`<div class="lib-msg">저장하면 공식 홈페이지에서 시방서를 찾아요. ${againBtn(k,"지금 찾기")}</div>`;
-    return`<div class="lib-msg warn">시방서를 찾다가 멈췄어요. ${againBtn(k)}</div>`;}
-  if(l.status==="searching")return`<div class="lib-msg"><span class="spin" aria-hidden="true"></span>공식 홈페이지에서 시방서를 찾는 중이에요 (1~2분). 다른 일을 하셔도 돼요.</div>`;
-  if(l.status==="notfound")return`<div class="lib-msg warn">공식 홈페이지에서 이 모델을 찾지 못했어요. 모델명이 맞는지 확인해 주세요. ${againBtn(k)}${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;
+    if(!lib05||!specAuto)return`<div class="lib-msg">아직 ${what}를 찾지 않았어요.</div>`;
+    if(!l||!l.status)return k.length<3?"":`<div class="lib-msg">저장하면 ${what}를 찾아요. ${againBtn(k,"지금 찾기")}</div>`;
+    return`<div class="lib-msg warn">${what}를 찾다가 멈췄어요. ${againBtn(k)}${l.status==="error"&&l.note&&!/찾다가 멈췄/.test(l.note)?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;}
+  if(l.status==="searching")return`<div class="lib-msg"><span class="spin" aria-hidden="true"></span>${what}를 찾는 중이에요 (몇 분 걸려요). 다른 일을 하셔도 돼요.</div>`;
+  if(l.status==="notfound")return`<div class="lib-msg warn">${combo?"이 묶음의 연결 설치 치수를":"이 모델의 치수를"} 어디에서도 찾지 못했어요. ${combo?"":"모델명이 맞는지 확인해 주세요. "}${againBtn(k)}${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;
   const links=(Array.isArray(l.links)?l.links:[]).filter(x=>x&&okHttps(x.url)).slice(0,4);
   const imgs=(Array.isArray(l.images)?l.images:[]).filter(x=>x&&okHttps(x.url)&&!badImg.has(x.url)).slice(0,4);
   const pdfs=(Array.isArray(l.files)?l.files:[]).filter(f=>f&&/^lib\/spec\//.test(f.path||"")).slice(0,2);
-  const head=[l.brand,NEST_CL.TYPES.find(t=>t[0]===l.type)?.[1]].filter(Boolean).join(" · ");
-  return`<div class="lib-box"><div class="lib-head">${head?esc(head):""} <span class="tag ok">시방서 있음</span>${againBtn(k)}</div>
+  const head=[l.brand,combo?"":NEST_CL.TYPES.find(t=>t[0]===l.type)?.[1]].filter(Boolean).join(" · ");
+  const off=l.official===false;
+  return`<div class="lib-box${off?" unofficial":""}"><div class="lib-head">${head?esc(head):""} <span class="tag ${off?"soon":"ok"}">${off?"공식 자료 아님":"시방서 있음"}</span>${againBtn(k)}</div>
+    ${l.source?`<div class="lib-src">출처: ${esc(l.source)}${off?" · 현장에서 실측으로 꼭 확인해 주세요":""}</div>`:""}
     ${l.spec?`<div class="lib-spec">${esc(l.spec)}</div>`:""}
     ${imgs.length?`<div class="lib-imgs">${imgs.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" title="${esc(x.title||"치수도")}"><img src="${esc(x.url)}" alt="${esc(x.title||"치수도")}" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`:""}
     ${pdfs.length||links.length?`<div class="lib-links">${pdfs.map(f=>`<button type="button" class="fname" data-lpath="${esc(f.path)}">${esc(f.name||"설명서 PDF")}</button><span class="fmeta">보관본</span>`).join("")}${
-      links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||"공식 자료")}</a><span class="fmeta">${esc(host(x.url))}</span>`).join("")}</div>`:""}
+      links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||"자료")}</a><span class="fmeta">${esc(host(x.url))}</span>`).join("")}</div>`:""}
     ${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;}
 function renderSpecs(){
   const su=$("specSetup");
@@ -598,21 +616,27 @@ function renderSpecs(){
     specAuto===false?`시방서 자동 찾기가 아직 꺼져 있어요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-5-시방서-자동-찾기-적용" target="_blank" rel="noopener">설정 방법 보기</a>`:"";
   su.hidden=!su.innerHTML;
   $("f-apps").querySelectorAll(".app-row").forEach(r=>{const id=r.dataset.app,model=r.querySelector(".app-model").value,l=libOf(model);
-    r.querySelector("[data-lib]").innerHTML=libHtml(model);
+    r.querySelector("[data-lib]").innerHTML=libHtml(NEST_CL.modelKey(model),null);
+    const jn=r.querySelector(".app-join"),can=NEST_CL.joinable({type:r.querySelector("select").value,model})&&NEST_CL.modelKey(model).length>=3;
+    jn.hidden=!can&&r.dataset.join!=="1";jn.querySelector("input").checked=r.dataset.join?r.dataset.join==="1":can;
     r.querySelector(".app-spec").placeholder=l&&l.spec?"이 현장만 다른 치수 (비우면 위 치수)":"확인 치수 직접 적기 (예: 폭 600~602 · 높이 815~875)";
     const ul=r.querySelector("[data-spec]");
     const saved=editing?filesOf(editing.id,"spec").filter(f=>f.stage===id):[],wait=pending.filter(p=>p.kind==="spec"&&p.stage===id);
     ul.innerHTML=saved.map(f=>`<li><button type="button" class="fname" data-fid="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><span class="fmeta">${fsize(+f.size||0)}</span><button type="button" class="fdel" data-fdel="${esc(f.id)}">삭제</button></li>`).join("")+
       wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("");
-    ul.hidden=!ul.innerHTML;});}
+    ul.hidden=!ul.innerHTML;});
+  // 붙여서 설치하는 묶음 (2대 이상일 때)
+  const c=NEST_CL.combo({i:{apps:readApps()}}),box=$("f-combo");
+  box.hidden=!c;box.innerHTML=c?`<div class="combo-head">붙여서 설치 · ${esc(c.models.join(" + "))}</div>${libHtml(c.key,c.models)}`:"";}
 // 제조사 주소가 바뀌어 안 열리는 치수도 그림은 숨김
 document.addEventListener("error",e=>{const t=e.target;if(t&&t.tagName==="IMG"&&t.closest(".lib-imgs")){badImg.add(t.getAttribute("src"));t.closest("a").remove();}},true);
 document.addEventListener("click",async e=>{
   const ag=e.target.closest("[data-again]");
-  if(ag){const l=specLib[ag.dataset.again],row=ag.closest(".app-row");if(!row)return;
+  if(ag){const k=ag.dataset.again,l=specLib[k],row=ag.closest(".app-row"),inCombo=ag.closest("#f-combo");if(!row&&!inCombo)return;
     if(l&&l.status==="found"&&ag.dataset.armed!=="1"){ag.dataset.armed="1";ag.textContent="한 번 더 누르면 다시 찾아요";setTimeout(()=>{if(ag.isConnected){ag.dataset.armed="";ag.textContent="다시 찾기";}},4000);return;}
-    ag.disabled=true;$("f-err").hidden=true;
-    await findSpecs([{model:row.querySelector(".app-model").value.trim(),type:row.querySelector("select").value}],!!(l&&l.status));return;}
+    ag.disabled=true;$("f-err").hidden=true;const force=!!(l&&l.status);
+    if(inCombo){const c=NEST_CL.combo({i:{apps:readApps()}});if(c)await findSpecs({combos:[c.models],force},[c.key]);return;}
+    await findSpecs({models:[{model:row.querySelector(".app-model").value.trim(),type:row.querySelector("select").value}],force},[k]);return;}
   const lp=e.target.closest("[data-lpath]");
   if(lp){const w=window.open("","_blank");
     const {data,error}=await sb.storage.from(BUCKET).createSignedUrl(lp.dataset.lpath,600);
@@ -986,7 +1010,7 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
