@@ -334,6 +334,26 @@ th.num{font-family:var(--font);font-size:12px}
 }
 /* 수금 · 원가 입력 */
 .panel h4{margin:4px 0 0;font-size:13px;font-weight:700}
+.wg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px;align-items:start}
+.wg-card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.wg-card.done{border-color:var(--ok)}
+.wg-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wg-name{font-size:15px}
+.wg-sum{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:500}
+.wg-line{font-size:14px}
+.wg-warn{color:var(--soon)}
+.wg-more summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.wg-in{display:flex;flex-direction:column;gap:8px;padding-top:8px}
+.wg-jobs{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.wg-job{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:500;text-decoration:underline;cursor:pointer;text-align:left}
+.wg-adj{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:end}
+.wg-adj input{width:100%}
+.wg-paid{align-self:flex-start}
+.wg-rates{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.wg-rates label{color:var(--fg);font-size:14px}
+.wg-rates input{width:100%}
+#wgSaved{margin-left:auto}
+#view-wage .calhead h2{min-width:140px}
 .pay-row{display:grid;grid-template-columns:100px 1fr 150px auto 150px auto;gap:8px;align-items:end}
 .cost-row{display:grid;grid-template-columns:160px 1fr 1.4fr auto;gap:8px;align-items:end}
 .pay-row>*,.cost-row>*{min-width:0}
@@ -544,6 +564,7 @@ th.num{font-family:var(--font);font-size:12px}
     <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
     <button class="tab admin-only" role="tab" id="tab-pay" aria-selected="false" hidden>수금</button>
     <button class="tab admin-only" role="tab" id="tab-sales" aria-selected="false" hidden>매출·원가</button>
+    <button class="tab admin-only" role="tab" id="tab-wage" aria-selected="false" hidden>정산</button>
   </div>
 
   <section id="view-board">
@@ -608,6 +629,25 @@ th.num{font-family:var(--font);font-size:12px}
     <h3>원가 구성</h3>
     <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
     <p class="sub" id="saNote"></p>
+  </section>
+
+  <section id="view-wage" class="view" hidden>
+    <div class="update" id="wgUpdate" hidden>시공자 정산을 쓰려면 Supabase 업데이트 8이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-08.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
+    <div class="view" id="wgBody">
+      <div class="calhead">
+        <button class="btn ghost" id="wgPrev" aria-label="이전 달">‹</button>
+        <h2 id="wgTitle"></h2>
+        <button class="btn ghost" id="wgNext" aria-label="다음 달">›</button>
+        <button class="btn ghost sm" id="wgNow">이번 달</button>
+        <span class="hint" id="wgSaved"></span>
+      </div>
+      <div class="tiles" id="wgTiles"></div>
+      <div class="wg-list" id="wgList"></div>
+      <p class="sub" id="wgNote"></p>
+      <h3>일당</h3>
+      <div class="wg-rates" id="wgRates"></div>
+      <p class="sub">시공자별 하루 금액을 넣으면 바로 저장돼요. 시공일은 현장의 시공 기간(주말은 체크한 날만)과 배정된 시공자로 세고, 한 사람이 같은 날 두 현장에 잡히면 하루로 계산해요. AS는 담당으로 적힌 사람의 하루로 셈해요. 일당을 넣으면 매출·원가의 시공 인건비도 자동으로 채워져요(그 현장에 시공 인건비를 직접 적었으면 직접 적은 금액을 써요). 지급 완료로 체크하면 그때 금액이 그대로 남아요.</p>
+    </div>
   </section>
 </div>
 <div class="sheet" id="daySheet" hidden role="dialog" aria-modal="true" aria-labelledby="dayTitle">

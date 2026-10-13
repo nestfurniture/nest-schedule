@@ -39,3 +39,5 @@ jobs:
           echo; echo "== 10. 서버 내부 그림 옮기기(spec_media) — 403 forbidden 이면 잘 막힘, 400 unknown action 이면 업데이트 7 전 코드"
           curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"action":"spec_media","key":"PROBE1"}' | grep -E "^HTTP|error" | head -5
+          echo; echo "== 11. 시공자 정산 표(crew_pay, 업데이트 8) — [] 이면 준비됨 (관리자만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-08.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/crew_pay?select=key&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5

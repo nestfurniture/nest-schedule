@@ -126,7 +126,7 @@ function render(){
       <dt>파일</dt><dd>${fileCount(j)}</dd>${isAdmin?`<dt>수금</dt><dd>${payTag(j)}</dd>`:""}
     </dl></button>`).join("");
   renderCal();renderCrew();
-  if(isAdmin){renderPay();renderSales();}
+  if(isAdmin){renderPay();renderSales();renderWage();}
 }
 /* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
 let selDay="",dayFrom=null;
@@ -234,12 +234,136 @@ function renderPay(){
     :`<tr><td colspan="5" class="hint">계약금액을 넣은 현장이 없어요.</td></tr>`;
 }
 
+/* 시공자 정산 (관리자). 일당 × 시공일 + AS + 조정. 한 사람이 같은 날 두 현장이면 하루로 세고, 원가에는 그날 일당을 현장끼리 나눠 넣음 */
+let wage={rates:{day:{},extra:0,as:0},months:{}},pay08=true,wageChan=null,laborCache=null,wgLater=false;
+let wgY=now.getFullYear(),wgM=now.getMonth()+1;const wgOpen=new Set();
+const ymKey=(y,m)=>`${y}-${pad(m)}`;
+const sNum=v=>(String(v??"").trim().startsWith("-")?-1:1)*toNum(v);
+const sComma=n=>n?(n<0?"-":"")+comma(Math.abs(n)):"";
+const sWon=n=>(n>0?"+":"")+won(n);
+function normRates(d){d=d||{};const day={};Object.entries(d.day||{}).forEach(([k,v])=>{const n=toNum(v);if(k&&n)day[k]=n;});return{day,extra:toNum(d.extra),as:toNum(d.as)};}
+const normSnap=s=>s&&typeof s==="object"?s:null;
+function normWm(d){d=d||{};const p={};Object.entries(d.p||{}).forEach(([k,v])=>{v=v||{};p[k]={adj:Math.round(+v.adj||0),note:String(v.note||""),paid:String(v.paid||""),snap:normSnap(v.snap)};});
+  const x=d.x||{};return{p,x:{paid:String(x.paid||""),snap:normSnap(x.snap)}};}
+const wmOf=k=>wage.months[k]||normWm();
+const rateOf=n=>wage.rates.day[n]||0,asRateOf=n=>wage.rates.as||rateOf(n);
+/* 사람별·날짜별 일: i = 그날 시공한 현장들, a = 그날 AS */
+function workBook(from,to){const book={},at=(n,d)=>((book[n]??={})[d]??={i:[],a:[]});
+  jobs.forEach(j=>{const crew=[...new Set(j.i.crew.filter(Boolean))];workDays(j).forEach(d=>{if(d>=from&&d<=to)crew.forEach(c=>at(c,d).i.push(j));});
+    j.f.as.forEach(a=>{if(a.crew&&a.date&&a.date>=from&&a.date<=to)at(a.crew,a.date).a.push({j,a});});});
+  return book;}
+/* 현장별 인건비 (일정 기준 자동): 시공·AS = 그날 일당을 현장끼리 나눔, 추가 투입 = 인원 × 1인 일당 */
+function laborOf(j){
+  if(!laborCache){laborCache={};const get=id=>(laborCache[id]??={crew:0,extra:0,miss:new Set()});
+    if(isAdmin&&pay08){
+      Object.entries(workBook("0000","9999")).forEach(([n,days])=>Object.values(days).forEach(u=>{
+        if(u.i.length){const r=rateOf(n);u.i.forEach(x=>{const o=get(x.id);if(r)o.crew+=r/u.i.length;else o.miss.add(n);});}
+        else{const r=asRateOf(n);u.a.forEach(x=>{const o=get(x.j.id);if(r)o.crew+=r/u.a.length;else o.miss.add(n);});}}));
+      if(wage.rates.extra)jobs.forEach(j=>{const n=extraSum(j);if(n)get(j.id).extra=n*wage.rates.extra;});}}
+  return laborCache[j.id]||{crew:0,extra:0,miss:new Set()};}
+/* 직접 적은 같은 항목이 없을 때만 자동 인건비를 원가에 넣음 */
+function autoCosts(j,m){if(!j)return[];const L=laborOf(j),has=c=>m.costs.some(x=>x.cat===c),out=[],c=Math.round(L.crew),x=Math.round(L.extra);
+  if(c&&!has("시공 인건비"))out.push({cat:"시공 인건비",amount:c,note:"자동 · 일정 × 일당",auto:true});
+  if(x&&!has("추가 투입 인건비"))out.push({cat:"추가 투입 인건비",amount:x,note:"자동 · 추가 인원 × 1인 일당",auto:true});
+  return out;}
+const jobCosts=j=>{const m=moneyOf(j.id);return m.costs.concat(autoCosts(j,m));};
+const jobCost=j=>jobCosts(j).reduce((a,x)=>a+x.amount,0);
+function wageMonth(y,m){const key=ymKey(y,m),from=key+"-01",to=key+"-31",book=workBook(from,to),rec=wmOf(key);
+  const people=[...new Set([...Object.keys(book),...Object.keys(rec.p)])].map(n=>{
+    const days=book[n]||{},ds=Object.keys(days).sort(),iD=ds.filter(d=>days[d].i.length),aD=ds.filter(d=>!days[d].i.length);
+    const r=rec.p[n]||{adj:0,note:"",paid:"",snap:null},rate=rateOf(n),asRate=asRateOf(n);
+    const miss=!!((iD.length&&!rate)||(aD.length&&!asRate));
+    const byJob=new Map(),add=(j,d,t)=>{if(!byJob.has(j.id))byJob.set(j.id,{j,i:[],a:[]});byJob.get(j.id)[t].push(d);};
+    iD.forEach(d=>days[d].i.forEach(j=>add(j,d,"i")));aD.forEach(d=>days[d].a.forEach(x=>add(x.j,d,"a")));
+    return{n,days:iD.length,as:aD.length,rate,asRate,adj:r.adj,note:r.note,paid:r.paid,snap:r.snap,miss,
+      total:miss?null:iD.length*rate+aD.length*asRate+r.adj,later:ds.filter(d=>d>TODAY).length,shared:iD.filter(d=>days[d].i.length>1).length,byJob:[...byJob.values()]};})
+    .filter(p=>p.days||p.as||p.adj||p.paid).sort((a,b)=>(b.days+b.as)-(a.days+a.as)||a.n.localeCompare(b.n,"ko"));
+  const list=[];jobs.forEach(j=>j.f.extra.forEach(x=>{if(x.date&&x.date>=from&&x.date<=to&&+x.people>0)list.push({j,x});}));
+  list.sort((a,b)=>a.x.date.localeCompare(b.x.date));
+  const xn=list.reduce((a,o)=>a+(+o.x.people||0),0),xr=wage.rates.extra;
+  const extra={list,people:xn,rate:xr,total:!xn?0:xr?xn*xr:null,paid:rec.x.paid,snap:rec.x.snap};
+  const none=jobs.filter(j=>!j.i.crew.length).map(j=>({j,n:workDays(j).filter(d=>d>=from&&d<=to).length})).filter(o=>o.n);
+  return{key,people,extra,none};}
+const shownPay=p=>p.paid&&p.snap?+p.snap.total||0:p.total;
+const md=d=>`${+d.slice(5,7)}/${+d.slice(8)}`;
+function wageMsg(y,m,p){const L=[`[네스트퍼니처 ${y}년 ${m}월 정산] ${p.n}님`];
+  if(p.days){L.push("",`시공 ${p.days}일 × ${won(p.rate)} = ${won(p.days*p.rate)}`);p.byJob.filter(b=>b.i.length).forEach(b=>L.push(`- ${b.j.name}: ${b.i.map(md).join(", ")} (${b.i.length}일)`));
+    if(p.shared)L.push(`(같은 날 두 현장은 하루로 계산)`);}
+  if(p.as){L.push("",`AS ${p.as}일 × ${won(p.asRate)} = ${won(p.as*p.asRate)}`);p.byJob.filter(b=>b.a.length).forEach(b=>L.push(`- ${b.j.name}: ${b.a.map(md).join(", ")}`));}
+  if(p.adj)L.push("",`조정 ${sWon(p.adj)}${p.note?` (${p.note})`:""}`);
+  L.push("",`합계 ${won(p.total)}`);return L.join("\n");}
+const wgBusy=()=>{const a=document.activeElement;return!!(a&&a.tagName==="INPUT"&&a.type!=="checkbox"&&a.closest("#view-wage"));};
+function renderWage(){if(!isAdmin)return;
+  $("wgUpdate").hidden=pay08;$("wgBody").hidden=!pay08;if(!pay08)return;
+  if(wgBusy()){wgLater=true;return;}wgLater=false;
+  const W=wageMonth(wgY,wgM),x=W.extra,xv=x.paid&&x.snap?+x.snap.total||0:x.total,xOn=!!(x.people||x.paid);
+  $("wgTitle").textContent=`${wgY}년 ${wgM}월`;
+  const items=W.people.map(p=>({v:shownPay(p),paid:!!p.paid})).concat(xOn?[{v:xv,paid:!!x.paid}]:[]);
+  const tot=items.reduce((a,o)=>a+(o.v||0),0),paid=items.filter(o=>o.paid).reduce((a,o)=>a+(o.v||0),0),miss=items.filter(o=>o.v===null).length;
+  $("wgTiles").innerHTML=`<div class="tile ${miss?"warn":""}"><small>이달 줄 돈</small><b>${won(tot)}</b>${miss?`<small>일당 미입력 ${miss}건은 빠짐</small>`:""}</div>
+    <div class="tile"><small>지급 완료</small><b>${won(paid)}</b></div>
+    <div class="tile ${tot-paid>0?"warn":""}"><small>남은 돈</small><b>${won(tot-paid)}</b></div>
+    <div class="tile"><small>시공 연인원</small><b>${W.people.reduce((a,p)=>a+p.days,0)+x.people}일</b>${x.people?`<small>추가 투입 ${x.people}명 포함</small>`:""}</div>`;
+  const rt=(r,what="일당")=>r?won(r):`<span class="tag late">${what} 미입력</span>`;
+  const head=(name,paidOn,v)=>`<div class="wg-head"><b class="wg-name">${name}</b>${paidOn?`<span class="tag ok">지급 ${fmt(paidOn)}</span>`:""}<b class="wg-sum">${v===null?"—":won(v)}</b></div>`;
+  const jobBtn=j=>`<button type="button" class="wg-job" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
+  const card=p=>{const changed=p.paid&&p.snap&&p.total!==null&&p.total!==+p.snap.total,hints=[p.later&&`오늘 이후 예정 ${p.later}일 포함`,p.shared&&`같은 날 두 현장 ${p.shared}일은 하루로 계산`].filter(Boolean);
+    return`<div class="wg-card${p.paid?" done":""}">${head(esc(p.n),p.paid,shownPay(p))}
+      ${p.days?`<div class="wg-line">시공 ${p.days}일 × ${rt(p.rate)}</div>`:""}
+      ${p.as?`<div class="wg-line">AS ${p.as}일 × ${rt(p.asRate)}</div>`:""}
+      ${p.adj?`<div class="wg-line">조정 ${sWon(p.adj)}${p.note?` · ${esc(p.note)}`:""}</div>`:""}
+      ${hints.length?`<div class="hint">${hints.join(" · ")}</div>`:""}
+      ${changed?`<div class="hint wg-warn">지급한 뒤 일정이 바뀌었어요. 지금 계산하면 ${won(p.total)}이에요.</div>`:""}
+      <details class="wg-more" data-wgd="${esc(p.n)}"${wgOpen.has(p.n)?" open":""}><summary>현장별 날짜 · 조정 · 문자</summary><div class="wg-in">
+        <ul class="wg-jobs">${p.byJob.map(b=>`<li>${jobBtn(b.j)} <span class="hint">${[b.i.length&&`시공 ${b.i.map(fmtW).join(", ")}`,b.a.length&&`AS ${b.a.map(fmtW).join(", ")}`].filter(Boolean).join(" · ")}</span></li>`).join("")||`<li class="hint">이달 일정이 없어요.</li>`}</ul>
+        <div class="wg-adj"><label>조정 금액(원)<input class="swon" data-wgadj="${esc(p.n)}" value="${sComma(p.adj)}" placeholder="예: -125,000"></label><label>메모<input data-wgnote="${esc(p.n)}" value="${esc(p.note)}" placeholder="예: 반일 1번, 유류비"></label></div>
+        <div><button class="btn ghost sm" type="button" data-wgmsg="${esc(p.n)}"${p.total===null?" disabled":""}>정산 문자 복사</button></div></div></details>
+      <label class="check wg-paid"><input type="checkbox" data-wgpaid="${esc(p.n)}"${p.paid?" checked":""}${!p.paid&&p.total===null?" disabled":""}>지급 완료</label></div>`;};
+  const xcard=!xOn?"":`<div class="wg-card${x.paid?" done":""}">${head("마감 추가 투입",x.paid,xv)}
+      <div class="wg-line">연인원 ${x.people}명 × ${rt(x.rate,"1인 일당")}</div>
+      <div class="hint">현장에 '추가 인원'으로만 적은 인원이에요 (이름 없이 기록).</div>
+      <details class="wg-more" data-wgd=" x"${wgOpen.has(" x")?" open":""}><summary>날짜별 보기</summary><div class="wg-in"><ul class="wg-jobs">${x.list.map(o=>`<li>${jobBtn(o.j)} <span class="hint">${fmtW(o.x.date)} · ${+o.x.people}명${o.x.note?` · ${esc(o.x.note)}`:""}</span></li>`).join("")}</ul></div></details>
+      <label class="check wg-paid"><input type="checkbox" data-wgxpaid${x.paid?" checked":""}${!x.paid&&x.total===null?" disabled":""}>지급 완료</label></div>`;
+  $("wgList").innerHTML=W.people.map(card).join("")+xcard||`<div class="empty">${wgM}월에는 시공자가 잡힌 시공·AS 일정이 없어요.</div>`;
+  $("wgNote").innerHTML=W.none.length?`<span class="tag late">시공자 미배정</span> ${W.none.map(o=>`${esc(o.j.name)} ${o.n}일`).join(", ")}은 시공자가 정해지지 않아 정산에 안 들어가요.`:"";
+  const roster=[...new Set([...CREW,...jobs.flatMap(j=>j.i.crew),...jobs.flatMap(j=>j.f.as.map(a=>a.crew)),...Object.keys(wage.rates.day)].filter(Boolean))];
+  $("wgRates").innerHTML=roster.map(n=>`<label>${esc(n)}<input class="won" inputmode="numeric" data-rate="${esc(n)}" value="${comma(rateOf(n))}" placeholder="일당(원)"></label>`).join("")+
+    `<label>마감 추가 투입 1인<input class="won" inputmode="numeric" data-ratex value="${comma(wage.rates.extra)}" placeholder="1인 일당(원)"></label>
+    <label>AS 하루<input class="won" inputmode="numeric" data-rateas value="${comma(wage.rates.as)}" placeholder="비우면 각자 일당"></label>`;}
+async function saveWage(key,data){$("wgSaved").textContent="저장 중…";
+  const {error}=await sb.from("crew_pay").upsert({key,data,updated_at:new Date().toISOString()});
+  $("wgSaved").textContent=error?"저장 못 함 · 인터넷 확인 후 다시 고쳐 주세요":"저장됨";return!error;}
+function wmEdit(n,fn){const key=ymKey(wgY,wgM),rec=normWm(JSON.parse(JSON.stringify(wmOf(key))));
+  fn(n===null?rec.x:(rec.p[n]??={adj:0,note:"",paid:"",snap:null}));wage.months[key]=rec;saveWage(key,rec);renderWage();}
+$("view-wage").addEventListener("change",e=>{const t=e.target,d=t.dataset||{};
+  if("rate" in d||"ratex" in d||"rateas" in d){const box=$("wgRates"),day={...wage.rates.day};
+    box.querySelectorAll("[data-rate]").forEach(i=>{const n=toNum(i.value);if(n)day[i.dataset.rate]=n;else delete day[i.dataset.rate];});
+    wage.rates=normRates({day,extra:box.querySelector("[data-ratex]").value,as:box.querySelector("[data-rateas]").value});laborCache=null;saveWage("rates",wage.rates);render();return;}
+  if("wgadj" in d){const v=Math.round(sNum(t.value));wmEdit(d.wgadj,o=>{o.adj=v;});return;}
+  if("wgnote" in d){const v=t.value.trim();wmEdit(d.wgnote,o=>{o.note=v;});return;}
+  if("wgpaid" in d||"wgxpaid" in d){const W=wageMonth(wgY,wgM),p="wgpaid" in d?W.people.find(x=>x.n===d.wgpaid):W.extra;
+    wmEdit("wgpaid" in d?d.wgpaid:null,o=>{if(t.checked&&p&&p.total!==null){o.paid=TODAY;o.snap={total:p.total,days:p.days,as:p.as,rate:p.rate,asRate:p.asRate,adj:p.adj,people:p.people};}else{o.paid="";o.snap=null;}});}});
+$("view-wage").addEventListener("focusout",()=>setTimeout(()=>{if(wgLater&&!wgBusy())renderWage();},0));
+$("view-wage").addEventListener("toggle",e=>{const d=e.target;if(d.dataset&&"wgd" in d.dataset)(d.open?wgOpen.add(d.dataset.wgd):wgOpen.delete(d.dataset.wgd));},true);
+document.addEventListener("click",async e=>{const b=e.target.closest("[data-wgmsg]");if(!b)return;
+  const p=wageMonth(wgY,wgM).people.find(x=>x.n===b.dataset.wgmsg);if(!p||p.total===null)return;
+  flash(b,await copyText(wageMsg(wgY,wgM,p))?"복사됨":"복사 안 됨",true);});
+$("wgPrev").onclick=()=>{if(--wgM<1){wgM=12;wgY--}renderWage()};
+$("wgNext").onclick=()=>{if(++wgM>12){wgM=1;wgY++}renderWage()};
+$("wgNow").onclick=()=>{wgY=now.getFullYear();wgM=now.getMonth()+1;renderWage()};
+async function loadWage(){if(!isAdmin)return;
+  const {data,error}=await sb.from("crew_pay").select("*");
+  pay08=!(error&&/crew_pay|42P01|PGRST20/i.test(`${error.code} ${error.message}`));
+  if(!error){const w={rates:normRates(),months:{}};(data||[]).forEach(r=>{if(r.key==="rates")w.rates=normRates(r.data);else if(/^\d{4}-\d{2}$/.test(r.key))w.months[r.key]=normWm(r.data);});wage=w;}
+  laborCache=null;
+  if(pay08&&!error&&!wageChan)wageChan=sb.channel("nest-pay").on("postgres_changes",{event:"*",schema:"public",table:"crew_pay"},()=>loadWage().then(render)).subscribe();}
+
 /* 원가 · 매출 (관리자). 기준 달 = 시공 끝나는 달, 시공일 없으면 계약일 */
 let salesY=now.getFullYear(),salesM=0;
 const jobMonth=j=>(j.i.end||j.i.start||moneyOf(j.id).contract.date||"").slice(0,7);
 const bar=(v,max,cls="")=>!v?"":`<span class="bar ${cls}"><i style="width:${max>0?Math.max(0,Math.min(100,v/max*100)):0}%"></i></span>`;
 function renderSales(){
-  const counted=jobs.filter(j=>{const m=moneyOf(j.id);return m.contract.amount>0||m.costs.length>0;});
+  const counted=jobs.filter(j=>moneyOf(j.id).contract.amount>0||jobCosts(j).length>0);
   const years=[...new Set([now.getFullYear(),...counted.map(j=>+jobMonth(j).slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
   if(!years.includes(salesY))salesY=years[0];
   $("sa-y").innerHTML=years.map(y=>`<option value="${y}" ${y===salesY?"selected":""}>${y}년</option>`).join("");
@@ -247,7 +371,7 @@ function renderSales(){
   const inYear=counted.filter(j=>jobMonth(j).startsWith(salesY+"-"));
   const sel=salesM?inYear.filter(j=>jobMonth(j)===`${salesY}-${pad(salesM)}`):inYear;
   const undated=counted.filter(j=>!jobMonth(j)).length;
-  const rev=a=>a.reduce((s,j)=>s+moneyOf(j.id).contract.amount,0),cost=a=>a.reduce((s,j)=>s+costSum(moneyOf(j.id)),0);
+  const rev=a=>a.reduce((s,j)=>s+moneyOf(j.id).contract.amount,0),cost=a=>a.reduce((s,j)=>s+jobCost(j),0);
   const R=rev(sel),C=cost(sel),P=R-C;
   $("saTiles").innerHTML=`<div class="tile"><small>매출 (${sel.length}곳)</small><b>${man(R)}</b></div><div class="tile"><small>원가</small><b>${man(C)}</b></div>
     <div class="tile ${P<0?"bad":""}"><small>이익</small><b>${man(P)}</b></div><div class="tile"><small>이익률</small><b>${pct(P,R)}</b></div>`;
@@ -255,13 +379,13 @@ function renderSales(){
   if(!salesM){const months=[...Array(12)].map((_,k)=>{const js=inYear.filter(j=>jobMonth(j)===`${salesY}-${pad(k+1)}`);return{k:k+1,n:js.length,r:rev(js),c:cost(js)}});
     const max=Math.max(1,...months.map(x=>Math.max(x.r,x.c)));
     $("saMonths").innerHTML=months.map(x=>`<tr data-month="${x.k}" tabindex="0" class="${x.r||x.c?"":"zero"}"><td class="job"><b>${x.k}월</b>${x.n?`<small class="m-only">${x.n}곳</small>`:""}</td><td class="num d-only">${x.n||""}</td><td class="num" data-l="매출">${x.r?won(x.r):"—"}</td><td class="num" data-l="원가">${x.c?won(x.c):"—"}</td><td class="num ${x.r-x.c<0?"neg":""}" data-l="이익">${x.r||x.c?won(x.r-x.c):"—"}</td><td class="num" data-l="이익률">${x.r?pct(x.r-x.c,x.r):"—"}</td><td class="barcell">${bar(x.r,max)}${bar(x.c,max,"cost")}</td></tr>`).join("");}
-  $("saJobs").innerHTML=sel.length?[...sel].sort((a,b)=>jobMonth(a).localeCompare(jobMonth(b))).map(j=>{const m=moneyOf(j.id),r=m.contract.amount,c=costSum(m);
-    return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small><small class="m-only">${sub(j)?" · ":""}${+jobMonth(j).slice(5)}월 기준</small></td><td class="d-only"><span class="d">${+jobMonth(j).slice(5)}월</span></td><td class="num" data-l="매출">${won(r)}</td><td class="num" data-l="원가">${won(c)}${!m.costs.length?` <span class="tag wait">미입력</span>`:""}</td><td class="num ${r-c<0?"neg":""}" data-l="이익">${won(r-c)}</td><td class="num" data-l="이익률">${pct(r-c,r)}</td></tr>`}).join("")
+  $("saJobs").innerHTML=sel.length?[...sel].sort((a,b)=>jobMonth(a).localeCompare(jobMonth(b))).map(j=>{const m=moneyOf(j.id),r=m.contract.amount,c=jobCost(j),auto=autoCosts(j,m).length;
+    return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small><small class="m-only">${sub(j)?" · ":""}${+jobMonth(j).slice(5)}월 기준</small></td><td class="d-only"><span class="d">${+jobMonth(j).slice(5)}월</span></td><td class="num" data-l="매출">${won(r)}</td><td class="num" data-l="원가">${won(c)}${!m.costs.length&&!auto?` <span class="tag wait">미입력</span>`:auto?` <span class="tag wait" title="시공 인건비를 일정 × 일당으로 자동 계산">인건비 자동</span>`:""}</td><td class="num ${r-c<0?"neg":""}" data-l="이익">${won(r-c)}</td><td class="num" data-l="이익률">${pct(r-c,r)}</td></tr>`}).join("")
     :`<tr><td colspan="6" class="hint">이 기간에 계약금액이나 원가를 넣은 현장이 없어요.</td></tr>`;
-  const cats=COST_CATS.map(c=>({c,v:sel.reduce((s,j)=>s+moneyOf(j.id).costs.filter(x=>x.cat===c).reduce((a,x)=>a+x.amount,0),0)})).filter(x=>x.v);
+  const cats=COST_CATS.map(c=>({c,v:sel.reduce((s,j)=>s+jobCosts(j).filter(x=>x.cat===c).reduce((a,x)=>a+x.amount,0),0)})).filter(x=>x.v);
   $("saCosts").innerHTML=cats.length?cats.map(x=>`<tr><td>${esc(x.c)}</td><td class="num">${won(x.v)}</td><td class="num">${pct(x.v,C)}</td><td class="barcell">${bar(x.v,C,"cost")}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">원가 기록이 없어요.</td></tr>`;
-  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 기준 달은 시공이 끝나는 달이고, 시공일이 없으면 계약일 기준이에요.${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
+  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 기준 달은 시공이 끝나는 달이고, 시공일이 없으면 계약일 기준이에요.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 탭의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
 }
 $("sa-y").onchange=e=>{salesY=+e.target.value;renderSales()};
 $("sa-m").onchange=e=>{salesM=+e.target.value;renderSales()};
@@ -319,7 +443,8 @@ function readMoney(){
   return normMoney({contract:{date:$("mo-date").value,amount:toNum($("mo-amount").value),vat:$("mo-vat").checked},
     pays:[...$("mo-pays").children].map(r=>({label:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),due:r.querySelector(".due").value,paid:r.querySelector(".paid").checked,paidOn:r.querySelector(".paidOn").value})).filter(p=>p.amount>0||p.due),
     costs:[...$("mo-costs").children].map(r=>({cat:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),note:r.querySelector(".note input").value.trim()})).filter(x=>x.amount>0||x.note)});}
-function moneySummary(){if(!isAdmin)return;const m=readMoney(),t=billTotal(m),r=received(m),c=costSum(m),p=m.contract.amount-c;
+function moneySummary(){if(!isAdmin)return;const m=readMoney(),auto=autoCosts(editing,m),t=billTotal(m),r=received(m),c=costSum(m)+auto.reduce((a,x)=>a+x.amount,0),p=m.contract.amount-c;
+  moneyHint(m,auto);
   const sched=m.pays.reduce((a,x)=>a+x.amount,0);
   let h=`<span>받을 돈 <b>${won(t)}</b>${m.contract.vat?` <small>부가세 ${won(t-m.contract.amount)} 포함</small>`:""}</span><span>받은 돈 <b>${won(r)}</b></span><span>미수금 <b>${won(Math.max(0,t-r))}</b></span><span>원가 <b>${won(c)}</b></span><span>이익 <b class="${p<0?"neg":""}">${won(p)}</b> <small>${pct(p,m.contract.amount)}</small></span>`;
   if(t&&sched!==t)h+=`<span class="hint" style="flex-basis:100%">입금 일정 합계가 받을 돈보다 ${won(Math.abs(t-sched))} ${sched<t?"적어요":"많아요"}.</span>`;
@@ -327,11 +452,19 @@ function moneySummary(){if(!isAdmin)return;const m=readMoney(),t=billTotal(m),r=
 function fillMoney(j){if(!isAdmin)return;const m=j?moneyOf(j.id):normMoney();
   $("mo-date").value=m.contract.date;$("mo-amount").value=comma(m.contract.amount);$("mo-vat").checked=m.contract.vat;
   $("mo-pays").innerHTML="";m.pays.forEach(p=>payRow(p));$("mo-costs").innerHTML="";m.costs.forEach(x=>costRow(x));
-  const ex=j?extraSum(j):0;$("mo-extra-hint").textContent=ex?`이 현장 마감 추가 투입: ${ex}명 (${j.f.extra.length}회)`:"";
   moneySummary();}
+/* 원가 아래 안내: 마감 추가 투입 인원, 일정 × 일당으로 자동 계산한 인건비 */
+function moneyHint(m,auto){const j=editing,out=[];
+  if(j&&extraSum(j))out.push(`이 현장 마감 추가 투입: ${extraSum(j)}명 (${j.f.extra.length}회)`);
+  if(j&&pay08){const L=laborOf(j),c=Math.round(L.crew);
+    auto.forEach(x=>out.push(`${x.cat} ${won(x.amount)} 자동 반영 (정산 탭 일당 기준)`));
+    if(c&&m.costs.some(x=>x.cat==="시공 인건비"))out.push(`일정 × 일당으로는 시공 인건비 ${won(c)}인데, 직접 적은 금액을 써요`);
+    if(L.miss.size)out.push(`일당 미입력: ${[...L.miss].join(", ")}`);}
+  $("mo-extra-hint").textContent=out.join(" · ");}
 $("addPay").onclick=()=>{payRow();moneySummary();};
 $("addCost").onclick=()=>costRow();
 document.addEventListener("input",e=>{const el=e.target;if(el.classList&&el.classList.contains("won")){const n=toNum(el.value);el.value=comma(n);}
+  if(el.classList&&el.classList.contains("swon")){const n=toNum(el.value);el.value=(el.value.trim().startsWith("-")?"-":"")+comma(n);}
   if(el.closest&&el.closest("#sec-money"))moneySummary();});
 $("sec-money").addEventListener("change",moneySummary);
 
@@ -446,8 +579,8 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
 document.addEventListener("click",e=>{const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
   const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openForm(j);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openForm(j);}}});
-const VIEWS=["board","cal","crew","pay","sales"];
-function tab(which){if(!isAdmin&&(which==="pay"||which==="sales"))which="board";curTab=which;
+const VIEWS=["board","cal","crew","pay","sales","wage"];
+function tab(which){if(!isAdmin&&["pay","sales","wage"].includes(which))which="board";curTab=which;
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
   if(which==="crew")renderCrew();
   try{localStorage.setItem("nest-tab",which)}catch(e){}}
@@ -902,7 +1035,8 @@ function backupSheets(){
     sheets.push({name:"입금 내역",cols:[["현장",18,"s"],["구분",9,"s"],["금액",14,"w"],["받을 날",12,"d"],["입금",7,"s"],["입금일",12,"d"]],
       rows:list.flatMap(j=>moneyOf(j.id).pays.map(p=>[j.name,p.label,p.amount,p.due,OX(p.paid),p.paidOn]))});
     sheets.push({name:"원가",cols:[["현장",18,"s"],["항목",16,"s"],["금액",14,"w"],["메모",36,"s"]],
-      rows:list.flatMap(j=>moneyOf(j.id).costs.map(x=>[j.name,x.cat,x.amount,x.note]))});}
+      rows:list.flatMap(j=>jobCosts(j).map(x=>[j.name,x.cat,x.amount,x.note]))});
+    if(pay08)sheets.push(...wageSheets());}
   const clRows=[];
   list.forEach(j=>{const c=clOf(j.id);if(!c)return;const d=c.data||{},it=d.items||{},dims=d.dims||{},day=(c.submitted_at||"").slice(0,10),st=c.status==="submitted"?"제출":"작성 중";
     NEST_CL.sections(j).forEach(sec=>{
@@ -916,9 +1050,20 @@ function backupSheets(){
     rows:files.map(f=>[nameOf(f.job_id),KIND[f.kind]||f.kind,f.kind==="photo"?(f.stage||""):f.kind==="spec"?appOf(f):"",f.name||"",f.uploaded_by||"",(f.created_at||"").slice(0,10)])});
   sheets.push({name:"시공자 명단",cols:[["시공자",16,"s"]],rows:CREW.map(c=>[c])});
   return sheets;}
+/* 엑셀 백업: 일당 설정과 달마다 정산 (일정이나 기록이 있는 달, 최근 3년) */
+function wageSheets(){const R=wage.rates,out=[];
+  const rates=[...Object.entries(R.day).map(([n,v])=>[n,v]),...(R.extra?[["마감 추가 투입 1인",R.extra]]:[]),...(R.as?[["AS 하루",R.as]]:[])];
+  if(rates.length)out.push({name:"시공자 일당",cols:[["시공자",22,"s"],["일당",14,"w"]],rows:rates});
+  const ks=new Set(Object.keys(wage.months)),lo=ymKey(now.getFullYear()-3,1),hi=ymKey(now.getFullYear()+1,12);
+  jobs.forEach(j=>{if(j.i.crew.length)workDays(j).forEach(d=>ks.add(d.slice(0,7)));j.f.as.forEach(a=>{if(a.crew&&a.date)ks.add(a.date.slice(0,7))});j.f.extra.forEach(x=>{if(x.date)ks.add(x.date.slice(0,7))});});
+  const rows=[];[...ks].filter(k=>/^\d{4}-\d{2}$/.test(k)&&k>=lo&&k<=hi).sort().forEach(k=>{const W=wageMonth(+k.slice(0,4),+k.slice(5)),x=W.extra;
+    W.people.forEach(p=>rows.push([k,p.n,p.days||"",p.as||"",p.rate||"",p.adj||"",p.note,shownPay(p)??"",p.paid]));
+    if(x.people||x.paid)rows.push([k,"마감 추가 투입 (인원)",x.people||"","",x.rate||"","","",(x.paid&&x.snap?+x.snap.total||0:x.total)??"",x.paid]);});
+  if(rows.length)out.push({name:"시공자 정산",cols:[["월",9,"s"],["시공자",16,"s"],["시공일",8,"n"],["AS",6,"n"],["일당",12,"w"],["조정",12,"w"],["메모",24,"s"],["합계",14,"w"],["지급일",12,"d"]],rows});
+  return out;}
 const XLS_KEY="nest-backup-day";
 function renderBackup(){let last="";try{last=localStorage.getItem(XLS_KEY)||""}catch(e){}
-  const what=isAdmin?"현장·AS·수금·원가":"현장·일정·AS";
+  const what=isAdmin?"현장·AS·수금·원가·정산":"현장·일정·AS";
   const old=!last||(new Date(TODAY)-new Date(last))/864e5>30;
   $("xlsNote").innerHTML=`${what} 기록을 엑셀 파일 하나로 받아 보관해요.`+(last?` 이 기기에서 마지막으로 받은 날: ${+last.slice(5,7)}월 ${+last.slice(8)}일`:"")+(jobs.length&&old?` <span class="tag soon">${last?"한 달 넘게 안 받았어요":"아직 한 번도 안 받았어요"}</span>`:"");}
 function downloadBackup(){
@@ -1049,10 +1194,10 @@ async function checkAdmin(){
 }
 async function loadAll(){
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib()]);
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
-  jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];
+  jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];laborCache=null;
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
   cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
   if(!ck.error){checks={};(ck.data||[]).forEach(r=>{checks[r.job_id]=r});}
@@ -1069,7 +1214,7 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
