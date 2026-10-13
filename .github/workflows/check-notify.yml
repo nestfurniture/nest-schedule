@@ -43,3 +43,8 @@ jobs:
           curl -s -i -m 30 "$URL/rest/v1/crew_pay?select=key&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
           echo; echo "== 12. 회사 지출 표(expenses, 업데이트 9) — [] 이면 준비됨, PGRST205 면 update-09.sql 실행 필요"
           curl -s -i -m 30 "$URL/rest/v1/expenses?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 13. 견적서 표(estimates, 업데이트 10) — [] 이면 준비됨, PGRST205 면 update-10.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/estimates?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 14. 고객용 견적서(est_open) — 404 not found 이면 새 코드, 400 unknown action 이면 알림 서버 붙여넣기 필요"
+          curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+            -H "Content-Type: application/json" -d '{"action":"est_open","token":"probe_aaaaaaaaaaaaaaaa","staff":true}' | grep -E "^HTTP|error" | head -5

@@ -1,6 +1,6 @@
 // 앱 화면 파일만 캐시해서 빠르게 열리게 합니다. 일정 데이터는 항상 서버에서 받아옵니다.
-const CACHE = "nest-schedule-v19";
-const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/badge-96.png", "icons/apple-touch-icon.png", "icons/favicon.png", "vendor/supabase.js", "checklist.js", "check.html", "check.js"];
+const CACHE = "nest-schedule-v20";
+const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/badge-96.png", "icons/apple-touch-icon.png", "icons/favicon.png", "vendor/supabase.js", "checklist.js", "check.html", "check.js", "estimate.js", "est.html", "est.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
@@ -9,9 +9,9 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
-  // 알림에서 연 주소(?day=…)도 같은 화면이라 한 칸에만 저장. 시공자 체크리스트 화면은 따로
-  const nav = e.request.mode === "navigate", check = url.pathname.endsWith("/check.html");
-  const key = nav ? (check ? "check.html" : "./") : e.request;
+  // 알림에서 연 주소(?day=…)도 같은 화면이라 한 칸에만 저장. 시공자 체크리스트·고객 견적서 화면은 따로
+  const nav = e.request.mode === "navigate", page = ["check.html", "est.html"].find((p) => url.pathname.endsWith("/" + p)), check = !!page;
+  const key = nav ? (page || "./") : e.request;
   // 새 버전을 먼저 시도하고, 인터넷이 안 되면 저장해 둔 화면을 보여줌
   e.respondWith(fetch(e.request).then(res => {
     const copy = res.clone(); caches.open(CACHE).then(c => c.put(key, copy)); return res;

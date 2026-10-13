@@ -139,7 +139,7 @@ function render(){
       <dt>파일</dt><dd>${fileCount(j)}</dd>${isAdmin?`<dt>수금</dt><dd>${payTag(j)}</dd>`:""}
     </dl></button>`).join("");
   renderCal();renderCrew();
-  if(isAdmin){renderPay();renderSales();renderWage();}
+  if(isAdmin){renderPay();renderSales();renderWage();renderEst();}
   if(viewing)renderView();
 }
 /* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
@@ -218,7 +218,8 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const more=[kv("가전",apps.map(a=>esc(`${NEST_CL.typeName(NEST_CL.appType(a))}${a.model?` ${a.model}`:""}`)).join(", ")),kv("체크리스트",c?(clTag(j)||(c.status==="submitted"?`<span class="tag ok">제출됨</span>`:`<span class="tag wait">링크 보냄</span>`)):""),kv("파일",fileCount(j))].join("");
   if(more)h+=`<div class="dsec"><h3>가전 · 체크리스트 · 파일</h3><dl class="kv">${more}</dl></div>`;
   if(isAdmin){const m=moneyOf(j.id),b=billTotal(m),cost=jobCost(j);
-    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",won(cost))}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl></div>`;}
+    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",won(cost))}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl></div>`;
+    if(est10){const es=estOfJob(j.id);h+=`<div class="dsec"><h3>견적서</h3>${li(es.map(e=>`<button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}`))}<div class="jv-btns"><button class="btn ghost sm" type="button" data-esnew="${esc(j.id)}">+ 견적서 작성</button></div></div>`;}}
   h+=`<div class="dsec jv-stage">${j.f.closed?`<p class="sub" style="margin:0">${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"정산 완료로 자동 종료":"종료 처리"}됐어요.</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div>`
     :`<p class="sub" style="margin:0">받을 돈을 다 받고 시공이 끝나면 자동으로 종료 현장으로 옮겨져요${j.f.reopen?" (이 현장은 다시 열어서 자동 종료가 꺼져 있어요)":""}.</p><div><button class="btn ghost sm" type="button" id="jvEnd">지금 종료 처리</button></div>`}</div>`;
   $("jvBody").innerHTML=h;}
@@ -504,6 +505,219 @@ $("sa-y").onchange=e=>{salesY=+e.target.value;renderSales()};
 $("sa-m").onchange=e=>{salesM=+e.target.value;renderSales()};
 document.addEventListener("click",e=>{const r=e.target.closest("[data-month]");if(r){salesM=+r.dataset.month;renderSales();}});
 
+/* 견적서 (관리자). 앱에서 품목을 넣어 작성 → 미리보기·인쇄(PDF) → 고객에게 링크(est.html?t=열쇠) → 계약으로 확정하면 계약금액·입금 일정이 수금·결산에 들어감.
+   같은 견적의 2차·3차는 base(처음 견적 id)로 묶음. 회사 정보·도장과 단가표는 est_conf */
+const E=window.NEST_EST;
+(()=>{const st=document.createElement("style");st.textContent=E.css;document.head.appendChild(st);})();
+let ests=[],estConf={company:E.normCompany(),items:[]},est10=true,estChan=null,estCat="",esCur=null,esSnap="",esPreview=false,esFrom=null,coStamp="",coFilled=false;
+const EST_ST={draft:"작성중",sent:"보냄",won:"계약",lost:"안 됨"},EST_TONE={draft:"wait",sent:"soon",won:"ok",lost:"wait"};
+const normEstRow=r=>({id:r.id,job_id:r.job_id||"",token:r.token||"",status:EST_ST[r.status]?r.status:"draft",d:E.norm(r.data),views:+r.views||0,first:r.first_seen||"",seen:r.seen_at||"",created:r.created_at||""});
+const normLib=d=>(Array.isArray(d&&d.list)?d.list:[]).map(x=>({name:String(x.name||"").slice(0,120),spec:String(x.spec||"").slice(0,120),unit:String(x.unit||"").slice(0,10),price:toNum(x.price)})).filter(x=>x.name);
+const estTag=e=>`<span class="tag ${EST_TONE[e.status]}">${EST_ST[e.status]}</span>`;
+const estUrl=t=>new URL(`est.html?t=${t}`,location.href.split(/[?#]/)[0]).href;
+const estMsg=e=>`[네스트퍼니처 견적서]\n\n${e.d.cust.name?`${e.d.cust.name.replace(/\s*(고객|고객님|님)$/,"")} 고객님, `:""}요청하신 견적서를 보내 드려요.\n아래 링크를 누르면 보실 수 있어요.\n${estUrl(e.token)}`;
+const seenTxt=ts=>{if(!ts)return"";const d=new Date(ts);return`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+const estOfJob=id=>ests.filter(e=>e.job_id===id).sort((a,b)=>(a.d.date||"").localeCompare(b.d.date||"")||a.d.ver-b.d.ver);
+async function loadEst(){if(!isAdmin){ests=[];return;}
+  const [a,b]=await Promise.all([sb.from("estimates").select("*").order("created_at"),sb.from("est_conf").select("*")]);
+  est10=!(a.error&&/estimates|42P01|PGRST20/i.test(`${a.error.code} ${a.error.message}`));
+  if(!a.error)ests=(a.data||[]).map(normEstRow);
+  if(!b.error){const rows=b.data||[],c=rows.find(r=>r.key==="company"),it=rows.find(r=>r.key==="items");estConf={company:E.normCompany(c&&c.data),items:normLib(it&&it.data)};}
+  if(!coFilled||!$("esCoBox").open)fillCompany();
+  if(est10&&!a.error&&!estChan)estChan=sb.channel("nest-est").on("postgres_changes",{event:"*",schema:"public",table:"estimates"},estRefresh).on("postgres_changes",{event:"*",schema:"public",table:"est_conf"},estRefresh).subscribe();}
+function estRefresh(){loadEst().then(()=>{if(!isAdmin)return;renderEst();if(viewing)renderView();if(esCur){const r=ests.find(x=>x.id===esCur.id);if(r){esCur={...esCur,status:r.status,views:r.views,seen:r.seen,first:r.first,job_id:esCur.job_id};renderEsMeta();}}});}
+function renderEst(){
+  $("esUpdate").hidden=est10;$("esBody").hidden=!est10;if(!est10)return;
+  const cats=[["","전체",()=>true],...Object.keys(EST_ST).map(k=>[k,EST_ST[k],e=>e.status===k])];
+  if(!cats.some(c=>c[0]===estCat))estCat="";
+  $("esChips").innerHTML=cats.map(([k,l,fn])=>`<button class="chip${k===estCat?" on":""}" type="button" data-escat="${k}" aria-pressed="${k===estCat}">${l} <b>${ests.filter(fn).length}</b></button>`).join("");
+  const list=ests.filter(cats.find(c=>c[0]===estCat)[2]).sort((a,b)=>(b.d.date||"").localeCompare(a.d.date||"")||b.created.localeCompare(a.created));
+  $("esList").innerHTML=list.length?list.map(e=>{const t=E.calc(e.d),j=e.job_id&&jobs.find(x=>x.id===e.job_id);
+    return`<tr data-es="${esc(e.id)}" tabindex="0"><td class="job"><b>${esc(e.d.cust.name||"(고객명 없음)")}</b>${e.d.ver>1?` <span class="tag soon">${e.d.ver}차</span>`:""}<small>${[esc(e.d.title),j?`현장 ${esc(j.name)}`:""].filter(Boolean).join(" · ")}</small></td>
+      <td data-l="견적일"><span class="d">${fmtW(e.d.date)}</span></td><td class="num" data-l="합계">${won(t.total)}</td><td data-l="상태">${estTag(e)}</td>
+      <td data-l="고객 확인">${e.views?`${e.views}번 열어 봄 <small class="hint">${seenTxt(e.seen)}</small>`:e.status==="sent"?`<span class="hint">아직 안 열어 봄</span>`:"—"}</td></tr>`;}).join("")
+    :`<tr><td colspan="5" class="hint">${ests.length?"이 분류에 해당하는 견적서가 없어요.":"아직 견적서가 없어요. 위의 <b>+ 새 견적서</b>를 눌러 시작해 보세요."}</td></tr>`;
+  const co=estConf.company;
+  $("esCoSum").textContent=co.name||co.tel||co.bizNo?`${co.name||"상호 없음"} · ${co.stamp?"도장 있음":"도장 없음"}`:"아직 안 넣었어요. 견적서에 들어갈 회사 정보를 넣어 주세요.";
+  $("esLibSum").textContent=estConf.items.length?`${estConf.items.length}개`:"아직 없어요";
+  $("libList").innerHTML=estConf.items.length?estConf.items.map((x,k)=>`<tr data-lib="${k}" tabindex="0"><td class="job"><b>${esc(x.name)}</b></td><td data-l="규격">${esc(x.spec)||"—"}</td><td data-l="단위">${esc(x.unit)||"—"}</td><td class="num" data-l="단가">${won(x.price)}</td><td class="push"><button class="btn del sm" type="button" data-libdel="${k}">빼기</button></td></tr>`).join("")
+    :`<tr><td colspan="5" class="hint">자주 쓰는 품목과 단가를 넣어 두면 견적서를 쓸 때 골라 쓸 수 있어요.</td></tr>`;
+  $("es-libnames").innerHTML=estConf.items.map(x=>`<option value="${esc(x.name)}">${esc([x.spec,x.unit,x.price?won(x.price):""].filter(Boolean).join(" · "))}</option>`).join("");}
+/* 회사 정보 · 도장 */
+function fillCompany(){const co=estConf.company;coFilled=true;
+  [["co-name","name"],["co-ceo","ceo"],["co-biz","bizNo"],["co-tel","tel"],["co-email","email"],["co-addr","addr"],["co-bank","bank"],["co-memo","memo"]].forEach(([id,k])=>$(id).value=co[k]);
+  $("co-valid").value=co.valid||"";coStamp=co.stamp;showStamp();fillTerms("co-terms",co.terms);
+  if(!co.name&&!co.tel&&!co.bizNo&&!$("esCoBox").dataset.seen){$("esCoBox").open=true;$("esCoBox").dataset.seen="1";}}
+function showStamp(){$("co-stampBox").innerHTML=coStamp?`<img src="${esc(coStamp)}" alt="도장">`:"도장 없음";$("co-stampDel").hidden=!coStamp;}
+async function stampData(file){const url=URL.createObjectURL(file);
+  try{const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url;});
+    const s=Math.min(1,360/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.max(1,Math.round(img.width*s));c.height=Math.max(1,Math.round(img.height*s));
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);let d=c.toDataURL("image/png");if(d.length>350000)d=c.toDataURL("image/jpeg",.85);return d;}
+  finally{URL.revokeObjectURL(url);}}
+$("co-stamp").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;
+  try{coStamp=await stampData(f);showStamp();$("co-err").hidden=true;}catch(err){$("co-err").textContent="이 사진은 열 수 없어요. 다른 사진(JPG·PNG)으로 올려 주세요.";$("co-err").hidden=false;}};
+$("co-stampDel").onclick=()=>{coStamp="";showStamp();};
+$("co-save").onclick=async()=>{const v=id=>$(id).value.trim();
+  const co=E.normCompany({name:v("co-name"),ceo:v("co-ceo"),bizNo:v("co-biz"),tel:v("co-tel"),email:v("co-email"),addr:v("co-addr"),bank:v("co-bank"),stamp:coStamp,valid:v("co-valid")||0,terms:readTerms("co-terms"),memo:$("co-memo").value.trim()});
+  const b=$("co-save");b.disabled=true;const {error}=await sb.from("est_conf").upsert({key:"company",data:co,updated_at:new Date().toISOString()});b.disabled=false;
+  if(error){$("co-err").textContent="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";$("co-err").hidden=false;return;}
+  $("co-err").hidden=true;estConf.company=co;fillCompany();renderEst();flash(b,"저장됨",true);};
+/* 결제 조건 줄 (회사 기본값·견적서 공용) */
+function termRow(box,t){const div=document.createElement("div");div.className="es-term";
+  div.innerHTML=`<input class="t-l" value="${esc(t.label)}" placeholder="계약금" aria-label="결제 구분"><input class="t-p" inputmode="decimal" value="${t.pct?E.qtyTxt(t.pct):""}" placeholder="0" aria-label="비율(%)"><span>%</span><span class="t-a hint"></span><button class="btn del sm" type="button" data-tdel>빼기</button>`;
+  $(box).appendChild(div);}
+function fillTerms(box,terms){$(box).innerHTML="";terms.forEach(t=>termRow(box,t));}
+function readTerms(box){return E.normTerms([...$(box).children].map(r=>({label:r.querySelector(".t-l").value.trim(),pct:r.querySelector(".t-p").value})));}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-addterm]");if(a){const box=a.dataset.addterm,cur=readTerms(box),used=cur.map(t=>t.label);
+    termRow(box,{label:["계약금","중도금","잔금","추가금"].find(l=>!used.includes(l))||"추가금",pct:Math.max(0,100-cur.reduce((s,t)=>s+t.pct,0))});if(box==="es-terms")esSum();return;}
+  const d=e.target.closest("[data-tdel]");if(d){const box=d.closest(".es-terms");d.closest(".es-term").remove();if(box.id==="es-terms")esSum();}});
+/* 단가표 */
+async function saveLib(list,btn){const {error}=await sb.from("est_conf").upsert({key:"items",data:{list},updated_at:new Date().toISOString()});
+  if(error){if(btn)flash(btn,"저장 못 함",false);return false;}estConf.items=list;renderEst();return true;}
+function libPut(x){const list=estConf.items.filter(o=>o.name!==x.name);list.push(x);list.sort((a,b)=>a.name.localeCompare(b.name,"ko"));return list;}
+$("lib-add").onclick=async()=>{const x={name:$("lib-name").value.trim(),spec:$("lib-spec").value.trim(),unit:$("lib-unit").value.trim(),price:toNum($("lib-price").value)};
+  if(!x.name){$("lib-err").textContent="품명을 넣어 주세요.";$("lib-err").hidden=false;return;}
+  $("lib-err").hidden=true;const b=$("lib-add");b.disabled=true;const ok=await saveLib(libPut(x),b);b.disabled=false;
+  if(ok){["lib-name","lib-spec","lib-unit","lib-price"].forEach(id=>$(id).value="");flash(b,"넣었어요",true);}};
+document.addEventListener("click",async e=>{const d=e.target.closest("[data-libdel]");if(d){e.stopPropagation();const k=+d.dataset.libdel;d.disabled=true;await saveLib(estConf.items.filter((_,i)=>i!==k),d);return;}
+  const r=e.target.closest("[data-lib]");if(r){const x=estConf.items[+r.dataset.lib];if(!x)return;$("lib-name").value=x.name;$("lib-spec").value=x.spec;$("lib-unit").value=x.unit;$("lib-price").value=comma(x.price);$("lib-name").focus();}});
+/* 견적서 작성 화면 */
+function newEstData(j){const co=estConf.company;
+  return E.norm({date:TODAY,valid:co.valid,terms:co.terms,memo:co.memo,vat:"add",rows:[{t:"i",qty:1}],cust:j?{name:j.name,addr:j.addr}:{},title:j?j.item:""});}
+function jobOpts(sel){const list=jobs.filter(j=>!j.f.closed||j.id===sel).sort((a,b)=>a.name.localeCompare(b.name,"ko"));
+  return`<option value="">— 연결 안 함 (계약으로 확정할 때 현장을 새로 만들어요) —</option>`+list.map(j=>`<option value="${esc(j.id)}" ${j.id===sel?"selected":""}>${esc(j.name)}${j.item?` · ${esc(j.item)}`:""}</option>`).join("");}
+function esRowEl(r){const div=document.createElement("div");
+  const tools=`<span class="es-tools">${r.t==="i"?`<button type="button" data-rt="star" title="단가표에 넣기" aria-label="단가표에 넣기">☆</button>`:""}<button type="button" data-rt="up" title="위로" aria-label="위로">↑</button><button type="button" data-rt="down" title="아래로" aria-label="아래로">↓</button><button type="button" data-rt="del" title="빼기" aria-label="빼기">✕</button></span>`;
+  if(r.t==="h"){div.className="es-row head";div.dataset.t="h";div.innerHTML=`<input class="es-nm" value="${esc(r.name)}" placeholder="구분 (예: 주방, 안방 붙박이장)" aria-label="구분">${tools}`;return div;}
+  div.className="es-row";div.dataset.t="i";
+  div.innerHTML=`<input class="es-nm" list="es-libnames" value="${esc(r.name)}" placeholder="품명" aria-label="품명"><input class="es-sp" value="${esc(r.spec)}" placeholder="규격 (예: W2400×D600×H2300)" aria-label="규격"><input class="es-q" inputmode="decimal" value="${r.qty?E.qtyTxt(r.qty):""}" placeholder="수량" aria-label="수량"><input class="es-u" list="es-units" value="${esc(r.unit)}" placeholder="단위" aria-label="단위"><input class="es-p won" inputmode="numeric" value="${comma(r.price)}" placeholder="단가" aria-label="단가"><span class="es-amt"></span><input class="es-nt" value="${esc(r.note)}" placeholder="비고" aria-label="비고">${tools}`;
+  return div;}
+function readEstRow(el){const v=c=>(el.querySelector(c)||{}).value||"";
+  return el.dataset.t==="h"?{t:"h",name:v(".es-nm").trim()}:{t:"i",name:v(".es-nm").trim(),spec:v(".es-sp").trim(),qty:v(".es-q"),unit:v(".es-u").trim(),price:toNum(v(".es-p")),note:v(".es-nt").trim()};}
+function fillEst(d,jobId){
+  $("es-job").innerHTML=jobOpts(jobId);$("es-job").value=jobId||"";if($("es-job").value!==(jobId||""))$("es-job").value="";
+  $("es-cname").value=d.cust.name;$("es-cphone").value=d.cust.phone;$("es-caddr").value=d.cust.addr;$("es-title").value=d.title;
+  $("es-date").value=d.date;$("es-valid").value=d.valid||"";$("es-disc").value=comma(d.disc);$("es-vat").value=d.vat;$("es-memo").value=d.memo;
+  $("es-rows").innerHTML="";d.rows.forEach(r=>$("es-rows").appendChild(esRowEl(r)));fillTerms("es-terms",d.terms);esSum();}
+function readEst(){const b=esCur?esCur.d:{};
+  return E.norm({no:b.no,ver:b.ver,base:b.base,sentAt:b.sentAt,date:$("es-date").value,valid:$("es-valid").value,
+    cust:{name:$("es-cname").value.trim(),phone:$("es-cphone").value.trim(),addr:$("es-caddr").value.trim()},title:$("es-title").value.trim(),
+    rows:[...$("es-rows").children].map(readEstRow),disc:toNum($("es-disc").value),vat:$("es-vat").value,terms:readTerms("es-terms"),memo:$("es-memo").value.trim()});}
+const esState=()=>JSON.stringify([readEst(),$("es-job").value]);
+const esDirty=()=>!$("estSheet").hidden&&esState()!==esSnap;
+function esSum(){const d=readEst(),t=E.calc(d);
+  [...$("es-rows").children].forEach((el,k)=>{const a=el.querySelector(".es-amt");if(a){const x=E.lineAmt(d.rows[k]||{});a.textContent=x?won(x):"";}});
+  const plan=E.payPlan(d.terms,t.total);let n=0;
+  [...$("es-terms").children].forEach(el=>{const p=E.normTerms([{label:"x",pct:el.querySelector(".t-p").value}]).length?plan[n++]:null;el.querySelector(".t-a").textContent=p&&t.total?won(p.amount):"";});
+  let h=`<span>품목 합계 <b>${won(t.supply)}</b></span>${t.disc?`<span>할인 <b>-${won(t.disc)}</b></span>`:""}${d.vat==="add"?`<span>공급가액 <b>${won(t.net)}</b></span><span>부가세 <b>${won(t.vat)}</b></span>`:d.vat==="incl"?`<span>공급가액 <b>${won(t.base)}</b> <small>부가세 ${won(t.vat)} 포함</small></span>`:""}<span>합계 <b>${won(t.total)}</b></span>`;
+  if(t.total)h+=`<span class="hint" style="flex-basis:100%">일금 ${E.hangul(t.total)}원정</span>`;
+  const sum=d.terms.reduce((a,x)=>a+x.pct,0);
+  if(d.terms.length&&Math.abs(sum-100)>0.001)h+=`<span class="neg" style="flex-basis:100%">결제 조건을 합하면 ${E.qtyTxt(sum)}%예요. 100%가 되게 맞춰 주세요.</span>`;
+  $("es-sum").innerHTML=h;
+  if(esPreview)$("esDoc").innerHTML=E.doc(d,estConf.company);}
+function renderEsMeta(){const e=esCur;
+  $("esTitle").innerHTML=e?`견적서${e.d.no?` <span class="hint">No. ${esc(e.d.no)}</span>`:""}${e.d.ver>1?` <span class="tag soon">${e.d.ver}차</span>`:""} ${estTag(e)}`:"새 견적서";
+  const m=e?[e.views?`고객이 ${e.views}번 열어 봤어요 (처음 ${seenTxt(e.first)}, 마지막 ${seenTxt(e.seen)})`:e.status==="sent"?"고객에게 보냈고 아직 안 열어 봤어요":"",e.status==="won"&&e.job_id?"계약으로 확정한 견적서예요":""].filter(Boolean).join(" · "):"";
+  $("esMeta").textContent=m;$("esMeta").hidden=!m;
+  ["esCopy","esLost","esOpen","esDel"].forEach(id=>$(id).hidden=!e);
+  if(e){$("esOpen").href=estUrl(e.token)+"#me";$("esLost").textContent=e.status==="lost"?"다시 진행으로":"안 됨으로 표시";$("esLost").hidden=e.status==="won";}
+  $("esWin").textContent=e&&e.status==="won"?"계약 금액 다시 반영":"계약으로 확정";
+  $("esView").textContent=esPreview?"고치기":"미리보기";$("esEdit").hidden=esPreview;$("esPrev").hidden=!esPreview;$("esPrint").hidden=!esPreview;}
+function esErr(t){$("es-err").textContent=t;$("es-err").hidden=!t;}
+function esAsk(html,bad){$("esAsk").innerHTML=html;$("esAsk").classList.toggle("bad",!!bad);$("esAsk").hidden=!html;if(html)$("esAsk").scrollIntoView({block:"nearest"});}
+function openEst(rec,init){
+  esCur=rec?{...rec}:null;esPreview=false;esErr("");esAsk("");
+  fillEst(rec?rec.d:init.d,rec?rec.job_id:init.job_id||"");esSnap=esState();renderEsMeta();
+  if($("estSheet").hidden){esFrom=document.activeElement;$("estSheet").hidden=false;document.body.style.overflow="hidden";}
+  $("estSheet").querySelector(".es-card").scrollTop=0;
+  if(!rec&&matchMedia("(pointer:fine)").matches)(init.job_id?$("es-title"):$("es-cname")).focus({preventScroll:true});}
+function closeEst(force){
+  if(!force&&esDirty()){esAsk(`<span>저장하지 않은 내용이 있어요.</span><button class="btn sm" type="button" id="esAskSave">저장하고 닫기</button><button class="btn ghost sm" type="button" id="esAskDrop">저장 안 하고 닫기</button><button class="btn ghost sm" type="button" id="esAskNo">계속 쓰기</button>`);return false;}
+  $("estSheet").hidden=true;esCur=null;esAsk("");$("printArea").innerHTML="";
+  if($("jobSheet").hidden&&$("daySheet").hidden)document.body.style.overflow="";
+  if(esFrom&&esFrom.isConnected&&esFrom.focus)esFrom.focus({preventScroll:true});esFrom=null;return true;}
+function nextNo(date){const p=date.slice(2).replace(/-/g,"");
+  const n=ests.map(e=>e.d.no).filter(no=>no.startsWith(p+"-")).map(no=>+no.slice(p.length+1)||0);return`${p}-${(n.length?Math.max(...n):0)+1}`;}
+async function saveEst(){
+  const d=readEst();d.rows=d.rows.filter(r=>r.t==="h"?r.name:(r.name||r.spec||r.price));
+  if(!d.cust.name&&!d.title){esErr("고객명이나 공사명을 넣어 주세요.");return false;}
+  if(!d.date)d.date=TODAY;if(!d.no)d.no=nextNo(d.date);
+  const job_id=$("es-job").value||null,b=$("esSave");b.disabled=true;esErr("");
+  const q=esCur?sb.from("estimates").update({data:d,job_id,updated_at:new Date().toISOString()}).eq("id",esCur.id).select()
+    :sb.from("estimates").insert({data:d,job_id,token:b64uRand(18),status:"draft"}).select();
+  const {data,error}=await q;b.disabled=false;
+  if(error||!data||!data[0]){esErr("저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.");return false;}
+  const r=normEstRow(data[0]);ests=ests.filter(x=>x.id!==r.id);ests.push(r);esCur=r;
+  fillEst(r.d,r.job_id);esSnap=esState();renderEsMeta();renderEst();if(viewing)renderView();flash(b,"저장됨",true);return true;}
+const esReady=async()=>esCur&&!esDirty()?true:await saveEst();
+async function setEstStatus(st,extra){const e=esCur;if(!e)return false;const d={...e.d,...(extra||{})};
+  const {data,error}=await sb.from("estimates").update({status:st,data:d,updated_at:new Date().toISOString()}).eq("id",e.id).select();
+  if(error||!data||!data[0]){esErr("바꾸지 못했어요. 다시 눌러 주세요.");return false;}
+  const r=normEstRow(data[0]);ests=ests.filter(x=>x.id!==r.id);ests.push(r);esCur={...r};esSnap=esState();renderEsMeta();renderEst();if(viewing)renderView();return true;}
+$("esSave").onclick=saveEst;
+$("esNew").onclick=()=>openEst(null,{d:newEstData(null),job_id:""});
+$("esClose").onclick=()=>closeEst();
+$("esView").onclick=()=>{esPreview=!esPreview;if(esPreview)$("esDoc").innerHTML=E.doc(readEst(),estConf.company);renderEsMeta();$("estSheet").querySelector(".es-card").scrollTop=0;};
+$("esPrint").onclick=()=>{$("printArea").innerHTML=E.doc(readEst(),estConf.company);document.body.classList.add("printing");window.print();};
+window.addEventListener("afterprint",()=>{document.body.classList.remove("printing");});
+$("esLink").onclick=async()=>{const b=$("esLink");if(!await esReady())return;const ok=await copyText(estMsg(esCur));flash(b,ok?"복사됨 · 문자나 카톡에 붙여넣기":"복사 안 됨",ok);
+  if(ok&&esCur.status==="draft")await setEstStatus("sent",{sentAt:new Date().toISOString()});};
+$("esLost").onclick=async()=>{if(!esCur)return;if(esDirty()&&!await saveEst())return;await setEstStatus(esCur.status==="lost"?(esCur.d.sentAt||esCur.views?"sent":"draft"):"lost");};
+$("esCopy").onclick=async()=>{if(!await esReady())return;const e=esCur,base=e.d.base||e.id,grp=ests.filter(x=>x.id===base||x.d.base===base);
+  const d={...e.d,ver:Math.max(e.d.ver,...grp.map(x=>x.d.ver))+1,base,date:TODAY,sentAt:""},b=$("esCopy");b.disabled=true;
+  const {data,error}=await sb.from("estimates").insert({data:d,job_id:e.job_id||null,token:b64uRand(18),status:"draft"}).select();b.disabled=false;
+  if(error||!data||!data[0]){esErr("복사하지 못했어요. 다시 눌러 주세요.");return;}
+  const r=normEstRow(data[0]);ests.push(r);renderEst();openEst(r);flash($("esSave"),`${r.d.ver}차를 만들었어요`,true);};
+$("esDel").onclick=()=>esAsk(`<span>이 견적서를 지울까요? 고객에게 보낸 링크도 더 이상 안 열려요. 되돌릴 수 없어요.</span><button class="btn del sm" type="button" id="esDelYes">삭제</button><button class="btn ghost sm" type="button" id="esAskNo">취소</button>`,true);
+$("esWin").onclick=async()=>{if(!await esReady())return;const e=esCur,t=E.calc(e.d);
+  if(!t.total){esErr("품목 금액을 넣은 뒤 확정해 주세요.");return;}
+  const j=e.job_id&&jobs.find(x=>x.id===e.job_id),m=j?moneyOf(j.id):null,plan=E.payPlan(e.d.terms,t.total),keep=m&&m.pays.length;
+  esAsk(`<span>합계 <b>${won(t.total)}</b>으로 계약을 확정할까요? ${j?`‘${esc(j.name)}’ 현장에`:`새 현장 ‘${esc(e.d.cust.name||e.d.title)}’을 만들고`} 계약금액 ${won(t.net)}${e.d.vat==="add"?"(부가세 별도)":""}을 넣${keep?"고, 이미 적힌 입금 일정은 그대로 둬요":plan.length?`고 입금 일정 ${plan.map(p=>`${esc(p.label)} ${won(p.amount)}`).join(", ")}을 만들어요`:"어요"}.${m&&m.contract.amount&&m.contract.amount!==t.net?` 지금 적힌 계약금액 ${won(m.contract.amount)}은 바뀌어요.`:""}</span><button class="btn sm" type="button" id="esWinYes">확정</button><button class="btn ghost sm" type="button" id="esAskNo">취소</button>`);};
+async function doWin(btn){const e=esCur,t=E.calc(e.d),plan=E.payPlan(e.d.terms,t.total);btn.disabled=true;esErr("");
+  try{let jid=e.job_id&&jobs.find(x=>x.id===e.job_id)?e.job_id:"";
+    if(!jid){const {data,error}=await sb.from("jobs").insert({name:e.d.cust.name||e.d.title||"새 현장",item:e.d.title,addr:e.d.cust.addr,m:{date:"",done:false},i:{start:"",end:"",crew:[]},f:{done:false,extra:[],as:[]},updated_at:new Date().toISOString()}).select();
+      if(error||!data||!data[0])throw error||new Error("job");jobs.push(norm(data[0].id,data[0]));jid=data[0].id;}
+    const m=normMoney(JSON.parse(JSON.stringify(moneyOf(jid))));
+    m.contract={date:m.contract.date||TODAY,amount:t.net,vat:e.d.vat==="add"};
+    if(!m.pays.length)m.pays=plan.map(p=>({label:p.label,amount:p.amount,due:"",paid:false,paidOn:""}));
+    const {error:me}=await sb.from("job_money").upsert({job_id:jid,data:m,updated_at:new Date().toISOString()});if(me)throw me;money[jid]=m;laborCache=null;
+    const {data:ed,error:ee}=await sb.from("estimates").update({status:"won",job_id:jid,updated_at:new Date().toISOString()}).eq("id",e.id).select();if(ee||!ed||!ed[0])throw ee||new Error("est");
+    const r=normEstRow(ed[0]);ests=ests.filter(x=>x.id!==r.id);ests.push(r);esCur={...r};
+    $("es-job").innerHTML=jobOpts(jid);$("es-job").value=jid;esSnap=esState();render();renderEsMeta();
+    esAsk(`<span>계약으로 확정했어요. 계약금액과 입금 일정이 수금·결산에 들어갔어요. 받을 날은 현장 수정 화면의 수금에서 정해 주세요.</span><button class="btn sm" type="button" data-jv="${esc(jid)}">현장 보기</button>`);
+  }catch(err){esErr("확정하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.");btn.disabled=false;}}
+$("estSheet").addEventListener("click",async e=>{const t=e.target;
+  if(t===$("estSheet")){closeEst();return;}
+  if(t.closest("[data-jv]")){closeEst(true);return;}
+  if(t.id==="esAskNo"){esAsk("");return;}
+  if(t.id==="esAskDrop"){closeEst(true);return;}
+  if(t.id==="esAskSave"){if(await saveEst())closeEst(true);return;}
+  if(t.id==="esWinYes"){doWin(t);return;}
+  if(t.id==="esDelYes"){t.disabled=true;const {error}=await sb.from("estimates").delete().eq("id",esCur.id);
+    if(error){t.disabled=false;esErr("지우지 못했어요. 다시 눌러 주세요.");return;}
+    ests=ests.filter(x=>x.id!==esCur.id);closeEst(true);renderEst();if(viewing)renderView();return;}
+  const rt=t.closest("[data-rt]");if(!rt)return;const row=rt.closest(".es-row"),box=$("es-rows");
+  if(rt.dataset.rt==="del"){row.remove();if(!box.children.length)box.appendChild(esRowEl({t:"i",qty:1}));}
+  else if(rt.dataset.rt==="up"&&row.previousElementSibling)box.insertBefore(row,row.previousElementSibling);
+  else if(rt.dataset.rt==="down"&&row.nextElementSibling)box.insertBefore(row.nextElementSibling,row);
+  else if(rt.dataset.rt==="star"){const x=readEstRow(row);if(!x.name){flash(rt,"?",false);row.querySelector(".es-nm").focus();return;}
+    rt.disabled=true;const ok=await saveLib(libPut({name:x.name,spec:x.spec,unit:x.unit,price:x.price}),rt);rt.disabled=false;if(ok)flash(rt,"★",true);return;}
+  esSum();});
+$("es-addItem").onclick=()=>{const el=esRowEl({t:"i",qty:1});$("es-rows").appendChild(el);esSum();el.querySelector(".es-nm").focus();};
+$("es-addHead").onclick=()=>{const el=esRowEl({t:"h",name:""});$("es-rows").appendChild(el);el.querySelector(".es-nm").focus();};
+$("es-rows").addEventListener("change",e=>{const el=e.target;if(!el.classList.contains("es-nm"))return;const row=el.closest(".es-row");if(row.dataset.t!=="i")return;
+  const x=estConf.items.find(o=>o.name===el.value.trim());if(!x)return;const set=(c,v)=>{const i=row.querySelector(c);if(i&&!i.value.trim()&&v)i.value=v;};
+  set(".es-sp",x.spec);set(".es-u",x.unit);const p=row.querySelector(".es-p");if(!toNum(p.value)&&x.price)p.value=comma(x.price);set(".es-q","1");esSum();});
+$("es-job").onchange=()=>{const j=jobs.find(x=>x.id===$("es-job").value);if(!j)return;
+  if(!$("es-cname").value.trim())$("es-cname").value=j.name;if(!$("es-caddr").value.trim())$("es-caddr").value=j.addr;if(!$("es-title").value.trim())$("es-title").value=j.item;};
+$("esEdit").addEventListener("input",esSum);$("esEdit").addEventListener("change",esSum);
+document.addEventListener("click",e=>{const c=e.target.closest("[data-escat]");if(c){estCat=estCat===c.dataset.escat?"":c.dataset.escat;renderEst();return;}
+  const n=e.target.closest("[data-esnew]");if(n){const j=jobs.find(x=>x.id===n.dataset.esnew);if(!$("jobSheet").hidden)closeView();openEst(null,{d:newEstData(j),job_id:j?j.id:""});return;}
+  const r=e.target.closest("[data-es]");if(r){const x=ests.find(o=>o.id===r.dataset.es);if(!x)return;if(!$("jobSheet").hidden)closeView();openEst(x);}});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-es],tr[data-lib]");if(r)r.click();}
+  if(e.key==="Escape"&&!$("estSheet").hidden){e.stopImmediatePropagation();if(!$("esAsk").hidden&&$("esAskNo")){esAsk("");return;}closeEst();}},true);
+window.addEventListener("beforeunload",e=>{if(esDirty()){e.preventDefault();e.returnValue="";}});
+
 /* form */
 function renderCrewPick(selected){
   $("f-crew").innerHTML=CREW.map((c,n)=>`<label><input type="checkbox" id="f-c${n}" value="${esc(c)}" ${selected.includes(c)?"checked":""}>${esc(c)}</label>`).join("");}
@@ -718,10 +932,11 @@ document.addEventListener("click",e=>{const c=e.target.closest("[data-cat]");if(
   const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
   const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
-const VIEWS=["board","cal","crew","pay","sales","wage"];
-function tab(which){if(!isAdmin&&["pay","sales","wage"].includes(which))which="board";curTab=which;
+const VIEWS=["board","cal","crew","est","pay","sales","wage"];
+function tab(which){if(!isAdmin&&["est","pay","sales","wage"].includes(which))which="board";curTab=which;
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
   if(which==="crew")renderCrew();
+  if(which==="est"&&isAdmin)renderEst();
   try{localStorage.setItem("nest-tab",which)}catch(e){}}
 VIEWS.forEach(v=>$("tab-"+v).onclick=()=>tab(v));
 $("prev").onclick=()=>{calM--;if(calM<0){calM=11;calY--}renderCal()};
@@ -1181,6 +1396,11 @@ function backupSheets(){
     const ys=[...new Set([...jobs.map(j=>jobMonth(j).slice(0,4)),...expenses.map(x=>x.day.slice(0,4))].filter(Boolean))].sort(),fin=[];
     ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),c=js.reduce((a,j)=>a+jobCost(j),0),e=expSum([ym]);
       if(r||c||e)fin.push([ym,js.length||"",r,c,e,r-c-e]);}));
+    if(ests.length){const list2=[...ests].sort((x,y)=>(x.d.date||"").localeCompare(y.d.date||"")||x.d.ver-y.d.ver),jn=id=>(jobs.find(j=>j.id===id)||{}).name||"";
+      sheets.push({name:"견적",cols:[["견적번호",12,"s"],["차수",6,"n"],["견적일",12,"d"],["고객",16,"s"],["연락처",14,"s"],["공사명",24,"s"],["현장",16,"s"],["부가세",10,"s"],["품목 합계",14,"w"],["할인",12,"w"],["부가세 금액",12,"w"],["합계",14,"w"],["상태",8,"s"],["고객이 연 횟수",8,"n"]],
+        rows:list2.map(e=>{const t=E.calc(e.d);return[e.d.no,e.d.ver,e.d.date,e.d.cust.name,e.d.cust.phone,e.d.title,jn(e.job_id),E.VAT[e.d.vat],t.supply,t.disc,t.vat,t.total,EST_ST[e.status],e.views||""];})});
+      sheets.push({name:"견적 품목",cols:[["견적번호",12,"s"],["차수",6,"n"],["고객",16,"s"],["구분",14,"s"],["품명",24,"s"],["규격",22,"s"],["수량",7,"n"],["단위",6,"s"],["단가",13,"w"],["금액",14,"w"],["비고",20,"s"]],
+        rows:list2.flatMap(e=>{let sec="";return e.d.rows.flatMap(r=>{if(r.t==="h"){sec=r.name;return[];}return[[e.d.no,e.d.ver,e.d.cust.name,sec,r.name,r.spec,r.qty||"",r.unit,r.price,E.lineAmt(r),r.note]];});})});}
     if(fin.length)sheets.push({name:"월별 결산",cols:[["월",9,"s"],["현장",7,"n"],["매출",14,"w"],["매입",14,"w"],["지출",14,"w"],["순이익",14,"w"]],rows:fin});}
   const clRows=[];
   list.forEach(j=>{const c=clOf(j.id);if(!c)return;const d=c.data||{},it=d.items||{},dims=d.dims||{},day=(c.submitted_at||"").slice(0,10),st=c.status==="submitted"?"제출":"작성 중";
@@ -1208,7 +1428,7 @@ function wageSheets(){const R=wage.rates,out=[];
   return out;}
 const XLS_KEY="nest-backup-day";
 function renderBackup(){let last="";try{last=localStorage.getItem(XLS_KEY)||""}catch(e){}
-  const what=isAdmin?"현장·AS·수금·매입·지출·정산":"현장·일정·AS";
+  const what=isAdmin?"현장·AS·수금·매입·지출·정산·견적":"현장·일정·AS";
   const old=!last||(new Date(TODAY)-new Date(last))/864e5>30;
   $("xlsNote").innerHTML=`${what} 기록을 엑셀 파일 하나로 받아 보관해요.`+(last?` 이 기기에서 마지막으로 받은 날: ${+last.slice(5,7)}월 ${+last.slice(8)}일`:"")+(jobs.length&&old?` <span class="tag soon">${last?"한 달 넘게 안 받았어요":"아직 한 번도 안 받았어요"}</span>`:"");}
 function downloadBackup(){
@@ -1339,7 +1559,7 @@ async function checkAdmin(){
 }
 async function loadAll(){
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses()]);
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
   jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];laborCache=null;
@@ -1359,7 +1579,7 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
