@@ -1,7 +1,7 @@
 {
   "name": "네스트퍼니처",
   "short_name": "네스트퍼니처",
-  "description": "현장별 실측, 시공, 마감, AS 일정과 도면·견적서 관리",
+  "description": "네스트퍼니처 통합관리: 현장 일정, 시공자, 수금, 결산",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",

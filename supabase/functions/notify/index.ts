@@ -44,8 +44,13 @@ function workDays(j) {
     if ((w === 6 && !i.sat) || (w === 0 && !i.sun)) continue;
     out.push(d);
   }
-  return out;
+  // '쉬는 날'로 뺀 날은 작업일이 아님
+  const off = Array.isArray(i.off) ? i.off : [];
+  return off.length ? out.filter((d) => !off.includes(d)) : out;
 }
+// 그날 들어가는 시공자: 날짜별로 따로 정했으면 그 사람들, 아니면 기본 시공자
+const crewOn = (j, d) => { const x = j.i?.days?.[d]; return Array.isArray(x) ? x : (j.i?.crew || []); };
+const crewAll = (j) => { const wd = workDays(j); return wd.length ? [...new Set(wd.flatMap((d) => crewOn(j, d)))] : (j.i?.crew || []); };
 const short = (j) => String(j.name || "").replace(" 고객", "");
 const man = (n) => n >= 10000 ? `${Math.round(n / 10000).toLocaleString("ko-KR")}만원` : `${n.toLocaleString("ko-KR")}원`;
 
@@ -53,7 +58,7 @@ const man = (n) => n >= 10000 ? `${Math.round(n / 10000).toLocaleString("ko-KR")
 function dayLines(jobs, d) {
   const lines = [];
   const ins = jobs.filter((j) => workDays(j).includes(d));
-  if (ins.length) lines.push(`시공 ${ins.length}곳: ${ins.map((j) => `${short(j)}(${(j.i?.crew || []).join("·") || "미배정"})`).join(", ")}`);
+  if (ins.length) lines.push(`시공 ${ins.length}곳: ${ins.map((j) => `${short(j)}(${crewOn(j, d).join("·") || "미배정"})`).join(", ")}`);
   const ms = jobs.filter((j) => j.m?.date === d);
   if (ms.length) lines.push(`실측: ${ms.map(short).join(", ")}`);
   const as = jobs.flatMap((j) => (j.f?.as || []).filter((a) => a.date === d && !a.done).map((a) => `${short(j)}(${a.crew || "담당 미정"})`));
@@ -61,8 +66,10 @@ function dayLines(jobs, d) {
   return lines;
 }
 function unassigned(jobs, today) {
-  const soon = jobs.filter((j) => !j.f?.done && j.i?.start && j.i.start >= today && j.i.start <= addDays(today, 7) && !(j.i.crew || []).length);
-  return soon.length ? `시공자 미배정 ${soon.length}곳: ${soon.map((j) => `${short(j)} ${md(j.i.start)}`).join(", ")}` : "";
+  // 7일 안에 시공자가 안 정해진 작업일이 있는 현장 (날짜별로 따로 정한 날도 봄)
+  const first = (j) => workDays(j).find((d) => d >= today && d <= addDays(today, 7) && !crewOn(j, d).length);
+  const soon = jobs.filter((j) => !j.f?.done && !j.f?.closed && first(j));
+  return soon.length ? `시공자 미배정 ${soon.length}곳: ${soon.map((j) => `${short(j)} ${md(first(j))}`).join(", ")}` : "";
 }
 function moneyLines(money, today) {
   let dueN = 0, dueAmt = 0, lateN = 0, lateAmt = 0;
@@ -80,7 +87,7 @@ function moneyLines(money, today) {
 function noChecklist(jobs, cls, today) {
   if (!cls) return "";
   const done = new Set(cls.filter((c) => c.status === "submitted").map((c) => c.job_id));
-  const late = jobs.filter((j) => { const wd = workDays(j), last = wd[wd.length - 1]; return last && last < today && last >= addDays(today, -7) && !done.has(j.id); });
+  const late = jobs.filter((j) => { const wd = workDays(j), last = wd[wd.length - 1]; return !j.f?.closed && last && last < today && last >= addDays(today, -7) && !done.has(j.id); });
   return late.length ? `체크리스트 안 온 곳 ${late.length}곳: ${late.map((j) => { const wd = workDays(j); return `${short(j)} ${md(wd[wd.length - 1])}`; }).join(", ")}` : "";
 }
 /* slot: evening = 내일 일정, morning = 오늘 일정 + 미배정 경고 + 체크리스트 미제출 (+ 관리자에게 입금) */
@@ -265,7 +272,7 @@ const libImgs = (row) => (Array.isArray(row?.images) ? row.images : []).filter((
 const srcOf = (row) => (row && row.official === false ? String(row.source || "공식 자료 아님").slice(0, 80) : "");
 // 시공자 화면에 보낼 현장 정보 (비밀번호·돈은 빼고). 종류·확인 치수를 비워 둔 가전은 보관함 값으로
 const jobPublic = (j, lib = {}, combo = null) => ({ id: j.id, name: j.name, item: j.item, addr: j.addr,
-  i: { start: j.i?.start || "", end: j.i?.end || "", sat: !!j.i?.sat, sun: !!j.i?.sun, crew: j.i?.crew || [], chk: j.i?.chk || [],
+  i: { start: j.i?.start || "", end: j.i?.end || "", sat: !!j.i?.sat, sun: !!j.i?.sun, crew: crewAll(j), off: Array.isArray(j.i?.off) ? j.i.off : [], chk: j.i?.chk || [],
     apps: (j.i?.apps || []).map((a) => { const l = lib[modelKey(a.model)] || {};
       return { id: a.id, type: a.type || l.type || "", model: a.model || "", spec: a.spec || l.spec || "", src: a.spec ? "" : srcOf(l), ...(typeof a.join === "boolean" ? { join: a.join } : {}) }; }),
     comboSpec: combo?.spec || "", comboSrc: srcOf(combo) } });

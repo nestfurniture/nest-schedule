@@ -41,3 +41,5 @@ jobs:
             -H "Content-Type: application/json" -d '{"action":"spec_media","key":"PROBE1"}' | grep -E "^HTTP|error" | head -5
           echo; echo "== 11. 시공자 정산 표(crew_pay, 업데이트 8) — [] 이면 준비됨 (관리자만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-08.sql 실행 필요"
           curl -s -i -m 30 "$URL/rest/v1/crew_pay?select=key&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 12. 회사 지출 표(expenses, 업데이트 9) — [] 이면 준비됨, PGRST205 면 update-09.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/expenses?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5

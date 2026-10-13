@@ -249,9 +249,8 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .flist .fdel{background:none;border:0;color:var(--late);font-size:13px;padding:2px 4px;white-space:nowrap}
 .fcount{font-size:12px;color:var(--muted);white-space:nowrap}
 .login{max-width:360px;margin:12vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px;display:flex;flex-direction:column;gap:14px}
-.login h1 .wm{display:none}
-.login h1 .kr{font-size:20px;font-weight:700}
 .login img{width:72px;height:72px;border-radius:16px}
+.login h1 .wm{font-size:20px}
 .hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .who{font-size:12px;color:var(--muted)}
 button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
@@ -334,6 +333,36 @@ th.num{font-family:var(--font);font-size:12px}
 }
 /* 수금 · 원가 입력 */
 .panel h4{margin:4px 0 0;font-size:13px;font-weight:700}
+.ex-form{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--surface)}
+.ex-grid{display:grid;grid-template-columns:150px 150px 160px 1fr;gap:8px;align-items:end}
+.ex-grid input,.ex-grid select{width:100%}
+.ex-row2{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:end}
+.ex-btns{display:flex;gap:8px;flex-wrap:wrap}
+#exList tr{cursor:pointer}
+@media (max-width:700px){.ex-grid{grid-template-columns:1fr 1fr}.ex-grid .note{grid-column:1/-1}}
+.chip.on{outline:2px solid var(--accent);outline-offset:1px}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px;cursor:pointer;text-align:left}
+.jv-name{color:var(--fg);font-weight:700}
+.cat-note{margin:0 0 8px}
+.tag.st-wait{color:var(--muted);border:1px solid var(--line)}
+.tag.st-run{color:var(--accent);background:var(--soon-bg)}
+.tag.st-end{color:var(--ok);background:var(--ok-bg)}
+.job b .tag{vertical-align:2px;margin-left:2px;font-weight:500}
+.dp-date .tag{align-self:flex-start}
+#jvTitle .tag{font-size:12px;vertical-align:3px}
+.jv-card{width:min(600px,100%)}
+.jv-list{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:3px}
+.jv-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.jv-stage{border-top:1px solid var(--line);padding-top:12px;gap:8px;display:flex;flex-direction:column}
+.daypick summary{cursor:pointer;font-size:14px;color:var(--accent);font-weight:500}
+.dp-list{display:flex;flex-direction:column;gap:8px}
+.dp-row{display:grid;grid-template-columns:110px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+.dp-row.off{opacity:.7}
+.dp-row.off .dp-act{grid-column:3}
+.dp-date{display:flex;flex-direction:column;gap:2px;font-size:14px}
+.dp-crew label{padding:2px 10px;font-size:13px}
+.dp-act{display:flex;gap:6px;align-items:center;justify-self:end}
+@media (max-width:560px){.dp-row{grid-template-columns:1fr auto}.dp-crew{grid-column:1/-1;grid-row:2}.dp-row.off .dp-act{grid-column:2}}
 .wg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px;align-items:start}
 .wg-card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .wg-card.done{border-color:var(--ok)}
@@ -409,7 +438,7 @@ th.num{font-family:var(--font);font-size:12px}
 <body>
 <section class="login" id="login" hidden>
   <img src="icons/icon-192.png" alt="네스트퍼니처">
-  <h1><span class="wm">NEST FURNITURE</span><span class="kr">현장 일정</span></h1>
+  <h1><span class="wm">NEST FURNITURE</span></h1>
   <form id="loginForm" style="display:flex;flex-direction:column;gap:12px">
     <label>이메일<input type="email" id="l-email" autocomplete="username" required></label>
     <label>비밀번호<input type="password" id="l-pw" autocomplete="current-password" required></label>
@@ -425,8 +454,7 @@ th.num{font-family:var(--font);font-size:12px}
 <div class="wrap" id="app" hidden>
   <header>
     <div>
-      <h1><span class="wm">NEST FURNITURE</span><span class="kr">현장 일정</span></h1>
-      <div class="sub">실측 · 시공 · 마감 · AS</div>
+      <h1><span class="wm">NEST FURNITURE</span></h1>
       <div class="demo" id="status" hidden></div>
     </div>
     <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
@@ -481,9 +509,13 @@ th.num{font-family:var(--font);font-size:12px}
       </div>
       <div class="hint">달력에 표시될 시공 색이에요. 같은 날 겹치는 현장은 다른 색을 고르면 구분하기 쉬워요. 새 현장은 겹치지 않는 색이 자동으로 골라져요.</div>
       <div class="hint">체크하지 않으면 토·일은 시공 일정에서 빠져요. 예: 금요일 시작, 월요일 종료면 금·월만 표시돼요.</div>
-      <div class="hint">들어갈 시공자를 고르세요. 아무도 안 고르면 '미배정'으로 표시돼요.</div>
+      <div class="hint">기본으로 들어갈 시공자를 고르세요. 아무도 안 고르면 '미배정'으로 표시돼요. 날마다 들어가는 사람이 다르면 아래에서 날짜별로 바꿀 수 있어요.</div>
       <div class="crewpick" id="f-crew"></div>
       <div style="display:flex;gap:8px;max-width:360px"><input id="f-newcrew" placeholder="명단에 없는 시공자 이름" aria-label="새 시공자 이름" style="flex:1"><button class="btn ghost sm" type="button" id="addCrew">명단에 추가</button></div>
+      <details class="daypick" id="f-daysBox"><summary>날짜별로 시공자 다르게 정하기 <span class="hint" id="f-daysSum"></span></summary>
+        <div class="hint" style="margin:8px 0">바꾸지 않은 날은 위에서 고른 시공자가 들어가요. 그날 작업이 없으면 '쉬는 날'에 체크하세요.</div>
+        <div class="dp-list" id="f-days"></div>
+      </details>
       <div class="warn-box" id="f-clash" hidden></div>
     </div>
     <div class="sec">
@@ -535,7 +567,7 @@ th.num{font-family:var(--font);font-size:12px}
       <div class="hint">시공자는 시공을 마치고 링크를 열어 가전별 시방서 확인, 가구 마감, 사진을 체크해서 제출해요. 로그인은 필요 없어요.</div>
     </div>
     <div class="sec admin-only" id="sec-money" hidden>
-      <h3>수금 · 원가 <span class="hint">관리자 계정에만 보여요</span></h3>
+      <h3>수금 · 매입 <span class="hint">관리자 계정에만 보여요</span></h3>
       <div class="grid">
         <label>계약일<input type="date" id="mo-date"></label>
         <label>계약금액(원)<input class="won" inputmode="numeric" id="mo-amount" placeholder="예: 15,000,000"></label>
@@ -545,9 +577,9 @@ th.num{font-family:var(--font);font-size:12px}
       <div class="hint">계약금·중도금·잔금을 받을 날과 함께 넣고, 들어오면 '입금됨'에 체크하세요.</div>
       <div class="rows" id="mo-pays"></div>
       <div><button class="btn ghost sm" type="button" id="addPay">+ 입금 일정 추가</button></div>
-      <h4>원가</h4>
+      <h4>매입 (현장 원가)</h4>
       <div class="rows" id="mo-costs"></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="btn ghost sm" type="button" id="addCost">+ 원가 항목 추가</button><span class="hint" id="mo-extra-hint"></span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="btn ghost sm" type="button" id="addCost">+ 매입 항목 추가</button><span class="hint" id="mo-extra-hint"></span></div>
       <div class="mo-sum" id="mo-sum"></div>
     </div>
     <div class="err" id="f-err" hidden></div>
@@ -563,17 +595,19 @@ th.num{font-family:var(--font);font-size:12px}
     <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
     <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
     <button class="tab admin-only" role="tab" id="tab-pay" aria-selected="false" hidden>수금</button>
-    <button class="tab admin-only" role="tab" id="tab-sales" aria-selected="false" hidden>매출·원가</button>
+    <button class="tab admin-only" role="tab" id="tab-sales" aria-selected="false" hidden>결산</button>
     <button class="tab admin-only" role="tab" id="tab-wage" aria-selected="false" hidden>정산</button>
   </div>
 
   <section id="view-board">
+    <p class="sub cat-note" id="catNote" hidden></p>
     <div class="board"><table>
       <thead id="thead"></thead>
       <tbody id="tbody"></tbody></table></div>
     <div class="cards" id="cards"></div>
+    <div class="empty" id="catEmpty" hidden>이 분류에 해당하는 현장이 없어요.</div>
     <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 오른쪽 위 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
-    <p class="sub">현장을 누르면 일정·AS를 고치고 사진·도면·견적서를 올릴 수 있어요. 시공 7일 전까지 시공자가 안 잡혀 있으면 빨간색으로 표시됩니다.</p>
+    <p class="sub">현장을 누르면 내용을 먼저 보여 주고, <b>수정</b>을 누르면 일정·AS·사진·도면·견적서를 고칠 수 있어요. 7일 안에 시공자가 안 정해진 날이 있으면 빨간색으로 표시됩니다.</p>
     <div class="backup"><button class="btn ghost sm" type="button" id="xlsBtn">엑셀로 받기</button><span class="hint" id="xlsNote"></span></div>
   </section>
 
@@ -608,7 +642,7 @@ th.num{font-family:var(--font);font-size:12px}
 
   <section id="view-pay" class="view" hidden>
     <div class="tiles" id="payTiles"></div>
-    <div class="empty" id="payEmpty" hidden>아직 금액을 넣은 현장이 없어요. 현장을 눌러 아래쪽 <b>수금 · 원가</b>에 계약금액과 입금 일정을 넣어 보세요.</div>
+    <div class="empty" id="payEmpty" hidden>아직 금액을 넣은 현장이 없어요. 현장을 눌러 아래쪽 <b>수금 · 매입</b>에 계약금액과 입금 일정을 넣어 보세요.</div>
     <h3>받을 돈 (입금 예정 · 지연)</h3>
     <div class="tbl stack"><table><thead><tr><th>받을 날</th><th>현장</th><th>구분</th><th class="num">금액</th><th>상태</th></tr></thead><tbody id="payTodo"></tbody></table></div>
     <h3>현장별 수금</h3>
@@ -620,19 +654,41 @@ th.num{font-family:var(--font);font-size:12px}
   <section id="view-sales" class="view" hidden>
     <div class="filters"><select id="sa-y" aria-label="연도"></select><select id="sa-m" aria-label="월"><option value="0">1년 전체</option><option value="1">1월</option><option value="2">2월</option><option value="3">3월</option><option value="4">4월</option><option value="5">5월</option><option value="6">6월</option><option value="7">7월</option><option value="8">8월</option><option value="9">9월</option><option value="10">10월</option><option value="11">11월</option><option value="12">12월</option></select></div>
     <div class="tiles" id="saTiles"></div>
+    <div id="saYearsBox" class="view">
+      <h3>연도별</h3>
+      <div class="tbl stack two"><table><thead><tr><th>연도</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th></th></tr></thead><tbody id="saYears"></tbody></table></div>
+    </div>
     <div id="saMonthsBox" class="view">
       <h3>월별</h3>
-      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익률</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>원가</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
+      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>매입+지출</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
     </div>
     <h3>현장별</h3>
-    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
-    <h3>원가 구성</h3>
+    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">현장 이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
+    <h3>매입 구성 (현장 원가)</h3>
     <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
+    <h3>지출 (회사 비용)</h3>
+    <div class="update" id="exUpdate" hidden>회사 지출을 적으려면 Supabase 업데이트 9가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-09.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
+    <div class="view" id="exBody">
+      <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="exCats"></tbody></table></div>
+      <div class="tbl stack"><table><thead><tr><th>날짜</th><th>항목</th><th class="num">금액</th><th>메모</th></tr></thead><tbody id="exList"></tbody></table></div>
+      <div class="ex-form" id="ex-form">
+        <div class="ex-grid">
+          <label>날짜<input type="date" id="ex-day"></label>
+          <label>항목<select id="ex-cat"></select></label>
+          <label>금액(원)<input class="won" inputmode="numeric" id="ex-amt" placeholder="0"></label>
+          <label class="note">메모<input id="ex-note" placeholder="예: 10월 사무실 월세, 트럭 주유"></label>
+        </div>
+        <div class="ex-row2"><label class="check"><input type="checkbox" id="ex-rep">매달 나가는 돈 (임대료처럼)</label><label id="ex-untilBox" hidden>끝나는 달 <small class="hint">(비우면 계속)</small><input type="month" id="ex-until"></label></div>
+        <div class="err" id="ex-err" hidden></div>
+        <div class="ex-btns"><button class="btn sm" type="button" id="ex-save">지출 추가</button><button class="btn ghost sm" type="button" id="ex-cancel" hidden>취소</button><button class="btn del sm" type="button" id="ex-del" hidden>삭제</button></div>
+        <p class="hint" style="margin:0">현장에 들어간 돈(자재·인건비·외주)은 현장의 <b>수금 · 매입</b>에 적고, 여기에는 현장에 딸리지 않은 회사 비용만 적어요. 시공자 일당은 현장 매입에 자동으로 들어가니 여기 또 적지 않아요. 적은 줄을 누르면 고치거나 지울 수 있어요.</p>
+      </div>
+    </div>
     <p class="sub" id="saNote"></p>
   </section>
 
   <section id="view-wage" class="view" hidden>
-    <div class="update" id="wgUpdate" hidden>시공자 정산을 쓰려면 Supabase 업데이트 8이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-08.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
+    <div class="update" id="wgUpdate" hidden>시공자 정산을 쓰려면 Supabase 업데이트 9가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-09.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
     <div class="view" id="wgBody">
       <div class="calhead">
         <button class="btn ghost" id="wgPrev" aria-label="이전 달">‹</button>
@@ -646,7 +702,7 @@ th.num{font-family:var(--font);font-size:12px}
       <p class="sub" id="wgNote"></p>
       <h3>일당</h3>
       <div class="wg-rates" id="wgRates"></div>
-      <p class="sub">시공자별 하루 금액을 넣으면 바로 저장돼요. 시공일은 현장의 시공 기간(주말은 체크한 날만)과 배정된 시공자로 세고, 한 사람이 같은 날 두 현장에 잡히면 하루로 계산해요. AS는 담당으로 적힌 사람의 하루로 셈해요. 일당을 넣으면 매출·원가의 시공 인건비도 자동으로 채워져요(그 현장에 시공 인건비를 직접 적었으면 직접 적은 금액을 써요). 지급 완료로 체크하면 그때 금액이 그대로 남아요.</p>
+      <p class="sub">시공자별 하루 금액을 넣으면 바로 저장돼요. 시공일은 현장의 시공 기간(주말은 체크한 날만)과 배정된 시공자로 세고, 한 사람이 같은 날 두 현장에 잡히면 하루로 계산해요. AS는 담당으로 적힌 사람의 하루로 셈해요. 일당을 넣으면 결산의 현장 매입(시공 인건비)도 자동으로 채워져요(그 현장에 시공 인건비를 직접 적었으면 직접 적은 금액을 써요). 지급 완료로 체크하면 그때 금액이 그대로 남아요.</p>
     </div>
   </section>
 </div>
@@ -654,6 +710,12 @@ th.num{font-family:var(--font);font-size:12px}
   <div class="sheet-card">
     <div class="sheet-head"><button class="btn ghost sm" type="button" id="dayPrev" aria-label="전날">‹</button><h2 id="dayTitle"></h2><button class="btn ghost sm" type="button" id="dayNext" aria-label="다음날">›</button><button class="btn ghost sm" type="button" id="dayClose">닫기</button></div>
     <div id="dayBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
+<div class="sheet" id="jobSheet" hidden role="dialog" aria-modal="true" aria-labelledby="jvTitle">
+  <div class="sheet-card jv-card">
+    <div class="sheet-head"><h2 id="jvTitle"></h2><button class="btn sm" type="button" id="jvEdit">수정</button><button class="btn ghost sm" type="button" id="jvClose">닫기</button></div>
+    <div id="jvBody" style="display:flex;flex-direction:column;gap:14px"></div>
   </div>
 </div>
 <div class="sheet" id="pushSheet" hidden role="dialog" aria-modal="true" aria-labelledby="pushTitle">
