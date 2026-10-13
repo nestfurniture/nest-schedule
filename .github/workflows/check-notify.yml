@@ -1,0 +1,23 @@
+# 알림 서버(notify)가 잘 연결됐는지 점검합니다. Actions 탭에서 수동으로만 실행돼요.
+name: 알림 서버 점검
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: notify 서버와 SQL 확인
+        run: |
+          URL=$(grep -o 'https://[a-z0-9]*\.supabase\.co' config.js)
+          KEY=$(grep -o 'eyJ[A-Za-z0-9._-]*' config.js)
+          ORIGIN=https://nestfurniture.github.io
+          echo "== 1. 미리 확인(OPTIONS)"
+          curl -s -i -m 30 -X OPTIONS "$URL/functions/v1/notify" -H "Origin: $ORIGIN" \
+            -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,apikey,content-type,x-client-info" | head -20
+          echo; echo "== 2. 공개키 요청(POST key)"
+          curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+            -H "Content-Type: application/json" -d '{"action":"key"}' | head -30
+          echo; echo "== 3. 알림 기기 표(push_subs)"
+          curl -s -i -m 30 "$URL/rest/v1/push_subs?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
