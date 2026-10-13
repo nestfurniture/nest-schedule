@@ -586,7 +586,7 @@ function deviceName(){const u=navigator.userAgent;
   return /iPhone/.test(u)?"iPhone":IOS?"iPad":/Android/.test(u)?"안드로이드":/Mac/.test(u)?"Mac":/Windows/.test(u)?"Windows PC":"기기";}
 function pushErr(kind){const e=new Error(kind);e.kind=kind;return e;}
 const PUSH_MSG={
-  server:"알림 서버 설정이 아직 안 됐어요. README의 \"업데이트 3\" 1단계(notify 서버 만들기)를 먼저 해 주세요.",
+  server:"알림 서버를 찾지 못했어요. Supabase → Edge Functions에 이름이 정확히 notify인 서버가 있는지 확인해 주세요.",
   sql:"Supabase 업데이트 3(SQL)이 아직 안 됐어요. README의 \"업데이트 3\" 2단계를 먼저 해 주세요.",
   offline:"인터넷 연결을 확인하고 다시 눌러 주세요.",
   sw:"앱을 새로고침한 뒤 다시 눌러 주세요.",
