@@ -1,23 +1,33 @@
--- 네스트퍼니처 업데이트 5: 시방서 찾을 모델 목록
--- 현장에 적어 둔 가전 모델명(모델명·종류만)을 Claude가 읽을 수 있게 합니다. 고객 이름·주소·일정·금액은 나가지 않아요.
--- Claude가 이 목록을 보고 제조사 공식 홈페이지에서 시방서를 찾아 앱(specs.json)에 넣어 둡니다.
+-- 네스트퍼니처 업데이트 5: 시방서 보관함 (모델명으로 자동 찾기)
+-- 현장에 가전 모델명을 적고 저장하면, 알림 서버(notify)가 제조사 공식 홈페이지에서 시방서를 찾아 여기에 모델별로 보관해요.
+-- 한 번 찾은 모델은 다시 찾지 않고, 같은 모델을 쓰는 모든 현장의 시공 체크리스트에 자동으로 붙어요.
 -- Supabase → SQL Editor → New query 에 통째로 붙여넣고 Run 하세요. 여러 번 실행해도 괜찮아요.
 
-create or replace function public.spec_models()
-returns table (model text, type text)
-language sql stable security definer set search_path = public
-as $$
-  select distinct on (k) m, t from (
-    select upper(regexp_replace(a->>'model', '[^0-9A-Za-z가-힣]', '', 'g')) as k,
-           trim(a->>'model') as m, coalesce(a->>'type', '') as t
-    from public.jobs, jsonb_array_elements(case when jsonb_typeof(i->'apps') = 'array' then i->'apps' else '[]'::jsonb end) as a
-    where coalesce(trim(a->>'model'), '') <> ''
-  ) x
-  where k <> ''
-  order by k, t desc;
-$$;
-revoke all on function public.spec_models() from public;
-grant execute on function public.spec_models() to anon, authenticated;
+create table if not exists public.app_specs (
+  model_key text primary key,                 -- 모델명을 대문자로, 띄어쓰기·하이픈 등을 빼고 (예: DUE6BGH)
+  model text not null default '',             -- 처음 적은 모델명 그대로
+  brand text not null default '',
+  type text not null default '',              -- 가전 종류 코드 (dish, fridge …), 모르면 빈칸
+  spec text not null default '',              -- 시공 때 꼭 맞춰야 할 치수 요약
+  links jsonb not null default '[]'::jsonb,   -- 제조사 공식 페이지·설명서 링크 [{title, url}]
+  images jsonb not null default '[]'::jsonb,  -- 공식 치수도 그림 [{title, url}]
+  files jsonb not null default '[]'::jsonb,   -- 보관해 둔 공식 설명서 PDF [{path, name, mime, size}]
+  status text not null default '' check (status in ('', 'searching', 'found', 'notfound', 'error')),
+  note text not null default '',
+  searched_at timestamptz,
+  updated_by text not null default '',
+  updated_at timestamptz not null default now()
+);
+alter table public.app_specs add column if not exists images jsonb not null default '[]'::jsonb;
+alter table public.app_specs enable row level security;
+drop policy if exists "staff all" on public.app_specs;
+create policy "staff all" on public.app_specs for all to authenticated using (true) with check (true);
+do $$ begin
+  alter publication supabase_realtime add table public.app_specs;
+exception when duplicate_object then null; end $$;
 
--- 확인용: 지금까지 적어 둔 모델 목록
-select * from public.spec_models();
+-- 앞서 안내했던 '모델 목록 공개 함수'는 이제 쓰지 않아서 지웁니다 (실행한 적 없어도 괜찮아요)
+drop function if exists public.spec_models();
+
+-- 확인용
+select '시방서 보관함 준비 완료' as "결과";

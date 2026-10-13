@@ -39,9 +39,11 @@ function photosHtml(s) {
 }
 function sectionHtml(s) {
   const d = data.dims[s.key] || {};
-  const mySpecs = s.app ? specs.filter((f) => f.app === s.app.id && f.url) : [];
+  const mine = s.app ? specs.filter((f) => f.app === s.app.id && f.url) : [];
+  const mySpecs = mine.filter((f) => !f.img), imgs = mine.filter((f) => f.img && !badImg.has(f.url));
   return `<section class="card" data-sec="${esc(s.key)}"><h2>${esc(s.title)}</h2>
     ${s.spec ? `<div class="spec"><b>시방서 확인 치수</b>${esc(s.spec)}</div>` : ""}
+    ${imgs.length ? `<div class="spec-imgs">${imgs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" title="${esc(f.name)}"><img src="${esc(f.url)}" alt="${esc(f.name)}" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>` : ""}
     ${mySpecs.length ? `<div class="specs">${mySpecs.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${f.link ? "공식 자료" : "시방서 보기"} · ${esc(f.name)}</a>`).join("")}</div>` : ""}
     ${s.dims ? `<div><div class="lbl">실제로 잰 설치 공간 (mm)</div><div class="dims">${[["w", "폭"], ["h", "높이"], ["d", "깊이"]].map(([k, l]) => `<label>${l}<input inputmode="numeric" data-dim="${esc(s.key)}" data-dk="${k}" value="${esc(d[k] || "")}" aria-label="${esc(s.title)} ${l}"></label>`).join("")}</div></div>` : ""}
     ${s.items.map(itemHtml).join("")}
@@ -181,21 +183,13 @@ function showDone(by, at, fresh) {
   window.scrollTo(0, 0);
 }
 
-/* ---------- 시방서 보관함(specs.json): 모델명으로 찾아 둔 종류·치수·공식 링크를 붙임 ---------- */
-async function loadSpecs() {
-  try {
-    const ac = new AbortController(), t = setTimeout(() => ac.abort(), 6000);
-    const res = await fetch("specs.json", { cache: "no-cache", signal: ac.signal }); clearTimeout(t);
-    const lib = res.ok ? ((await res.json()) || {}).models || {} : {};
-    CL.useLib((k) => lib[k] || null);
-    (job.i.apps || []).forEach((a) => {
-      const l = lib[CL.modelKey(a.model)];
-      if (!l || l.found === false) return;
-      (Array.isArray(l.links) ? l.links : []).filter((x) => x && /^https:\/\//.test(x.url || "")).slice(0, 4)
-        .forEach((x) => specs.push({ app: a.id, name: x.title || "공식 자료", url: x.url, link: true }));
-    });
-  } catch (e) {}
-}
+/* ---------- 시방서: 서버가 보관함(모델별로 찾아 둔 공식 자료)과 이 현장에 올린 파일을 함께 보내 줌 ---------- */
+// 제조사 주소가 바뀌어 안 열리는 치수도 그림은 숨김
+const badImg = new Set();
+document.addEventListener("error", (e) => {
+  const t = e.target;
+  if (t && t.tagName === "IMG" && t.closest(".spec-imgs")) { badImg.add(t.getAttribute("src")); t.closest("a").remove(); }
+}, true);
 
 /* ---------- 시작 ---------- */
 (async function start() {
@@ -207,8 +201,7 @@ async function loadSpecs() {
     else fail("체크리스트를 열지 못했어요", "인터넷 연결을 확인하고 잠시 후 다시 열어 주세요.");
     return;
   }
-  job = r.job; specs = r.specs || []; urls = r.urls || {};
-  await loadSpecs();
+  job = r.job; specs = Array.isArray(r.specs) ? r.specs : []; urls = r.urls || {};
   const d = r.data || {};
   data = { items: d.items || {}, dims: d.dims || {}, photos: Array.isArray(d.photos) ? d.photos : [], memo: d.memo || "", name: d.name || "" };
   document.title = `시공 체크리스트 · ${job.name}`;

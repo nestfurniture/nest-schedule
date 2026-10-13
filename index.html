@@ -153,6 +153,16 @@ textarea{width:100%;resize:vertical;line-height:1.5}
 .lib-links a{color:var(--accent);font-weight:500}
 .lib-links .fmeta{font-size:12px;color:var(--muted)}
 .app-files .flist[hidden]{display:none}
+.lib-head .lib-again{margin-left:auto}
+.lib-again{background:none;border:0;padding:2px 0;color:var(--accent);font:inherit;font-size:13px;font-weight:500;text-decoration:underline;cursor:pointer}
+.lib-again:disabled{color:var(--muted);cursor:default}
+.lib-imgs{display:flex;flex-wrap:wrap;gap:6px}
+.lib-imgs a{display:block;width:96px;height:72px;border-radius:6px;overflow:hidden;background:#fff;border:1px solid var(--line)}
+.lib-imgs img{width:100%;height:100%;object-fit:contain;display:block}
+.lib-links .fname{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:500;text-decoration:underline;cursor:pointer;text-align:left}
+.spin{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
 .cl-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cl-renew{font:inherit;font-size:inherit;color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
 .cl-bad{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -482,7 +492,8 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
     <div class="sec">
       <h3>가전 · 시방서</h3>
-      <div class="hint">도면을 보고 빌트인 가전 모델명만 적어 두세요. 시방서는 Claude가 제조사 공식 홈페이지에서 찾아 붙이고, 같은 모델은 다음 현장부터 자동으로 붙어요. 시공자 체크리스트에 그대로 나와요.</div>
+      <div class="hint">도면을 보고 빌트인 가전 모델명만 적고 저장하세요. 앱이 제조사 공식 홈페이지에서 시방서를 찾아 붙이고(1~2분), 같은 모델은 다음 현장부터 바로 붙어요. 시공자 체크리스트에 그대로 나와요.</div>
+      <div class="update" id="specSetup" hidden></div>
       <div class="apps" id="f-apps"></div>
       <div><button class="btn ghost sm" type="button" id="addApp">+ 가전 추가</button></div>
     </div>

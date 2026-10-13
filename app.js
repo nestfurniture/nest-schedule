@@ -429,6 +429,7 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
       if(me){render();showErr("현장은 저장됐는데 수금·원가를 저장하지 못했어요. 저장을 한 번 더 눌러 주세요.");return;}
       money[row.id]=mo;}
     render();
+    if(row)findSpecs(editing.i.apps); // 처음 보는 가전 모델은 시방서 찾기 시작 (기다리지 않음)
     if(row)await dropOrphanSpecs(editing);
     if(row&&pending.length){
       $("saveBtn").textContent="파일 올리는 중…";
@@ -509,16 +510,49 @@ async function removeFile(f){
   if(error)return false;files=files.filter(x=>x!==f);return true;}
 
 /* 가전 · 시방서: 가전마다 종류·모델명(+ 이 현장만 다른 치수).
-   시방서는 모델별로 specs.json(앱과 같이 올라가는 파일)에 모아 둠. Claude가 제조사 공식 홈페이지에서 찾아 넣고,
-   같은 모델을 쓰는 모든 현장의 시공 체크리스트에 자동으로 붙음. 공식 자료가 없으면 이 현장에만 파일을 직접 올릴 수 있음 */
-let specLib={},specAt=0;
-NEST_CL.useLib(k=>specLib[k]||null);
-const libOf=model=>specLib[NEST_CL.modelKey(model)]||null;
-async function loadSpecs(force){
-  if(!force&&Date.now()-specAt<60e3)return;specAt=Date.now();
-  try{const r=await fetch("specs.json",{cache:"no-cache"});if(!r.ok)return;const j=await r.json();
-    specLib=j&&j.models&&typeof j.models==="object"?j.models:{};}catch(e){return;}
-  if(loaded)render();if(!$("form").hidden)renderSpecs();}
+   모델명을 적고 저장하면 알림 서버(notify)가 제조사 공식 홈페이지에서 시방서를 찾아 보관함(app_specs)에 모델별로 저장함.
+   한 번 찾은 모델은 다시 찾지 않고 같은 모델을 쓰는 모든 현장의 시공 체크리스트에 자동으로 붙음.
+   공식 자료가 없으면 이 현장에만 파일을 직접 올릴 수 있음 */
+let specLib={},lib05=true,specAuto=null,specAt=0,specChan=null,specPoll=null;
+NEST_CL.useLib(k=>{const l=specLib[k];return l&&l.status==="found"?l:null;});
+const libRow=model=>specLib[NEST_CL.modelKey(model)]||null;
+const libOf=model=>{const l=libRow(model);return l&&l.status==="found"?l:null;};
+const specStale=l=>l.status==="searching"&&Date.now()-new Date(l.searched_at||0).getTime()>10*60e3;
+async function loadLib(){
+  const {data,error}=await sb.from("app_specs").select("*");
+  if(error){lib05=!/app_specs|42P01|PGRST20/i.test(`${error.code} ${error.message}`);return;}
+  lib05=true;specLib={};(data||[]).forEach(r=>{specLib[r.model_key]=r});
+  if(!specChan){specChan=sb.channel("nest-specs").on("postgres_changes",{event:"*",schema:"public",table:"app_specs"},()=>libChanged()).subscribe();}
+  // 찾는 중인 모델이 있으면 실시간 연결이 끊겨도 바뀌도록 15초마다 다시 확인
+  clearTimeout(specPoll);if(Object.values(specLib).some(l=>l.status==="searching"&&!specStale(l)))specPoll=setTimeout(libChanged,15e3);}
+async function libChanged(){await loadLib();if(loaded)render();if(!$("form").hidden)renderSpecs();}
+// 자동 찾기가 켜져 있는지 (Anthropic 키를 Supabase Secrets에 넣었는지) 알림 서버에 물어봄
+async function specStatus(){
+  if(specAuto===true||Date.now()-specAt<300e3)return;specAt=Date.now();
+  try{const {data,error}=await sb.functions.invoke("notify",{body:{action:"spec_status"}});specAuto=!error&&!!(data&&data.auto);}catch(e){specAuto=false;}
+  if(!$("form").hidden)renderSpecs();}
+async function specCall(body){
+  try{const {data,error}=await sb.functions.invoke("notify",{body});if(!error)return{data:data||{}};
+    let msg="";try{msg=(await error.context.json()).error||"";}catch(e){}return{error:msg||"server",status:error.context&&error.context.status};}
+  catch(e){return{error:"offline"};}}
+// 처음 보는 모델만 찾기 시작 (force = '다시 찾기'를 누름: 못 찾음·멈춤·이미 찾은 모델도 다시). 답을 기다리지 않아도 됨: 다 찾으면 화면이 저절로 바뀜
+function specErr(m){if(!$("form").hidden){showErr(m);return;}
+  const st=$("status");st.textContent=m;st.hidden=false;setTimeout(()=>{if(st.textContent===m)st.hidden=true;},10e3);}
+async function findSpecs(apps,force){
+  if(!lib05||!specAuto)return;
+  const models=[],seen=new Set();
+  for(const a of apps){const k=NEST_CL.modelKey(a.model);if(k.length<3||seen.has(k))continue;seen.add(k);
+    if(!force&&specLib[k])continue;models.push({model:a.model,type:a.type||""});}
+  if(!models.length)return;
+  const now=new Date().toISOString();
+  models.forEach(m=>{const k=NEST_CL.modelKey(m.model);specLib[k]={...(specLib[k]||{model_key:k,model:m.model}),status:"searching",searched_at:now,note:""};});
+  if(!$("form").hidden)renderSpecs();
+  const r=await specCall({action:"spec_find",models,force:!!force});
+  if(r.error){
+    if(r.error==="no key")specAuto=false;
+    specErr(r.error==="limit"?"시방서는 하루에 정해 둔 개수까지만 찾아요. 내일 다시 찾아 주세요.":r.error==="no key"?"시방서 자동 찾기가 아직 꺼져 있어요. README의 \"업데이트 5\"를 봐 주세요.":
+      r.error==="offline"?"인터넷 연결을 확인하고 다시 찾아 주세요.":"시방서를 찾기 시작하지 못했어요. 잠시 후 '다시 찾기'를 눌러 주세요.");}
+  await libChanged();}
 const appId=()=>Math.random().toString(36).slice(2,9);
 function appRow(a){a=a||{id:appId(),type:"",model:"",spec:""};
   const r=document.createElement("div");r.className="app-row";r.dataset.app=a.id;
@@ -534,19 +568,35 @@ function appRow(a){a=a||{id:appId(),type:"",model:"",spec:""};
 $("addApp").onclick=()=>{appRow();const rows=$("f-apps").children;rows[rows.length-1].querySelector(".app-model").focus();};
 const readApps=()=>[...$("f-apps").children].map(r=>({id:r.dataset.app,type:r.querySelector("select").value,model:r.querySelector(".app-model").value.trim(),spec:r.querySelector(".app-spec").value.trim()}));
 const host=u=>{try{return new URL(u).hostname.replace(/^www\./,"")}catch(e){return""}};
-// 가전 한 줄 아래: 찾아 둔 종류·치수·공식 링크, 아직 안 찾았으면 안내
+const badImg=new Set();
+const okHttps=u=>/^https:\/\/[^\s"'<>]+$/.test(u||"");
+const againBtn=(k,label="다시 찾기")=>specAuto?`<button type="button" class="lib-again" data-again="${esc(k)}">${label}</button>`:"";
+// 가전 한 줄 아래: 찾는 중 / 찾은 종류·치수·치수도·설명서·공식 링크 / 못 찾음
 function libHtml(model){
-  if(!NEST_CL.modelKey(model))return`<div class="lib-msg">모델명만 적어 두면 Claude가 제조사 공식 홈페이지에서 시방서를 찾아 붙여 드려요.</div>`;
-  const l=libOf(model);
-  if(!l)return`<div class="lib-msg">아직 시방서를 찾지 않은 모델이에요. 저장한 뒤 Claude에게 "시방서 찾아줘"라고 말해 주세요.</div>`;
-  if(l.found===false)return`<div class="lib-msg warn">공식 홈페이지에서 이 모델을 찾지 못했어요. 모델명이 맞는지 확인해 주세요.${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;
-  const links=(Array.isArray(l.links)?l.links:[]).filter(x=>x&&/^https:\/\//.test(x.url||""));
+  const k=NEST_CL.modelKey(model);
+  if(!k)return specAuto&&lib05?`<div class="lib-msg">모델명을 적고 저장하면 제조사 공식 홈페이지에서 시방서를 찾아 붙여요.</div>`:"";
+  const l=specLib[k];
+  if(!l||(l.status==="searching"&&specStale(l))||l.status==="error"||!l.status){
+    if(!lib05||!specAuto)return`<div class="lib-msg">아직 시방서를 찾지 않은 모델이에요.</div>`;
+    if(!l||!l.status)return k.length<3?"":`<div class="lib-msg">저장하면 공식 홈페이지에서 시방서를 찾아요. ${againBtn(k,"지금 찾기")}</div>`;
+    return`<div class="lib-msg warn">시방서를 찾다가 멈췄어요. ${againBtn(k)}</div>`;}
+  if(l.status==="searching")return`<div class="lib-msg"><span class="spin" aria-hidden="true"></span>공식 홈페이지에서 시방서를 찾는 중이에요 (1~2분). 다른 일을 하셔도 돼요.</div>`;
+  if(l.status==="notfound")return`<div class="lib-msg warn">공식 홈페이지에서 이 모델을 찾지 못했어요. 모델명이 맞는지 확인해 주세요. ${againBtn(k)}${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;
+  const links=(Array.isArray(l.links)?l.links:[]).filter(x=>x&&okHttps(x.url)).slice(0,4);
+  const imgs=(Array.isArray(l.images)?l.images:[]).filter(x=>x&&okHttps(x.url)&&!badImg.has(x.url)).slice(0,4);
+  const pdfs=(Array.isArray(l.files)?l.files:[]).filter(f=>f&&/^lib\/spec\//.test(f.path||"")).slice(0,2);
   const head=[l.brand,NEST_CL.TYPES.find(t=>t[0]===l.type)?.[1]].filter(Boolean).join(" · ");
-  return`<div class="lib-box">${head?`<div class="lib-head">${esc(head)} <span class="tag ok">시방서 있음</span></div>`:""}
+  return`<div class="lib-box"><div class="lib-head">${head?esc(head):""} <span class="tag ok">시방서 있음</span>${againBtn(k)}</div>
     ${l.spec?`<div class="lib-spec">${esc(l.spec)}</div>`:""}
-    ${links.length?`<div class="lib-links">${links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||"공식 자료")}</a><span class="fmeta">${esc(host(x.url))}</span>`).join("")}</div>`:""}
+    ${imgs.length?`<div class="lib-imgs">${imgs.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" title="${esc(x.title||"치수도")}"><img src="${esc(x.url)}" alt="${esc(x.title||"치수도")}" loading="lazy" referrerpolicy="no-referrer"></a>`).join("")}</div>`:""}
+    ${pdfs.length||links.length?`<div class="lib-links">${pdfs.map(f=>`<button type="button" class="fname" data-lpath="${esc(f.path)}">${esc(f.name||"설명서 PDF")}</button><span class="fmeta">보관본</span>`).join("")}${
+      links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||"공식 자료")}</a><span class="fmeta">${esc(host(x.url))}</span>`).join("")}</div>`:""}
     ${l.note?`<div class="hint">${esc(l.note)}</div>`:""}</div>`;}
 function renderSpecs(){
+  const su=$("specSetup");
+  su.innerHTML=!lib05?`시방서를 자동으로 찾으려면 Supabase 업데이트 5가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-5-시방서-자동-찾기-적용" target="_blank" rel="noopener">설정 방법 보기</a>`:
+    specAuto===false?`시방서 자동 찾기가 아직 꺼져 있어요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-5-시방서-자동-찾기-적용" target="_blank" rel="noopener">설정 방법 보기</a>`:"";
+  su.hidden=!su.innerHTML;
   $("f-apps").querySelectorAll(".app-row").forEach(r=>{const id=r.dataset.app,model=r.querySelector(".app-model").value,l=libOf(model);
     r.querySelector("[data-lib]").innerHTML=libHtml(model);
     r.querySelector(".app-spec").placeholder=l&&l.spec?"이 현장만 다른 치수 (비우면 위 치수)":"확인 치수 직접 적기 (예: 폭 600~602 · 높이 815~875)";
@@ -555,6 +605,19 @@ function renderSpecs(){
     ul.innerHTML=saved.map(f=>`<li><button type="button" class="fname" data-fid="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><span class="fmeta">${fsize(+f.size||0)}</span><button type="button" class="fdel" data-fdel="${esc(f.id)}">삭제</button></li>`).join("")+
       wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("");
     ul.hidden=!ul.innerHTML;});}
+// 제조사 주소가 바뀌어 안 열리는 치수도 그림은 숨김
+document.addEventListener("error",e=>{const t=e.target;if(t&&t.tagName==="IMG"&&t.closest(".lib-imgs")){badImg.add(t.getAttribute("src"));t.closest("a").remove();}},true);
+document.addEventListener("click",async e=>{
+  const ag=e.target.closest("[data-again]");
+  if(ag){const l=specLib[ag.dataset.again],row=ag.closest(".app-row");if(!row)return;
+    if(l&&l.status==="found"&&ag.dataset.armed!=="1"){ag.dataset.armed="1";ag.textContent="한 번 더 누르면 다시 찾아요";setTimeout(()=>{if(ag.isConnected){ag.dataset.armed="";ag.textContent="다시 찾기";}},4000);return;}
+    ag.disabled=true;$("f-err").hidden=true;
+    await findSpecs([{model:row.querySelector(".app-model").value.trim(),type:row.querySelector("select").value}],!!(l&&l.status));return;}
+  const lp=e.target.closest("[data-lpath]");
+  if(lp){const w=window.open("","_blank");
+    const {data,error}=await sb.storage.from(BUCKET).createSignedUrl(lp.dataset.lpath,600);
+    if(error||!data){if(w)w.close();showErr("설명서를 열지 못했어요. 잠시 후 다시 눌러 주세요.");return;}
+    if(w)w.location.href=data.signedUrl;else location.href=data.signedUrl;}});
 document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("specpick"))return;
   const app=inp.dataset.app,list=[...inp.files];inp.value="";$("f-err").hidden=true;
   const saved=editing&&editing.i.apps.some(a=>a.id===app);
@@ -903,14 +966,14 @@ async function checkAdmin(){
 }
 async function loadAll(){
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*")]);
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
   jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
   cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
   if(!ck.error){checks={};(ck.data||[]).forEach(r=>{checks[r.job_id]=r});}
-  loaded=true;render();renderBackup();loadSpecs();
+  loaded=true;render();renderBackup();specStatus();
   if(!$("form").hidden&&editing){renderFiles();renderPhotos();renderCl();}
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
@@ -923,7 +986,7 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
