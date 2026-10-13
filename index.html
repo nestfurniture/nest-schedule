@@ -136,6 +136,16 @@ tr:last-child td{border-bottom:0}
 .sheet-card{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:12px;width:min(520px,100%);max-height:min(80vh,720px);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 .sheet-head{display:flex;align-items:center;gap:6px}
 .sheet-head h2{margin:0;font-size:19px;flex:1}
+.push-state{margin:0;font-size:15px;font-weight:500}
+.push-state.on{color:var(--ok)}
+.push-btns{display:flex;gap:8px;flex-wrap:wrap}
+.push-btns:not(:has(.btn:not([hidden]))){display:none}
+.push-prefs{border:1px solid var(--line);border-radius:8px;margin:0;padding:8px 12px 12px;display:flex;flex-direction:column;gap:10px}
+.push-prefs legend{font-size:13px;color:var(--muted);padding:0 4px}
+.push-prefs label.check{align-items:flex-start;gap:10px}
+.push-prefs input{margin-top:2px;flex:none}
+.push-prefs small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.push-note{font-size:13px;color:var(--muted);margin:0}
 .dsec h3{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--muted)}
 .dlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .dlist li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
@@ -348,7 +358,7 @@ th.num{font-family:var(--font);font-size:12px}
       <div class="sub">실측 · 시공 · 마감 · AS</div>
       <div class="demo" id="status" hidden></div>
     </div>
-    <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
+    <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
   </header>
 
   <div class="update" id="updNote" hidden>현장 사진·수금·매출 기능을 쓰려면 Supabase 업데이트를 한 번 해야 해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-02.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 전부 복사해 Supabase의 SQL Editor에 붙여넣고 Run을 누르면 끝나요.</div>
@@ -538,6 +548,26 @@ th.num{font-family:var(--font);font-size:12px}
   <div class="sheet-card">
     <div class="sheet-head"><button class="btn ghost sm" type="button" id="dayPrev" aria-label="전날">‹</button><h2 id="dayTitle"></h2><button class="btn ghost sm" type="button" id="dayNext" aria-label="다음날">›</button><button class="btn ghost sm" type="button" id="dayClose">닫기</button></div>
     <div id="dayBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
+<div class="sheet" id="pushSheet" hidden role="dialog" aria-modal="true" aria-labelledby="pushTitle">
+  <div class="sheet-card">
+    <div class="sheet-head"><h2 id="pushTitle">휴대폰 알림</h2><button class="btn ghost sm" type="button" id="pushClose">닫기</button></div>
+    <p class="push-state" id="pushState">확인하는 중…</p>
+    <div class="update" id="pushHelp" hidden></div>
+    <div class="push-btns">
+      <button class="btn" type="button" id="pushOn" hidden>이 기기에서 알림 켜기</button>
+      <button class="btn ghost" type="button" id="pushTest" hidden>테스트 알림 보내기</button>
+      <button class="btn ghost" type="button" id="pushOff" hidden>이 기기 알림 끄기</button>
+    </div>
+    <p class="push-note" id="pushMsg" role="status" hidden></p>
+    <fieldset class="push-prefs" id="pushPrefs" hidden>
+      <legend>받을 알림</legend>
+      <label class="check"><input type="checkbox" data-pref="tomorrow" checked><span>내일 일정<small>매일 저녁 6시 · 내일 시공·실측·AS</small></span></label>
+      <label class="check"><input type="checkbox" data-pref="today" checked><span>오늘 일정 · 시공자 미배정<small>매일 아침 7시 30분 · 일주일 안에 시작하는데 시공자가 없는 현장도 알려줘요</small></span></label>
+      <label class="check admin-only" hidden><input type="checkbox" data-pref="money" checked><span>입금 확인<small>매일 아침 7시 30분 · 오늘 받을 돈, 입금 지연 (관리자만)</small></span></label>
+    </fieldset>
+    <p class="hint" style="margin:0">알림은 기기마다 따로 켜요. 다른 휴대폰이나 컴퓨터에서도 받으려면 그 기기에서도 켜 주세요. 로그아웃하면 그 기기의 알림은 꺼져요.</p>
   </div>
 </div>
 <div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="사진 크게 보기">

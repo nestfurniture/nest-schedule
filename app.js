@@ -576,6 +576,110 @@ $("v-del").onclick=async()=>{const b=$("v-del");if(b.dataset.armed!=="1"){b.data
   if(!ok){b.textContent="삭제 실패";return;}
   vList=photosOf(f.job_id);if(vIdx>=vList.length)vIdx=vList.length-1;renderPhotos();render();vList.length?showV():closeV();};
 
+/* 휴대폰 알림: 기기마다 켜고 끔. 보내는 일은 Supabase의 notify 서버가 매일 아침·저녁에 함 */
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+const standalone=()=>(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
+const pushOk=()=>"serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+const b64uBytes=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");s+="===".slice((s.length+3)%4);return Uint8Array.from(atob(s),c=>c.charCodeAt(0));};
+const sameKey=(a,b)=>{if(!a)return true;a=new Uint8Array(a);return a.length===b.length&&a.every((x,i)=>x===b[i]);};
+function deviceName(){const u=navigator.userAgent;
+  return /iPhone/.test(u)?"iPhone":IOS?"iPad":/Android/.test(u)?"안드로이드":/Mac/.test(u)?"Mac":/Windows/.test(u)?"Windows PC":"기기";}
+function pushErr(kind){const e=new Error(kind);e.kind=kind;return e;}
+const PUSH_MSG={
+  server:"알림 서버 설정이 아직 안 됐어요. README의 \"업데이트 3\" 1단계(notify 서버 만들기)를 먼저 해 주세요.",
+  sql:"Supabase 업데이트 3(SQL)이 아직 안 됐어요. README의 \"업데이트 3\" 2단계를 먼저 해 주세요.",
+  offline:"인터넷 연결을 확인하고 다시 눌러 주세요.",
+  sw:"앱을 새로고침한 뒤 다시 눌러 주세요.",
+  fail:"알림을 켜지 못했어요. 잠시 후 다시 눌러 주세요."};
+async function fnCall(body){
+  if(!navigator.onLine)throw pushErr("offline");
+  const {data,error}=await sb.functions.invoke("notify",{body});
+  if(error){const res=error.context,st=res&&res.status;let msg="";
+    try{msg=(await res.json()).error||"";}catch(e){}
+    if(/push_keys|push_subs|push_log/.test(msg))throw pushErr("sql");
+    throw pushErr(st===401?"fail":"server");}
+  return data||{};}
+async function swReg(){
+  let r=await navigator.serviceWorker.getRegistration();
+  if(!r)r=await navigator.serviceWorker.register("sw.js");
+  if(r.active)return r;
+  return Promise.race([navigator.serviceWorker.ready,new Promise((_,no)=>setTimeout(()=>no(pushErr("sw")),8000))]);}
+async function curSub(){if(!pushOk())return null;const r=await navigator.serviceWorker.getRegistration();return r?r.pushManager.getSubscription():null;}
+const readPrefs=()=>{const p={};document.querySelectorAll("#pushPrefs [data-pref]").forEach(c=>p[c.dataset.pref]=c.checked);return p;};
+function pushMsg(t){$("pushMsg").textContent=t||"";$("pushMsg").hidden=!t;}
+function pushHelp(t){$("pushHelp").innerHTML=t||"";$("pushHelp").hidden=!t;}
+let pushOn=false;
+async function renderPush(){
+  const st=$("pushState"),show=(id,v)=>$(id).hidden=!v;
+  st.className="push-state";pushHelp("");
+  ["pushOn","pushOff","pushTest","pushPrefs"].forEach(id=>show(id,false));
+  if(IOS&&!standalone()){st.textContent="iPhone은 홈 화면 앱에서 켤 수 있어요.";
+    pushHelp("Safari 아래쪽 <b>공유 버튼(네모 위 화살표)</b> → <b>홈 화면에 추가</b>를 누른 뒤, 홈 화면에 생긴 네스트 아이콘으로 앱을 열어서 여기서 알림을 켜 주세요.");return;}
+  if(!pushOk()){st.textContent="이 화면에서는 알림을 켤 수 없어요.";
+    pushHelp(IOS?"iPhone을 iOS 16.4 이상으로 업데이트해 주세요.":"안드로이드는 Chrome, 컴퓨터는 Chrome·Edge·Safari에서 열어 주세요.");return;}
+  if(Notification.permission==="denied"){st.textContent="이 기기에서 알림이 차단돼 있어요.";
+    pushHelp(IOS?"iPhone <b>설정 → 알림 → 네스트</b>에서 알림 허용을 켠 뒤 앱을 다시 열어 주세요.":"휴대폰 <b>설정 → 알림</b>(또는 주소창 왼쪽 자물쇠 → 권한)에서 이 사이트 알림을 허용한 뒤 다시 열어 주세요.");return;}
+  let sub=null,row=null;
+  try{sub=await curSub();
+    if(sub){const {data,error}=await sb.from("push_subs").select("prefs").eq("endpoint",sub.endpoint);if(!error&&data&&data[0])row=data[0];}}catch(e){}
+  pushOn=!!(sub&&row&&Notification.permission==="granted");
+  if(pushOn){const p=row.prefs||{};document.querySelectorAll("#pushPrefs [data-pref]").forEach(c=>c.checked=p[c.dataset.pref]!==false);}
+  st.textContent=pushOn?"이 기기에서 알림을 받고 있어요.":"이 기기는 알림이 꺼져 있어요.";
+  if(pushOn)st.classList.add("on");
+  show("pushOn",!pushOn);show("pushOff",pushOn);show("pushTest",pushOn);show("pushPrefs",true);}
+async function openPush(){pushMsg("");$("pushState").textContent="확인하는 중…";
+  if($("pushSheet").hidden){pushFrom=document.activeElement;$("pushSheet").hidden=false;document.body.style.overflow="hidden";$("pushClose").focus();}
+  await renderPush();}
+let pushFrom=null;
+function closePush(){$("pushSheet").hidden=true;document.body.style.overflow="";if(pushFrom&&pushFrom.focus)pushFrom.focus({preventScroll:true});pushFrom=null;}
+async function busy(id,label,fn){const b=$(id),t=b.textContent;b.disabled=true;b.textContent=label;try{await fn();}finally{b.disabled=false;b.textContent=t;}}
+async function enablePush(){pushMsg("");
+  // 허용 질문은 버튼을 누른 바로 그때 해야 iPhone에서도 떠요
+  const perm=await Notification.requestPermission();
+  if(perm!=="granted"){await renderPush();if(perm!=="denied")pushMsg("알림 허용을 눌러야 켜져요.");return;}
+  try{
+    const {publicKey}=await fnCall({action:"key"});if(!publicKey)throw pushErr("server");
+    const key=b64uBytes(publicKey),reg=await swReg();
+    let sub=await reg.pushManager.getSubscription();
+    if(sub&&!sameKey(sub.options&&sub.options.applicationServerKey,key)){await sub.unsubscribe();sub=null;}
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+    const j=sub.toJSON();
+    const {error}=await sb.rpc("save_push_sub",{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth,p_prefs:readPrefs(),p_device:deviceName()});
+    if(error)throw pushErr(/save_push_sub|PGRST202|42883|push_subs/i.test(`${error.code} ${error.message}`)?"sql":"fail");
+    await renderPush();pushMsg("알림을 켰어요. 테스트 알림으로 잘 오는지 확인해 보세요.");
+  }catch(e){await renderPush();pushMsg(PUSH_MSG[e.kind]||PUSH_MSG.fail);}}
+async function disablePush(){pushMsg("");
+  try{const sub=await curSub();if(sub){await sb.from("push_subs").delete().eq("endpoint",sub.endpoint);await sub.unsubscribe();}}catch(e){}
+  await renderPush();pushMsg("이 기기 알림을 껐어요.");}
+async function testPush(){pushMsg("");
+  try{const r=await fnCall({action:"test"});
+    pushMsg(r.sent?"테스트 알림을 보냈어요. 잠시 뒤 이 기기에 알림이 와요.":"알림을 켠 기기를 찾지 못했어요. 알림을 껐다가 다시 켜 주세요.");}
+  catch(e){pushMsg(PUSH_MSG[e.kind]||"테스트 알림을 보내지 못했어요. 잠시 후 다시 눌러 주세요.");}}
+async function savePrefs(){if(!pushOn)return;pushMsg("");
+  try{const sub=await curSub();if(!sub)return;
+    const {error}=await sb.from("push_subs").update({prefs:readPrefs()}).eq("endpoint",sub.endpoint);
+    pushMsg(error?"설정을 저장하지 못했어요. 다시 눌러 주세요.":"저장했어요.");}catch(e){}}
+// 로그아웃하면 이 기기 알림도 끔 (다른 사람이 쓰는 기기에 일정이 뜨지 않게)
+async function forgetPush(){try{const sub=await Promise.race([curSub(),new Promise(r=>setTimeout(()=>r(null),3000))]);
+  if(sub){await sb.from("push_subs").delete().eq("endpoint",sub.endpoint);await sub.unsubscribe();}}catch(e){}}
+$("pushBtn").onclick=openPush;$("pushClose").onclick=closePush;
+$("pushSheet").addEventListener("click",e=>{if(e.target===$("pushSheet"))closePush();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("pushSheet").hidden)closePush();});
+$("pushOn").onclick=()=>busy("pushOn","켜는 중…",enablePush);
+$("pushOff").onclick=()=>busy("pushOff","끄는 중…",disablePush);
+$("pushTest").onclick=()=>busy("pushTest","보내는 중…",testPush);
+document.querySelectorAll("#pushPrefs [data-pref]").forEach(c=>c.onchange=savePrefs);
+
+/* 알림을 눌러 열었을 때: ?day=날짜 → 달력에서 그날, ?tab=pay → 수금 */
+let pendingLink=location.search;
+function applyLink(q){
+  const p=new URLSearchParams(q.includes("?")?q.slice(q.indexOf("?")):q),day=p.get("day"),t=p.get("tab");
+  if(day&&/^\d{4}-\d{2}-\d{2}$/.test(day)){if(!$("pushSheet").hidden)closePush();tab("cal");openDay(day);}
+  else if(t&&VIEWS.includes(t)){if(!$("daySheet").hidden)closeDay();tab(t);}
+  if(location.search)history.replaceState(null,"",location.pathname+location.hash);}
+if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{
+  if(!e.data||e.data.type!=="open")return;if(loaded)applyLink(e.data.url||"");else pendingLink=e.data.url||"";});
+
 /* Supabase: 로그인, 불러오기, 실시간 반영 */
 async function checkAdmin(){
   const {data,error}=await sb.from("admins").select("user_id").eq("user_id",uid);
@@ -594,6 +698,7 @@ async function loadAll(){
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
   loaded=true;render();
   if(!$("form").hidden&&editing){renderFiles();renderPhotos();}
+  if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
 let channel=null;
 async function startApp(session){
@@ -604,12 +709,12 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};if(channel){sb.removeChannel(channel);channel=null;}}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
   if(error){$("l-err").textContent="이메일이나 비밀번호가 맞지 않아요.";$("l-err").hidden=false;}});
-$("logoutBtn").onclick=()=>sb.auth.signOut();
+$("logoutBtn").onclick=async()=>{$("logoutBtn").disabled=true;await forgetPush();$("logoutBtn").disabled=false;sb.auth.signOut();};
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!$("app").hidden)loadAll();});
 
 (function boot(){
