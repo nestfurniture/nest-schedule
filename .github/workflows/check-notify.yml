@@ -1,4 +1,4 @@
-# 알림 서버(notify)가 잘 연결됐는지 점검합니다. Actions 탭에서 수동으로만 실행돼요.
+# 알림 서버(notify)와 체크리스트가 잘 연결됐는지 점검합니다. Actions 탭에서 수동으로만 실행돼요.
 name: 알림 서버 점검
 on: workflow_dispatch
 permissions:
@@ -21,3 +21,8 @@ jobs:
             -H "Content-Type: application/json" -d '{"action":"key"}' | head -30
           echo; echo "== 3. 알림 기기 표(push_subs)"
           curl -s -i -m 30 "$URL/rest/v1/push_subs?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 4. 체크리스트 표(checklists, 업데이트 4) — [] 이면 준비됨"
+          curl -s -i -m 30 "$URL/rest/v1/checklists?select=job_id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 5. 체크리스트 서버(cl_open) — 404 not found 이면 새 코드, 400 unknown action 이면 예전 코드"
+          curl -s -i -m 60 -X POST "$URL/functions/v1/notify" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+            -H "Content-Type: application/json" -d '{"action":"cl_open","token":"probe_aaaaaaaaaaaaaaaa"}' | grep -E "^HTTP|error" | head -5
