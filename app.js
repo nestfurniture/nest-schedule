@@ -1669,7 +1669,10 @@ $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err")
   $("l-btn").disabled=false;
   if(error){$("l-err").textContent="이메일이나 비밀번호가 맞지 않아요.";$("l-err").hidden=false;}});
 $("logoutBtn").onclick=async()=>{$("logoutBtn").disabled=true;await forgetPush();$("logoutBtn").disabled=false;sb.auth.signOut();};
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!$("app").hidden)loadAll();});
+/* 앱을 다시 열었을 때 날짜가 바뀌었으면(밤새 켜 둔 경우) 새로고침해서 '오늘'을 오늘 날짜로. 입력 중이면 새로고침하지 않음 */
+const dayNow=()=>{const d=new Date();return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+document.addEventListener("visibilitychange",()=>{if(document.hidden||$("app").hidden)return;
+  if(dayNow()!==TODAY&&$("form").hidden&&$("estSheet").hidden){location.reload();return;}loadAll();});
 
 (function boot(){
   const cfg=window.NEST_CONFIG||{};
