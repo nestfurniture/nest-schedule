@@ -257,8 +257,32 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .tabs{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tab{white-space:nowrap;flex:none}
-@media (max-width:560px){.tab{padding:8px 5px;font-size:14px}.tabs{gap:2px}}
-@media (max-width:370px){.tab{font-size:13px;padding:8px 4px}}
+/* 메뉴: 큰 묶음(gnav) → 그 안의 세부 화면(subbar). 큰 묶음은 PC에서 위쪽 단추 줄, 휴대폰에서 아래 막대 */
+.gnav{display:flex;gap:4px;align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px}
+.gnav button{-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:7px;background:none;border:0;border-radius:7px;padding:8px 18px 8px 14px;color:var(--muted);font:inherit;font-size:15px;font-weight:500;cursor:pointer}
+.gnav button:hover{color:var(--fg)}
+.gnav .ic{display:flex}
+.gnav svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.gnav button[aria-current="page"]{background:var(--accent);color:var(--accent-fg)}
+.subbar{display:flex;align-items:flex-end;gap:12px;border-bottom:1px solid var(--line);margin-top:-6px}
+.subbar .tabs{flex:1;min-width:0;border-bottom:0}
+.subbar .tab{margin-bottom:0;font-size:15px}
+.subbar>.btn{flex:none;margin-bottom:6px}
+#app:not([data-g="site"]) :is(#summary,#form){display:none!important}
+@media (max-width:700px){
+  .gnav{position:fixed;left:0;right:0;bottom:0;z-index:30;align-self:auto;border:0;border-top:1px solid var(--line);border-radius:0;gap:0;padding:4px 6px max(6px,env(safe-area-inset-bottom));background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .gnav button{flex:1;flex-direction:column;gap:2px;padding:4px 0 2px;font-size:12px;border-radius:0}
+  .gnav .ic{padding:3px 18px;border-radius:999px}
+  .gnav svg{width:22px;height:22px}
+  .gnav button[aria-current="page"]{background:none;color:var(--accent);font-weight:700}
+  .gnav button[aria-current="page"] .ic{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+  body.gnav-on{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  body.typing .gnav{display:none}
+  .subbar{margin-top:-8px}
+  .subbar .tab{padding:8px 10px}
+  .subbar>.btn{padding:7px 11px;font-size:14px}
+}
+@media (max-width:370px){.subbar{gap:4px}.subbar .tab{font-size:14px;padding:8px 7px}.subbar>.btn{padding:6px 9px;font-size:13px}}
 .update{background:var(--soon-bg);color:var(--soon);border-radius:8px;padding:10px 12px;font-size:13px}
 .update a{color:inherit;font-weight:700}
 .warn-box{font-size:13px;color:var(--late);background:var(--late-bg);border-radius:6px;padding:8px 10px}
@@ -526,10 +550,42 @@ th.num{font-family:var(--font);font-size:12px}
       <h1><span class="wm">NEST FURNITURE</span></h1>
       <div class="demo" id="status" hidden></div>
     </div>
-    <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button><button class="btn" id="addBtn">+ 현장 추가</button></div>
+    <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button></div>
   </header>
 
   <div class="update" id="updNote" hidden>현장 사진·수금·매출 기능을 쓰려면 Supabase 업데이트를 한 번 해야 해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-02.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 전부 복사해 Supabase의 SQL Editor에 붙여넣고 Run을 누르면 끝나요.</div>
+
+  <!-- 메뉴: 큰 묶음(현장 · 견적 · 정산 · 결산). 휴대폰에서는 화면 아래 막대 -->
+  <nav class="gnav" id="gnav" aria-label="메뉴" hidden>
+    <button type="button" id="nav-site" data-g="site" aria-current="page"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5"/><path d="M5.5 9v10.5h13V9"/><path d="M10 19.5v-5h4v5"/></svg></span><span class="lb">현장</span></button>
+    <button type="button" id="nav-est" data-g="est"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8.5h5"/><path d="M9 12.5h7M9 16h7"/></svg></span><span class="lb">견적</span></button>
+    <button type="button" id="nav-money" data-g="money"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M15.5 14.5h2.5"/></svg></span><span class="lb">정산</span></button>
+    <button type="button" id="nav-fin" data-g="fin"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 16.5V11M12 16.5V6.5M17 16.5v-3.5"/></svg></span><span class="lb">결산</span></button>
+  </nav>
+  <div class="subbar" id="sub-site">
+    <div class="tabs" role="tablist" aria-label="현장">
+      <button class="tab" role="tab" id="tab-board" aria-selected="true">현장 목록</button>
+      <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
+      <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
+    </div>
+    <button class="btn" id="addBtn" type="button">+ 현장 추가</button>
+  </div>
+  <div class="subbar" id="sub-est" hidden>
+    <div class="tabs" role="tablist" aria-label="견적"><button class="tab" role="tab" id="tab-est" aria-selected="false">견적서</button></div>
+    <button class="btn" type="button" id="esNew">+ 새 견적서</button>
+  </div>
+  <div class="subbar" id="sub-money" hidden>
+    <div class="tabs" role="tablist" aria-label="정산">
+      <button class="tab" role="tab" id="tab-pay" aria-selected="false">고객 수금</button>
+      <button class="tab" role="tab" id="tab-wage" aria-selected="false">시공자 정산</button>
+    </div>
+  </div>
+  <div class="subbar" id="sub-fin" hidden>
+    <div class="tabs" role="tablist" aria-label="결산">
+      <button class="tab" role="tab" id="tab-sales" aria-selected="false">손익</button>
+      <button class="tab" role="tab" id="tab-exp" aria-selected="false">회사 지출</button>
+    </div>
+  </div>
 
   <div class="summary" id="summary"></div>
 
@@ -659,16 +715,6 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
   </section>
 
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" id="tab-board" aria-selected="true">현장 목록</button>
-    <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
-    <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
-    <button class="tab admin-only" role="tab" id="tab-est" aria-selected="false" hidden>견적</button>
-    <button class="tab admin-only" role="tab" id="tab-pay" aria-selected="false" hidden>수금</button>
-    <button class="tab admin-only" role="tab" id="tab-sales" aria-selected="false" hidden>결산</button>
-    <button class="tab admin-only" role="tab" id="tab-wage" aria-selected="false" hidden>정산</button>
-  </div>
-
   <section id="view-board">
     <p class="sub cat-note" id="catNote" hidden></p>
     <div class="board"><table>
@@ -676,7 +722,7 @@ th.num{font-family:var(--font);font-size:12px}
       <tbody id="tbody"></tbody></table></div>
     <div class="cards" id="cards"></div>
     <div class="empty" id="catEmpty" hidden>이 분류에 해당하는 현장이 없어요.</div>
-    <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 오른쪽 위 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
+    <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 위의 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
     <p class="sub">현장을 누르면 내용을 먼저 보여 주고, <b>수정</b>을 누르면 일정·AS·사진·도면·견적서를 고칠 수 있어요. 7일 안에 시공자가 안 정해진 날이 있으면 빨간색으로 표시됩니다.</p>
     <div class="backup"><button class="btn ghost sm" type="button" id="xlsBtn">엑셀로 받기</button><span class="hint" id="xlsNote"></span></div>
   </section>
@@ -713,7 +759,7 @@ th.num{font-family:var(--font);font-size:12px}
   <section id="view-est" class="view" hidden>
     <div class="update" id="esUpdate" hidden>견적서를 쓰려면 Supabase 업데이트 10이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-10.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
     <div class="view" id="esBody">
-      <div class="es-top"><div class="summary" id="esChips"></div><button class="btn" type="button" id="esNew">+ 새 견적서</button></div>
+      <div class="es-top"><div class="summary" id="esChips"></div></div>
       <div class="tbl stack"><table><thead><tr><th>업체 · 프로젝트</th><th>견적일</th><th class="num">합계</th><th>상태</th><th>고객 확인</th></tr></thead><tbody id="esList"></tbody></table></div>
       <p class="sub">견적서를 누르면 고치거나 고객에게 보낼 수 있어요. 고객에게는 문자·카톡으로 링크를 보내고, 고객이 열어 보면 '고객 확인'에 보여요. <b>계약으로 확정</b>을 누르면 계약금액과 입금 일정이 수금·결산에 들어가요.</p>
       <details class="es-box" id="esCoBox">
@@ -784,11 +830,19 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">현장 이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
     <h3>매입 구성 (현장 원가)</h3>
     <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
-    <h3>지출 (회사 비용)</h3>
+    <p class="sub" id="saNote"></p>
+  </section>
+
+  <section id="view-exp" class="view" hidden>
+    <div class="filters" id="exFilt"><select id="ex-y" aria-label="연도"></select><select id="ex-m" aria-label="월"><option value="0">1년 전체</option><option value="1">1월</option><option value="2">2월</option><option value="3">3월</option><option value="4">4월</option><option value="5">5월</option><option value="6">6월</option><option value="7">7월</option><option value="8">8월</option><option value="9">9월</option><option value="10">10월</option><option value="11">11월</option><option value="12">12월</option></select></div>
     <div class="update" id="exUpdate" hidden>회사 지출을 적으려면 Supabase 업데이트 10이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-10.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
     <div class="view" id="exBody">
+      <div class="tiles" id="exTiles"></div>
+      <h3>항목별 합계</h3>
       <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="exCats"></tbody></table></div>
+      <h3>지출 내역</h3>
       <div class="tbl stack"><table><thead><tr><th>날짜</th><th>항목</th><th class="num">금액</th><th>메모</th></tr></thead><tbody id="exList"></tbody></table></div>
+      <h3 id="ex-formTitle">지출 적기</h3>
       <div class="ex-form" id="ex-form">
         <div class="ex-grid">
           <label>날짜<input type="date" id="ex-day"></label>
@@ -802,7 +856,6 @@ th.num{font-family:var(--font);font-size:12px}
         <p class="hint" style="margin:0">현장에 들어간 돈(자재·인건비·외주)은 현장의 <b>수금 · 매입</b>에 적고, 여기에는 현장에 딸리지 않은 회사 비용만 적어요. 시공자 일당은 현장 매입에 자동으로 들어가니 여기 또 적지 않아요. 적은 줄을 누르면 고치거나 지울 수 있어요.</p>
       </div>
     </div>
-    <p class="sub" id="saNote"></p>
   </section>
 
   <section id="view-wage" class="view" hidden>

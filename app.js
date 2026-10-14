@@ -436,15 +436,14 @@ function renderSales(){
   const counted=jobs.filter(j=>moneyOf(j.id).contract.amount>0||jobCosts(j).length>0);
   const years=[...new Set([now.getFullYear(),...counted.map(j=>+jobMonth(j).slice(0,4)).filter(Boolean),...expenses.map(x=>+x.day.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
   if(!years.includes(salesY))salesY=years[0];
-  $("sa-y").innerHTML=years.map(y=>`<option value="${y}" ${y===salesY?"selected":""}>${y}년</option>`).join("");
-  $("sa-m").value=String(salesM);
+  ["sa","ex"].forEach(k=>{$(k+"-y").innerHTML=years.map(y=>`<option value="${y}" ${y===salesY?"selected":""}>${y}년</option>`).join("");$(k+"-m").value=String(salesM);});
   const yms=salesM?[`${salesY}-${pad(salesM)}`]:yearMonths(salesY),inPer=j=>yms.includes(jobMonth(j));
   const sel=counted.filter(inPer),undated=counted.filter(j=>!jobMonth(j)).length;
   const rev=a=>a.reduce((s,j)=>s+moneyOf(j.id).contract.amount,0),cost=a=>a.reduce((s,j)=>s+jobCost(j),0);
   const cashIn=list=>jobs.reduce((s,j)=>s+moneyOf(j.id).pays.filter(p=>p.paid&&list.includes((p.paidOn||"").slice(0,7))).reduce((a,p)=>a+p.amount,0),0);
   const R=rev(sel),C=cost(sel),E=expSum(yms),P=R-C-E;
   $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳</small></div><div class="tile"><small>매입 (현장 원가)</small><b>${won(C)}</b></div>
-    <div class="tile"><small>지출 (회사 비용)</small><b>${won(E)}</b></div><div class="tile ${P<0?"bad":""}"><small>순이익</small><b>${won(P)}</b><small>이익률 ${pct(P,R)}</small></div>
+    <div class="tile"><small>지출 (회사 비용)</small><b>${won(E)}</b><small><button class="linkish" type="button" data-tab="exp">지출 내역 보기</button></small></div><div class="tile ${P<0?"bad":""}"><small>순이익</small><b>${won(P)}</b><small>이익률 ${pct(P,R)}</small></div>
     <div class="tile"><small>실제 들어온 돈 (입금)</small><b>${won(cashIn(yms))}</b></div>`;
   $("saYearsBox").hidden=!!salesM;$("saMonthsBox").hidden=!!salesM;
   const row=(label,attr,n,r,c,e,max)=>{const p=r-c-e,any=r||c||e;
@@ -463,11 +462,14 @@ function renderSales(){
   $("saCosts").innerHTML=cats.length?cats.map(x=>`<tr><td>${esc(x.c)}</td><td class="num">${won(x.v)}</td><td class="num">${pct(x.v,C)}</td><td class="barcell">${bar(x.v,C,"cost")}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">매입 기록이 없어요.</td></tr>`;
   renderExpenses(yms,E);
-  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 현장 매출·매입의 기준 달은 시공이 끝나는 달이고, 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 탭의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
+  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 현장 매출·매입의 기준 달은 시공이 끝나는 달이고, 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
 }
 function renderExpenses(yms,E){
-  $("exUpdate").hidden=pay09;$("exBody").hidden=!pay09;if(!pay09)return;
+  $("exUpdate").hidden=pay09;$("exBody").hidden=!pay09;$("exFilt").hidden=!pay09;if(!pay09)return;
   const list=expenses.map(x=>({x,n:yms.filter(m=>expIn(x,m)).length})).filter(o=>o.n).sort((a,b)=>b.x.day.localeCompare(a.x.day));
+  const monthly=expenses.filter(x=>x.repeat&&expIn(x,curYM())).reduce((a,x)=>a+x.amount,0);
+  $("exTiles").innerHTML=`<div class="tile"><small>지출 합계 (${salesM?`${salesY}년 ${salesM}월`:`${salesY}년`})</small><b>${won(E)}</b><small>${list.length}건</small></div>
+    <div class="tile"><small>매달 나가는 돈 (이번 달 기준)</small><b>${won(monthly)}</b><small>임대료처럼 매달 체크한 지출</small></div>`;
   const cats=EXP_CATS.map(c=>({c,v:list.filter(o=>o.x.cat===c).reduce((a,o)=>a+o.x.amount*o.n,0)})).filter(o=>o.v);
   $("exCats").innerHTML=cats.length?cats.map(o=>`<tr><td>${esc(o.c)}</td><td class="num">${won(o.v)}</td><td class="num">${pct(o.v,E)}</td><td class="barcell">${bar(o.v,E,"cost")}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">이 기간에 적은 지출이 없어요.</td></tr>`;
@@ -477,7 +479,7 @@ function renderExpenses(yms,E){
 function fillExpForm(x){expEdit=x?x.id:null;
   $("ex-day").value=x?x.day:TODAY;$("ex-cat").value=x?x.cat:EXP_CATS[0];$("ex-amt").value=x?comma(x.amount):"";$("ex-note").value=x?x.note:"";
   $("ex-rep").checked=!!(x&&x.repeat);$("ex-until").value=x?x.until:"";$("ex-untilBox").hidden=!$("ex-rep").checked;
-  $("ex-save").textContent=x?"고치기":"지출 추가";$("ex-del").hidden=!x;$("ex-cancel").hidden=!x;$("ex-err").hidden=true;}
+  $("ex-save").textContent=x?"고치기":"지출 추가";$("ex-formTitle").textContent=x?"지출 고치기":"지출 적기";$("ex-del").hidden=!x;$("ex-cancel").hidden=!x;$("ex-err").hidden=true;}
 async function saveExp(){const row={day:$("ex-day").value,cat:$("ex-cat").value,amount:toNum($("ex-amt").value),note:$("ex-note").value.trim(),repeat:$("ex-rep").checked,until:$("ex-rep").checked?$("ex-until").value:""};
   const err=t=>{$("ex-err").textContent=t;$("ex-err").hidden=false;};
   if(!row.day)return err("날짜를 넣어 주세요.");if(!row.amount)return err("금액을 넣어 주세요.");
@@ -501,8 +503,7 @@ $("ex-save").onclick=saveExp;$("ex-del").onclick=delExp;$("ex-cancel").onclick=(
 fillExpForm(null);
 document.addEventListener("click",e=>{const r=e.target.closest("[data-ex]");if(!r)return;const x=expenses.find(o=>o.id===r.dataset.ex);if(x){fillExpForm(x);$("ex-form").scrollIntoView({behavior:"smooth",block:"center"});}});
 document.addEventListener("click",e=>{const r=e.target.closest("[data-year]");if(r){salesY=+r.dataset.year;salesM=0;renderSales();}});
-$("sa-y").onchange=e=>{salesY=+e.target.value;renderSales()};
-$("sa-m").onchange=e=>{salesM=+e.target.value;renderSales()};
+["sa","ex"].forEach(k=>{$(k+"-y").onchange=e=>{salesY=+e.target.value;renderSales()};$(k+"-m").onchange=e=>{salesM=+e.target.value;renderSales()};});
 document.addEventListener("click",e=>{const r=e.target.closest("[data-month]");if(r){salesM=+r.dataset.month;renderSales();}});
 
 /* 견적서 (관리자). 앱에서 품목을 넣어 작성 → 미리보기·인쇄(PDF) → 고객에게 링크(est.html?t=열쇠) → 계약으로 확정하면 계약금액·입금 일정이 수금·결산에 들어감.
@@ -527,7 +528,7 @@ async function loadEst(){if(!isAdmin){ests=[];return;}
   if(est10&&!a.error&&!estChan)estChan=sb.channel("nest-est").on("postgres_changes",{event:"*",schema:"public",table:"estimates"},estRefresh).on("postgres_changes",{event:"*",schema:"public",table:"est_conf"},estRefresh).subscribe();}
 function estRefresh(){loadEst().then(()=>{if(!isAdmin)return;renderEst();if(viewing)renderView();if(esCur){const r=ests.find(x=>x.id===esCur.id);if(r){esCur={...esCur,status:r.status,views:r.views,seen:r.seen,first:r.first,job_id:esCur.job_id};renderEsMeta();}}});}
 function renderEst(){
-  $("esUpdate").hidden=est10;$("esBody").hidden=!est10;if(!est10)return;
+  $("esUpdate").hidden=est10;$("esBody").hidden=!est10;$("esNew").hidden=!est10;if(!est10)return;
   const cats=[["","전체",()=>true],...Object.keys(EST_ST).map(k=>[k,EST_ST[k],e=>e.status===k])];
   if(!cats.some(c=>c[0]===estCat))estCat="";
   $("esChips").innerHTML=cats.map(([k,l,fn])=>`<button class="chip${k===estCat?" on":""}" type="button" data-escat="${k}" aria-pressed="${k===estCat}">${l} <b>${ests.filter(fn).length}</b></button>`).join("");
@@ -807,7 +808,7 @@ function fillMoney(j){if(!isAdmin)return;const m=j?moneyOf(j.id):normMoney();
 function moneyHint(m,auto){const j=editing,out=[];
   if(j&&extraSum(j))out.push(`이 현장 마감 추가 투입: ${extraSum(j)}명 (${j.f.extra.length}회)`);
   if(j&&pay08){const L=laborOf(j),c=Math.round(L.crew);
-    auto.forEach(x=>out.push(`${x.cat} ${won(x.amount)} 자동 반영 (정산 탭 일당 기준)`));
+    auto.forEach(x=>out.push(`${x.cat} ${won(x.amount)} 자동 반영 (시공자 정산 일당 기준)`));
     if(c&&m.costs.some(x=>x.cat==="시공 인건비"))out.push(`일정 × 일당으로는 시공 인건비 ${won(c)}인데, 직접 적은 금액을 써요`);
     if(L.miss.size)out.push(`일당 미입력: ${[...L.miss].join(", ")}`);}
   $("mo-extra-hint").textContent=out.join(" · ");}
@@ -938,13 +939,26 @@ document.addEventListener("click",e=>{const c=e.target.closest("[data-cat]");if(
   const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
   const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
-const VIEWS=["board","cal","crew","est","pay","sales","wage"];
-function tab(which){if(!isAdmin&&["est","pay","sales","wage"].includes(which))which="board";curTab=which;
+/* 메뉴: 큰 묶음(현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 현장 묶음만 */
+const GROUPS={site:["board","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
+const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v));
+const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
+let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
+function tab(which){if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(which)))which="board";curTab=which;
+  const g=groupOf(which);lastSub[g]=which;
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
+  Object.keys(GROUPS).forEach(k=>{$("sub-"+k).hidden=k!==g;if(k===g)$("nav-"+k).setAttribute("aria-current","page");else $("nav-"+k).removeAttribute("aria-current");});
+  $("app").dataset.g=g;$("gnav").hidden=!isAdmin;document.body.classList.toggle("gnav-on",isAdmin);
   if(which==="crew")renderCrew();
   if(which==="est"&&isAdmin)renderEst();
-  try{localStorage.setItem("nest-tab",which)}catch(e){}}
+  try{localStorage.setItem("nest-tab",which);localStorage.setItem("nest-sub",JSON.stringify(lastSub))}catch(e){}}
 VIEWS.forEach(v=>$("tab-"+v).onclick=()=>tab(v));
+Object.keys(GROUPS).forEach(g=>$("nav-"+g).onclick=()=>{const same=$("app").dataset.g===g,v=lastSub[g];
+  if(!same)tab(GROUPS[g].includes(v)?v:GROUPS[g][0]);window.scrollTo({top:0,behavior:same?"smooth":"auto"});});
+/* 휴대폰에서 글자를 입력하는 동안은 아래 메뉴 막대를 숨김 (자판 위로 떠서 화면을 가리지 않게) */
+const typingEl=t=>t&&t.matches&&t.matches("textarea,input:not([type]),input[type=text],input[type=search],input[type=email],input[type=tel],input[type=url],input[type=password],input[type=number]");
+let typT;document.addEventListener("focusin",e=>{if(typingEl(e.target)){clearTimeout(typT);document.body.classList.add("typing");}});
+document.addEventListener("focusout",()=>{clearTimeout(typT);typT=setTimeout(()=>{if(!typingEl(document.activeElement))document.body.classList.remove("typing");},250);});
 $("prev").onclick=()=>{calM--;if(calM<0){calM=11;calY--}renderCal()};
 $("next").onclick=()=>{calM++;if(calM>11){calM=0;calY++}renderCal()};
 
@@ -1542,7 +1556,7 @@ $("pushOff").onclick=()=>busy("pushOff","끄는 중…",disablePush);
 $("pushTest").onclick=()=>busy("pushTest","보내는 중…",testPush);
 document.querySelectorAll("#pushPrefs [data-pref]").forEach(c=>c.onchange=savePrefs);
 
-/* 알림을 눌러 열었을 때: ?day=날짜 → 달력에서 그날, ?tab=pay → 수금 */
+/* 알림을 눌러 열었을 때: ?day=날짜 → 달력에서 그날, ?tab=pay → 정산 › 고객 수금 */
 let pendingLink=location.search;
 function applyLink(q){
   const p=new URLSearchParams(q.includes("?")?q.slice(q.indexOf("?")):q),day=p.get("day"),t=p.get("tab"),jid=p.get("job");
@@ -1585,7 +1599,7 @@ async function startApp(session){
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
