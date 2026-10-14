@@ -140,6 +140,7 @@ function render(){
     </dl></button>`).join("");
   renderCal();renderCrew();
   if(isAdmin){renderPay();renderSales();renderWage();renderEst();}
+  renderHome();
   if(viewing)renderView();
 }
 /* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
@@ -526,7 +527,7 @@ async function loadEst(){if(!isAdmin){ests=[];return;}
   if(!b.error){const rows=b.data||[],c=rows.find(r=>r.key==="company"),it=rows.find(r=>r.key==="items");estConf={company:E.normCompany(c&&c.data),items:normLib(it&&it.data)};}
   if(!coFilled||!$("esCoBox").open)fillCompany();
   if(est10&&!a.error&&!estChan)estChan=sb.channel("nest-est").on("postgres_changes",{event:"*",schema:"public",table:"estimates"},estRefresh).on("postgres_changes",{event:"*",schema:"public",table:"est_conf"},estRefresh).subscribe();}
-function estRefresh(){loadEst().then(()=>{if(!isAdmin)return;renderEst();if(viewing)renderView();if(esCur){const r=ests.find(x=>x.id===esCur.id);if(r){esCur={...esCur,status:r.status,views:r.views,seen:r.seen,first:r.first,job_id:esCur.job_id};renderEsMeta();}}});}
+function estRefresh(){loadEst().then(()=>{if(!isAdmin)return;renderEst();renderHome();if(viewing)renderView();if(esCur){const r=ests.find(x=>x.id===esCur.id);if(r){esCur={...esCur,status:r.status,views:r.views,seen:r.seen,first:r.first,job_id:esCur.job_id};renderEsMeta();}}});}
 function renderEst(){
   $("esUpdate").hidden=est10;$("esBody").hidden=!est10;$("esNew").hidden=!est10;if(!est10)return;
   const cats=[["","전체",()=>true],...Object.keys(EST_ST).map(k=>[k,EST_ST[k],e=>e.status===k])];
@@ -939,19 +940,83 @@ document.addEventListener("click",e=>{const c=e.target.closest("[data-cat]");if(
   const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
   const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
-/* 메뉴: 큰 묶음(현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 현장 묶음만 */
-const GROUPS={site:["board","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
-const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v));
+/* 오늘 할 일 (홈): 앱을 열면 먼저 보이는 화면. 오늘·내일·앞으로 7일 일정, 확인할 일, 7일 안에 받을 돈(관리자) */
+const locDay=ts=>{const d=new Date(ts);return isNaN(d)?"":`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+const jBtn=j=>`<button type="button" class="linkish" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
+const dayLabel=ds=>`${+ds.slice(5,7)}월 ${+ds.slice(8)}일 (${WD[dow(ds)]})`;
+const homeOrder={i:0,m:1,a:2,x:3};
+function homeItem(x,ds){const j=x.j;
+  if(x.t==="i"){const wd=workDays(j),k=wd.indexOf(ds)+1,cr=crewOn(j,ds);
+    return`<li><i class="dot k ${kc(j)}"></i><div><span class="hm-k">시공</span> ${jBtn(j)}<div class="dmeta">${cr.length?`<span>${esc(cr.join(", "))}</span>`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div></div></li>`;}
+  if(x.t==="m")return`<li><i class="dot" style="background:var(--c-measure)"></i><div><span class="hm-k">실측</span> ${jBtn(j)}<div class="dmeta">${sub(j)?`<span class="hint">${sub(j)}</span>`:""}${j.m.done?`<span class="tag ok">완료</span>`:""}</div></div></li>`;
+  if(x.t==="a")return`<li><i class="dot" style="background:var(--c-as)"></i><div><span class="hm-k">AS</span> ${jBtn(j)}<div class="dmeta"><span>담당 ${esc(x.a.crew||"미정")}</span>${x.a.note?`<span class="hint">${esc(x.a.note)}</span>`:""}${x.a.done?`<span class="tag ok">완료</span>`:""}</div></div></li>`;
+  return`<li><i class="dot ring ${kc(j)}"></i><div><span class="hm-k">추가 투입</span> ${jBtn(j)}<div class="dmeta"><span>+${+x.x.people}명</span>${x.x.note?`<span class="hint">${esc(x.x.note)}</span>`:""}</div></div></li>`;}
+const homeDay=ds=>dayItems(ds).sort((a,b)=>homeOrder[a.t]-homeOrder[b.t]);
+function homeAlerts(){const A=[],live=jobs.filter(j=>!j.f.closed),it=(j,more)=>`<span>${jBtn(j)}${more?` <span class="hint">${more}</span>`:""}</span>`;
+  const add=(tone,title,list,unit,go)=>{if(list.length)A.push({tone,title,list,unit,go});};
+  const wk=addDays(TODAY,7);
+  add("late","시공자 미배정 (7일 안)",live.filter(noCrewSoon).map(j=>it(j,noCrewDays(j).filter(d=>d>=TODAY&&d<=wk).map(fmt).join(", "))),"곳");
+  add("late","시공자 겹침",clashList(TODAY,addDays(TODAY,60)).sort((a,b)=>a.d.localeCompare(b.d)).map(c=>`<span><button type="button" class="linkish" data-day="${c.d}">${esc(c.n)} ${fmt(c.d)}</button></span>`),"건",["crew","시공자별 보기"]);
+  if(isAdmin)add("late","입금 지연",jobs.flatMap(j=>overdue(moneyOf(j.id)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due)).map(x=>it(x.j,`${esc(x.p.label)} ${won(x.p.amount)} · ${dayDiff(x.p.due,TODAY)}일 지남`)),"건",["pay","고객 수금 보기"]);
+  add("late","체크리스트 문제 (조치 전)",jobs.filter(j=>clNeeds(j)==="bad").map(j=>it(j,`문제 ${clSum(j).bad.length}개`)),"곳");
+  add("late","AS 날짜 지남 (완료 체크 안 함)",jobs.flatMap(j=>asOpen(j).filter(a=>a.date&&a.date<TODAY).map(a=>it(j,`${fmt(a.date)}${a.crew?` · ${esc(a.crew)}`:""}`))),"건");
+  add("soon","체크리스트 미제출",jobs.filter(j=>clNeeds(j)==="late").map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
+  add("soon","실측 완료 체크 안 함",live.filter(j=>j.m.date&&j.m.date<TODAY&&!j.m.done).map(j=>it(j,fmt(j.m.date))),"곳");
+  add("soon","시공 끝, 마감 완료 전",live.filter(j=>!j.f.done&&lastWork(j)&&lastWork(j)<TODAY).map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
+  if(isAdmin&&est10)add("soon","보낸 견적서를 고객이 안 열어 봄 (2일 넘음)",ests.filter(e=>e.status==="sent"&&!e.views&&e.d.sentAt&&locDay(e.d.sentAt)&&locDay(e.d.sentAt)<=addDays(TODAY,-2))
+    .map(e=>`<span><button type="button" class="linkish" data-es="${esc(e.id)}">${esc([e.d.cust.name,e.d.title].filter(Boolean).join(" · ")||"견적서")}</button> <span class="hint">${fmt(locDay(e.d.sentAt))} 보냄</span></span>`),"건",["est","견적서 보기"]);
+  if(isAdmin&&pay08&&Object.keys(wage.rates.day).length){const pm=addDays(TODAY.slice(0,8)+"01",-1),m=+pm.slice(5,7),w=wageMonth(+pm.slice(0,4),m);
+    add("soon",`${m}월 시공자 정산 지급 전`,w.people.filter(p=>!p.paid&&(p.days||p.as)).map(p=>`<span>${esc(p.n)} <span class="hint">${p.total==null?"일당 미입력":won(p.total)}</span></span>`),"명",[`wage:${pm.slice(0,7)}`,"시공자 정산 보기"]);}
+  let last="";try{last=localStorage.getItem(XLS_KEY)||""}catch(e){}
+  if(jobs.length&&(!last||dayDiff(last,TODAY)>30))A.push({tone:"wait",title:last?"엑셀 백업 한 달 넘게 안 받음":"엑셀 백업 아직 안 받음",list:[`<span class="hint">이 기기에서 기록을 엑셀 파일로 받아 두면 안전해요.</span>`],unit:"",go:["xls","엑셀로 받기"]});
+  add("wait","실측일·시공일 없는 현장",live.filter(j=>!j.m.date&&!j.i.start).map(j=>it(j)),"곳");
+  return A;}
+function renderHome(){if(!loaded)return;
+  const tmr=addDays(TODAY,1),none=t=>`<li class="none">${t}</li>`;
+  $("hmDate").textContent=dayLabel(TODAY);
+  const run=jobs.filter(j=>jobStage(j)==="run").length,wait=jobs.filter(j=>jobStage(j)==="wait").length,wk=jobs.filter(j=>!j.f.closed&&thisWeek(j)).length;
+  const tile=(go,label,v,more)=>`<button type="button" class="tile" data-go="${go}"><small>${label}</small><b>${v}</b>${more?`<small>${more}</small>`:""}</button>`;
+  let tiles=tile("board:run","진행중인 현장",`${run}곳`)+tile("cal","7일 안 시공",`${wk}곳`);
+  if(isAdmin){const t=payTotals(),ym=TODAY.slice(0,7),inM=jobs.reduce((s,j)=>s+moneyOf(j.id).pays.filter(p=>p.paid&&(p.paidOn||"").slice(0,7)===ym).reduce((a,p)=>a+p.amount,0),0);
+    tiles+=tile("pay","미수금",man(t.unpaid),t.lateN?`입금 지연 ${t.lateN}건`:"")+tile("pay",`${+ym.slice(5)}월 들어온 돈`,man(inM));}
+  else tiles+=tile("board:wait","대기중인 현장",`${wait}곳`);
+  $("hmTiles").innerHTML=tiles;
+  const t0=homeDay(TODAY),t1=homeDay(tmr);
+  $("hmTodayH").innerHTML=`<button type="button" class="linkish" data-day="${TODAY}">오늘 일정</button> <span class="hint">${dayLabel(TODAY)} · ${t0.length}건</span>`;
+  $("hmToday").innerHTML=t0.length?t0.map(x=>homeItem(x,TODAY)).join(""):none("오늘은 잡힌 일정이 없어요.");
+  $("hmTmrH").innerHTML=`<button type="button" class="linkish" data-day="${tmr}">내일 일정</button> <span class="hint">${dayLabel(tmr)} · ${t1.length}건</span>`;
+  $("hmTmr").innerHTML=t1.length?t1.map(x=>homeItem(x,tmr)).join(""):none("내일은 잡힌 일정이 없어요.");
+  const week=[];for(let k=2;k<=7;k++){const ds=addDays(TODAY,k),its=homeDay(ds);if(!its.length)continue;
+    const by=(t,l)=>{const n=[...new Set(its.filter(x=>x.t===t).map(x=>short(x.j)))];return n.length?`<span class="hm-k">${l}</span> ${n.join(", ")}`:"";};
+    week.push(`<li data-day="${ds}" role="button" tabindex="0"><span class="d">${fmtW(ds)}</span><span>${[by("i","시공"),by("m","실측"),by("a","AS"),by("x","추가 투입")].filter(Boolean).join(" · ")}</span></li>`);}
+  $("hmWeek").innerHTML=week.join("")||none("모레부터 7일 동안 잡힌 일정이 없어요.");
+  const al=homeAlerts(),red=al.filter(a=>a.tone==="late").reduce((n,a)=>n+a.list.length,0);
+  $("hmAlerts").innerHTML=al.length?al.map(a=>`<div class="hm-al ${a.tone}"><div class="hm-al-h"><b>${a.title}</b>${a.unit?`<span class="n">${a.list.length}${a.unit}</span>`:""}${a.go?`<button type="button" class="btn ghost sm" data-go="${a.go[0]}">${a.go[1]}</button>`:""}</div><div class="hm-al-b">${a.list.slice(0,8).join("")}${a.list.length>8?`<span class="hint">외 ${a.list.length-8}${a.unit}</span>`:""}</div></div>`).join("")
+    :`<p class="hm-none">지금 확인할 일이 없어요.</p>`;
+  $("homeBadge").textContent=red>99?"99+":String(red);$("homeBadge").hidden=!red;$("nav-home").setAttribute("aria-label",red?`오늘, 급한 일 ${red}건`:"오늘");
+  if(isAdmin){const soon=jobs.flatMap(j=>moneyOf(j.id).pays.filter(p=>!p.paid&&p.due&&p.due>=TODAY&&p.due<=addDays(TODAY,7)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due));
+    $("hmMoneyH").innerHTML=`7일 안에 받을 돈${soon.length?` <span class="hint">${soon.length}건 · ${won(soon.reduce((a,x)=>a+x.p.amount,0))}</span>`:""}`;
+    $("hmMoney").innerHTML=soon.length?soon.map(x=>`<li><span class="d">${fmtW(x.p.due)}</span><div>${jBtn(x.j)} <span class="hint">${esc(x.p.label)}</span></div><span class="num">${won(x.p.amount)}</span></li>`).join(""):none("7일 안에 받기로 한 돈이 없어요.");}}
+document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!g)return;const [v,arg]=g.dataset.go.split(":");
+  if(v==="xls"){downloadBackup();return;}
+  if(v==="wage"&&arg){wgY=+arg.slice(0,4);wgM=+arg.slice(5,7);}
+  if(v==="board"){boardCat=arg||"";}
+  tab(v);if(v==="board")render();if(v==="wage")renderWage();window.scrollTo({top:0});});
+
+/* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
+const GROUPS={home:["home"],site:["board","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
+const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
 function tab(which){if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(which)))which="board";curTab=which;
   const g=groupOf(which);lastSub[g]=which;
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
   Object.keys(GROUPS).forEach(k=>{$("sub-"+k).hidden=k!==g;if(k===g)$("nav-"+k).setAttribute("aria-current","page");else $("nav-"+k).removeAttribute("aria-current");});
-  $("app").dataset.g=g;$("gnav").hidden=!isAdmin;document.body.classList.toggle("gnav-on",isAdmin);
+  $("app").dataset.g=g;$("gnav").hidden=false;document.body.classList.add("gnav-on");
   if(which==="crew")renderCrew();
   if(which==="est"&&isAdmin)renderEst();
-  try{localStorage.setItem("nest-tab",which);localStorage.setItem("nest-sub",JSON.stringify(lastSub))}catch(e){}}
+  if(which==="home")renderHome();
+  try{localStorage.setItem("nest-sub",JSON.stringify(lastSub))}catch(e){}}
 VIEWS.forEach(v=>$("tab-"+v).onclick=()=>tab(v));
 Object.keys(GROUPS).forEach(g=>$("nav-"+g).onclick=()=>{const same=$("app").dataset.g===g,v=lastSub[g];
   if(!same)tab(GROUPS[g].includes(v)?v:GROUPS[g][0]);window.scrollTo({top:0,behavior:same?"smooth":"auto"});});
@@ -1454,7 +1519,7 @@ function renderBackup(){let last="";try{last=localStorage.getItem(XLS_KEY)||""}c
 function downloadBackup(){
   if(!loaded)return;
   const blob=xlsxBlob(backupSheets()),fname=`NEST_backup_${TODAY}.xlsx`;
-  const done=()=>{try{localStorage.setItem(XLS_KEY,TODAY)}catch(e){}renderBackup();const b=$("xlsBtn"),t=b.textContent;b.textContent="받았어요";setTimeout(()=>b.textContent=t,1600);};
+  const done=()=>{try{localStorage.setItem(XLS_KEY,TODAY)}catch(e){}renderBackup();renderHome();const b=$("xlsBtn"),t=b.textContent;b.textContent="받았어요";setTimeout(()=>b.textContent=t,1600);};
   // 아이폰 홈 화면 앱은 바로 내려받기가 잘 안 돼서, 공유 창(파일에 저장·카톡 보내기)으로 엶
   if(IOS&&navigator.canShare){const file=new File([blob],fname,{type:blob.type});
     if(navigator.canShare({files:[file]})){navigator.share({files:[file],title:fname}).then(done).catch(()=>{});return;}}
@@ -1594,8 +1659,7 @@ let channel=null;
 async function startApp(session){
   $("login").hidden=true;$("app").hidden=false;userEmail=session.user.email||"";uid=session.user.id||"";$("who").textContent=userEmail;
   await checkAdmin();
-  let t="board";try{t=localStorage.getItem("nest-tab")||"board"}catch(e){}
-  tab(VIEWS.includes(t)?t:"board");
+  tab("home");
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
