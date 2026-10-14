@@ -8,7 +8,7 @@ const COST_CATS=["자재비","시공 인건비","추가 투입 인건비","외�
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const pad=n=>String(n).padStart(2,"0");
-const now=new Date();const TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+const now=new Date();let TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
 calY=now.getFullYear();calM=now.getMonth();
 const fmt=d=>d?d.slice(5).replace("-","/"):"—";
 const addDays=(d,n)=>{const t=new Date(d+"T12:00:00");t.setDate(t.getDate()+n);return `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`};
@@ -1016,7 +1016,7 @@ function tab(which){if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(w
   if(which==="crew")renderCrew();
   if(which==="est"&&isAdmin)renderEst();
   if(which==="home")renderHome();
-  try{localStorage.setItem("nest-sub",JSON.stringify(lastSub))}catch(e){}}
+  try{localStorage.setItem("nest-sub",JSON.stringify(lastSub));sessionStorage.setItem("nest-cur",which)}catch(e){}}
 VIEWS.forEach(v=>$("tab-"+v).onclick=()=>tab(v));
 Object.keys(GROUPS).forEach(g=>$("nav-"+g).onclick=()=>{const same=$("app").dataset.g===g,v=lastSub[g];
   if(!same)tab(GROUPS[g].includes(v)?v:GROUPS[g][0]);window.scrollTo({top:0,behavior:same?"smooth":"auto"});});
@@ -1656,23 +1656,28 @@ async function loadAll(){
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
 let channel=null;
-async function startApp(session){
-  $("login").hidden=true;$("app").hidden=false;userEmail=session.user.email||"";uid=session.user.id||"";$("who").textContent=userEmail;
+/* 앱을 처음 켰을 때만 '오늘'부터. 로그인 확인은 앱으로 돌아올 때마다 다시 오므로(SIGNED_IN) 이미 켜져 있으면 화면을 그대로 둠.
+   휴대폰이 앱을 잠깐 내렸다가 다시 띄우는(새로 읽는) 경우에도 같은 실행 중이면(sessionStorage) 보던 화면으로 돌아감 */
+let startedFor="";
+async function startApp(session){const id=session.user.id||"";
+  if(startedFor===id&&!$("app").hidden)return;startedFor=id;
+  $("login").hidden=true;$("app").hidden=false;userEmail=session.user.email||"";uid=id;$("who").textContent=userEmail;
   await checkAdmin();
-  tab("home");
+  let cur="";try{cur=sessionStorage.getItem("nest-cur")||""}catch(e){}
+  tab(VIEWS.includes(cur)?cur:"home");
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
   if(error){$("l-err").textContent="이메일이나 비밀번호가 맞지 않아요.";$("l-err").hidden=false;}});
 $("logoutBtn").onclick=async()=>{$("logoutBtn").disabled=true;await forgetPush();$("logoutBtn").disabled=false;sb.auth.signOut();};
-/* 앱을 다시 열었을 때 날짜가 바뀌었으면(밤새 켜 둔 경우) 새로고침해서 '오늘'을 오늘 날짜로. 입력 중이면 새로고침하지 않음 */
+/* 앱으로 돌아오면 새 내용을 불러옴. 날짜가 바뀌었으면(밤새 켜 둔 경우) 오늘 날짜만 바꾸고 보던 화면·입력하던 내용은 그대로 */
 const dayNow=()=>{const d=new Date();return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
 document.addEventListener("visibilitychange",()=>{if(document.hidden||$("app").hidden)return;
-  if(dayNow()!==TODAY&&$("form").hidden&&$("estSheet").hidden){location.reload();return;}loadAll();});
+  const d=dayNow();if(d!==TODAY){TODAY=d;laborCache=null;}loadAll();});
 
 (function boot(){
   const cfg=window.NEST_CONFIG||{};
