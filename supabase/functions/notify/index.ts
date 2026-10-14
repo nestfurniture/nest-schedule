@@ -307,21 +307,23 @@ async function clOpen(b) {
   });
 }
 /* 고객용 견적서(est.html?t=열쇠): 읽기만. 고객이 열면 횟수·시간을 남김 (회사 앱에 로그인된 기기에서 연 것은 빼고) */
+/* 고객용 견적서. 견적서에 적힌 것은 그대로 넘기고(견적서 칸이 늘어도 여기를 안 고쳐도 되게) 회사 안에서만 쓰는 값
+   (묶음 id, 보낸 시각, 고객 연락처)만 뺌. 회사 정보는 견적서에 찍히는 것만. api 2 = 엑셀 양식 견적서 */
 async function estOpen(b) {
-  if (!okToken(b.token)) return json({ error: "not found" }, 404);
+  if (!okToken(b.token)) return json({ error: "not found", api: 2 }, 404);
   const rows = await rest(`estimates?token=eq.${b.token}&select=id,data,views,first_seen`);
   const e = rows[0];
-  if (!e) return json({ error: "not found" }, 404);
+  if (!e) return json({ error: "not found", api: 2 }, 404);
   let c = {};
   try { c = (await rest("est_conf?key=eq.company&select=data"))[0]?.data || {}; } catch (_) { /* 회사 정보를 아직 안 넣음 */ }
-  const s = (v) => (typeof v === "string" ? v : "");
-  const company = { name: s(c.name), ceo: s(c.ceo), bizNo: s(c.bizNo), addr: s(c.addr), tel: s(c.tel), email: s(c.email), bank: s(c.bank), stamp: s(c.stamp) };
+  const company = Object.fromEntries(["name", "en", "tag", "ceo", "bizNo", "addr", "tel", "email", "web", "bank", "stamp"].filter((k) => typeof c[k] === "string").map((k) => [k, c[k]]));
   if (!b.staff) {
     const t = new Date().toISOString();
     await rest(`estimates?id=eq.${e.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ views: (+e.views || 0) + 1, seen_at: t, first_seen: e.first_seen || t }) }).catch((x) => console.error(x));
   }
-  const d = e.data || {};
-  return json({ est: { no: d.no, date: d.date, valid: d.valid, ver: d.ver, cust: d.cust, title: d.title, rows: d.rows, disc: d.disc, vat: d.vat, terms: d.terms, memo: d.memo }, company });
+  const { base: _b, sentAt: _s, cust: rawCust, ...est } = e.data || {};
+  const { phone: _ph, ...cust } = rawCust && typeof rawCust === "object" ? rawCust : {};
+  return json({ api: 2, est: { ...est, cust }, company });
 }
 async function clOpenOnly(b) {
   const cl = await clByToken(b.token);

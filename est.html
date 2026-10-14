@@ -30,15 +30,16 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-
 .state{padding:28px 0;text-align:center;color:var(--muted)}
 .state b{display:block;color:var(--fg);font-size:18px;margin-bottom:6px}
 .hint{color:var(--muted);font-size:13px;margin:0}
+.old{margin:0;padding:10px 12px;border-radius:8px;background:#FBE9DC;color:#7A2E0C;font-size:13px}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px max(10px,env(safe-area-inset-bottom));display:flex;justify-content:center}
 .bar-in{max-width:860px;width:100%;display:flex;gap:8px;align-items:center}
 .btn{font:inherit;cursor:pointer;background:var(--accent);color:var(--accent-fg);border:0;border-radius:8px;padding:11px 16px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;flex:1}
 .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media print{
-  @page{size:A4;margin:12mm}
+  @page{size:A4;margin:8mm}
   body{background:#fff;padding:0}
-  .bar,.hint{display:none!important}
+  .bar,.hint,.old{display:none!important}
   .paper{border:0;box-shadow:none;border-radius:0}
 }
 </style>
@@ -46,6 +47,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-
 </head>
 <body>
 <div class="wrap">
+  <p class="old" id="old" hidden>회사용 안내: 알림 서버(notify)가 예전 코드라서 담당 · 소재 · 하드웨어 · 단수 조정 같은 새 항목이 고객 화면에 빠져 보여요. Supabase에서 notify 코드를 새로 붙여 넣어 주세요. (고객에게는 이 안내가 안 보여요)</p>
   <div class="state" id="state">견적서를 불러오는 중…</div>
   <div class="paper" id="paper" hidden></div>
   <p class="hint" id="hint" hidden>PDF로 받으려면 <b>인쇄 · PDF 저장</b>을 누르고, 컴퓨터는 'PDF로 저장', 휴대폰은 인쇄 화면의 공유 버튼에서 저장하시면 돼요.</p>

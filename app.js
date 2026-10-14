@@ -512,7 +512,7 @@ const E=window.NEST_EST;
 let ests=[],estConf={company:E.normCompany(),items:[]},est10=true,estChan=null,estCat="",esCur=null,esSnap="",esPreview=false,esFrom=null,coStamp="",coFilled=false;
 const EST_ST={draft:"작성중",sent:"보냄",won:"계약",lost:"안 됨"},EST_TONE={draft:"wait",sent:"soon",won:"ok",lost:"wait"};
 const normEstRow=r=>({id:r.id,job_id:r.job_id||"",token:r.token||"",status:EST_ST[r.status]?r.status:"draft",d:E.norm(r.data),views:+r.views||0,first:r.first_seen||"",seen:r.seen_at||"",created:r.created_at||""});
-const normLib=d=>(Array.isArray(d&&d.list)?d.list:[]).map(x=>({name:String(x.name||"").slice(0,120),spec:String(x.spec||"").slice(0,120),unit:String(x.unit||"").slice(0,10),price:toNum(x.price)})).filter(x=>x.name);
+const normLib=d=>(Array.isArray(d&&d.list)?d.list:[]).map(x=>({name:String(x.name||"").slice(0,120),spec:String(x.spec||"").slice(0,120),mat:String(x.mat||"").slice(0,160),hw:String(x.hw||"").slice(0,120),unit:String(x.unit||"").slice(0,10),price:toNum(x.price)})).filter(x=>x.name);
 const estTag=e=>`<span class="tag ${EST_TONE[e.status]}">${EST_ST[e.status]}</span>`;
 const estUrl=t=>new URL(`est.html?t=${t}`,location.href.split(/[?#]/)[0]).href;
 const estMsg=e=>`[네스트퍼니처 견적서]\n\n${e.d.cust.name?`${e.d.cust.name.replace(/\s*(고객|고객님|님)$/,"")} 고객님, `:""}요청하신 견적서를 보내 드려요.\n아래 링크를 누르면 보실 수 있어요.\n${estUrl(e.token)}`;
@@ -533,19 +533,20 @@ function renderEst(){
   $("esChips").innerHTML=cats.map(([k,l,fn])=>`<button class="chip${k===estCat?" on":""}" type="button" data-escat="${k}" aria-pressed="${k===estCat}">${l} <b>${ests.filter(fn).length}</b></button>`).join("");
   const list=ests.filter(cats.find(c=>c[0]===estCat)[2]).sort((a,b)=>(b.d.date||"").localeCompare(a.d.date||"")||b.created.localeCompare(a.created));
   $("esList").innerHTML=list.length?list.map(e=>{const t=E.calc(e.d),j=e.job_id&&jobs.find(x=>x.id===e.job_id);
-    return`<tr data-es="${esc(e.id)}" tabindex="0"><td class="job"><b>${esc(e.d.cust.name||"(고객명 없음)")}</b>${e.d.ver>1?` <span class="tag soon">${e.d.ver}차</span>`:""}<small>${[esc(e.d.title),j?`현장 ${esc(j.name)}`:""].filter(Boolean).join(" · ")}</small></td>
+    return`<tr data-es="${esc(e.id)}" tabindex="0"><td class="job"><b>${esc(e.d.cust.name||e.d.title||"(업체명 없음)")}</b>${e.d.ver>1?` <span class="tag soon">${e.d.ver}차</span>`:""}<small>${[e.d.cust.name?esc(e.d.title):"",j?`현장 ${esc(j.name)}`:""].filter(Boolean).join(" · ")}</small></td>
       <td data-l="견적일"><span class="d">${fmtW(e.d.date)}</span></td><td class="num" data-l="합계">${won(t.total)}</td><td data-l="상태">${estTag(e)}</td>
       <td data-l="고객 확인">${e.views?`${e.views}번 열어 봄 <small class="hint">${seenTxt(e.seen)}</small>`:e.status==="sent"?`<span class="hint">아직 안 열어 봄</span>`:"—"}</td></tr>`;}).join("")
     :`<tr><td colspan="5" class="hint">${ests.length?"이 분류에 해당하는 견적서가 없어요.":"아직 견적서가 없어요. 위의 <b>+ 새 견적서</b>를 눌러 시작해 보세요."}</td></tr>`;
   const co=estConf.company;
   $("esCoSum").textContent=co.name||co.tel||co.bizNo?`${co.name||"상호 없음"} · ${co.stamp?"도장 있음":"도장 없음"}`:"아직 안 넣었어요. 견적서에 들어갈 회사 정보를 넣어 주세요.";
   $("esLibSum").textContent=estConf.items.length?`${estConf.items.length}개`:"아직 없어요";
-  $("libList").innerHTML=estConf.items.length?estConf.items.map((x,k)=>`<tr data-lib="${k}" tabindex="0"><td class="job"><b>${esc(x.name)}</b></td><td data-l="규격">${esc(x.spec)||"—"}</td><td data-l="단위">${esc(x.unit)||"—"}</td><td class="num" data-l="단가">${won(x.price)}</td><td class="push"><button class="btn del sm" type="button" data-libdel="${k}">빼기</button></td></tr>`).join("")
+  $("libList").innerHTML=estConf.items.length?estConf.items.map((x,k)=>`<tr data-lib="${k}" tabindex="0"><td class="job"><b>${esc(x.name)}</b>${x.mat||x.hw?`<small>${esc([x.mat,x.hw].filter(Boolean).join(" · "))}</small>`:""}</td><td data-l="규격">${esc(x.spec)||"—"}</td><td data-l="단위">${esc(x.unit)||"—"}</td><td class="num" data-l="단가">${won(x.price)}</td><td class="push"><button class="btn del sm" type="button" data-libdel="${k}">빼기</button></td></tr>`).join("")
     :`<tr><td colspan="5" class="hint">자주 쓰는 품목과 단가를 넣어 두면 견적서를 쓸 때 골라 쓸 수 있어요.</td></tr>`;
-  $("es-libnames").innerHTML=estConf.items.map(x=>`<option value="${esc(x.name)}">${esc([x.spec,x.unit,x.price?won(x.price):""].filter(Boolean).join(" · "))}</option>`).join("");}
+  $("es-libnames").innerHTML=estConf.items.map(x=>`<option value="${esc(x.name)}">${esc([x.spec,x.mat,x.unit,x.price?won(x.price):""].filter(Boolean).join(" · "))}</option>`).join("");
+  if(!$("es-spaces").children.length)$("es-spaces").innerHTML=E.SPACES.map(([n,en,ds])=>`<option value="${esc(n)}">${esc(`${en} · ${ds}`)}</option>`).join("");}
 /* 회사 정보 · 도장 */
 function fillCompany(){const co=estConf.company;coFilled=true;
-  [["co-name","name"],["co-ceo","ceo"],["co-biz","bizNo"],["co-tel","tel"],["co-email","email"],["co-addr","addr"],["co-bank","bank"],["co-memo","memo"]].forEach(([id,k])=>$(id).value=co[k]);
+  [["co-name","name"],["co-en","en"],["co-tag","tag"],["co-ceo","ceo"],["co-biz","bizNo"],["co-tel","tel"],["co-email","email"],["co-addr","addr"],["co-web","web"],["co-bank","bank"],["co-prefix","prefix"],["co-memo","memo"]].forEach(([id,k])=>$(id).value=co[k]);
   $("co-valid").value=co.valid||"";coStamp=co.stamp;showStamp();fillTerms("co-terms",co.terms);
   if(!co.name&&!co.tel&&!co.bizNo&&!$("esCoBox").dataset.seen){$("esCoBox").open=true;$("esCoBox").dataset.seen="1";}}
 function showStamp(){$("co-stampBox").innerHTML=coStamp?`<img src="${esc(coStamp)}" alt="도장">`:"도장 없음";$("co-stampDel").hidden=!coStamp;}
@@ -558,58 +559,59 @@ $("co-stamp").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(
   try{coStamp=await stampData(f);showStamp();$("co-err").hidden=true;}catch(err){$("co-err").textContent="이 사진은 열 수 없어요. 다른 사진(JPG·PNG)으로 올려 주세요.";$("co-err").hidden=false;}};
 $("co-stampDel").onclick=()=>{coStamp="";showStamp();};
 $("co-save").onclick=async()=>{const v=id=>$(id).value.trim();
-  const co=E.normCompany({name:v("co-name"),ceo:v("co-ceo"),bizNo:v("co-biz"),tel:v("co-tel"),email:v("co-email"),addr:v("co-addr"),bank:v("co-bank"),stamp:coStamp,valid:v("co-valid")||0,terms:readTerms("co-terms"),memo:$("co-memo").value.trim()});
+  const co=E.normCompany({name:v("co-name"),en:v("co-en"),tag:v("co-tag"),ceo:v("co-ceo"),bizNo:v("co-biz"),tel:v("co-tel"),email:v("co-email"),addr:v("co-addr"),web:v("co-web"),bank:v("co-bank"),prefix:v("co-prefix"),stamp:coStamp,valid:v("co-valid")||0,terms:readTerms("co-terms"),memo:$("co-memo").value.trim(),fmt:2});
   const b=$("co-save");b.disabled=true;const {error}=await sb.from("est_conf").upsert({key:"company",data:co,updated_at:new Date().toISOString()});b.disabled=false;
   if(error){$("co-err").textContent="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";$("co-err").hidden=false;return;}
   $("co-err").hidden=true;estConf.company=co;fillCompany();renderEst();flash(b,"저장됨",true);};
 /* 결제 조건 줄 (회사 기본값·견적서 공용) */
 function termRow(box,t){const div=document.createElement("div");div.className="es-term";
-  div.innerHTML=`<input class="t-l" value="${esc(t.label)}" placeholder="계약금" aria-label="결제 구분"><input class="t-p" inputmode="decimal" value="${t.pct?E.qtyTxt(t.pct):""}" placeholder="0" aria-label="비율(%)"><span>%</span><span class="t-a hint"></span><button class="btn del sm" type="button" data-tdel>빼기</button>`;
+  div.innerHTML=`<input class="t-l" value="${esc(t.label)}" placeholder="계약금" aria-label="결제 구분"><input class="t-p" inputmode="decimal" value="${t.pct?E.qtyTxt(t.pct):""}" placeholder="0" aria-label="비율(%)"><span class="t-pc">%</span><input class="t-w" value="${esc(t.when||"")}" placeholder="언제 (예: 계약 체결 시)" aria-label="언제 내는지"><span class="t-a hint"></span><button class="btn del sm" type="button" data-tdel>빼기</button>`;
   $(box).appendChild(div);}
 function fillTerms(box,terms){$(box).innerHTML="";terms.forEach(t=>termRow(box,t));}
-function readTerms(box){return E.normTerms([...$(box).children].map(r=>({label:r.querySelector(".t-l").value.trim(),pct:r.querySelector(".t-p").value})));}
+function readTerms(box){return E.normTerms([...$(box).children].map(r=>({label:r.querySelector(".t-l").value.trim(),pct:r.querySelector(".t-p").value,when:r.querySelector(".t-w").value.trim()})));}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-addterm]");if(a){const box=a.dataset.addterm,cur=readTerms(box),used=cur.map(t=>t.label);
-    termRow(box,{label:["계약금","중도금","잔금","추가금"].find(l=>!used.includes(l))||"추가금",pct:Math.max(0,100-cur.reduce((s,t)=>s+t.pct,0))});if(box==="es-terms")esSum();return;}
+    const label=["계약금","중도금","잔금","추가금"].find(l=>!used.includes(l))||"추가금";termRow(box,{label,pct:Math.max(0,100-cur.reduce((s,t)=>s+t.pct,0)),when:E.WHEN[label]||""});if(box==="es-terms")esSum();return;}
   const d=e.target.closest("[data-tdel]");if(d){const box=d.closest(".es-terms");d.closest(".es-term").remove();if(box.id==="es-terms")esSum();}});
 /* 단가표 */
 async function saveLib(list,btn){const {error}=await sb.from("est_conf").upsert({key:"items",data:{list},updated_at:new Date().toISOString()});
   if(error){if(btn)flash(btn,"저장 못 함",false);return false;}estConf.items=list;renderEst();return true;}
 function libPut(x){const list=estConf.items.filter(o=>o.name!==x.name);list.push(x);list.sort((a,b)=>a.name.localeCompare(b.name,"ko"));return list;}
-$("lib-add").onclick=async()=>{const x={name:$("lib-name").value.trim(),spec:$("lib-spec").value.trim(),unit:$("lib-unit").value.trim(),price:toNum($("lib-price").value)};
-  if(!x.name){$("lib-err").textContent="품명을 넣어 주세요.";$("lib-err").hidden=false;return;}
+const LIB_IN=[["lib-name","name"],["lib-spec","spec"],["lib-mat","mat"],["lib-hw","hw"],["lib-unit","unit"]];
+$("lib-add").onclick=async()=>{const x={price:toNum($("lib-price").value)};LIB_IN.forEach(([id,k])=>x[k]=$(id).value.trim());
+  if(!x.name){$("lib-err").textContent="품목 이름을 넣어 주세요.";$("lib-err").hidden=false;return;}
   $("lib-err").hidden=true;const b=$("lib-add");b.disabled=true;const ok=await saveLib(libPut(x),b);b.disabled=false;
-  if(ok){["lib-name","lib-spec","lib-unit","lib-price"].forEach(id=>$(id).value="");flash(b,"넣었어요",true);}};
+  if(ok){[...LIB_IN.map(([id])=>id),"lib-price"].forEach(id=>$(id).value="");flash(b,"넣었어요",true);}};
 document.addEventListener("click",async e=>{const d=e.target.closest("[data-libdel]");if(d){e.stopPropagation();const k=+d.dataset.libdel;d.disabled=true;await saveLib(estConf.items.filter((_,i)=>i!==k),d);return;}
-  const r=e.target.closest("[data-lib]");if(r){const x=estConf.items[+r.dataset.lib];if(!x)return;$("lib-name").value=x.name;$("lib-spec").value=x.spec;$("lib-unit").value=x.unit;$("lib-price").value=comma(x.price);$("lib-name").focus();}});
+  const r=e.target.closest("[data-lib]");if(r){const x=estConf.items[+r.dataset.lib];if(!x)return;LIB_IN.forEach(([id,k])=>$(id).value=x[k]);$("lib-price").value=comma(x.price);$("lib-name").focus();}});
 /* 견적서 작성 화면 */
 function newEstData(j){const co=estConf.company;
-  return E.norm({date:TODAY,valid:co.valid,terms:co.terms,memo:co.memo,vat:"add",rows:[{t:"i",qty:1}],cust:j?{name:j.name,addr:j.addr}:{},title:j?j.item:""});}
+  return E.norm({date:TODAY,valid:co.valid,terms:co.terms,memo:co.memo,vat:"add",rows:[{t:"h",name:""},{t:"i",qty:1}],cust:j?{name:j.name,addr:j.addr}:{},title:j?j.item:""});}
 function jobOpts(sel){const list=jobs.filter(j=>!j.f.closed||j.id===sel).sort((a,b)=>a.name.localeCompare(b.name,"ko"));
   return`<option value="">— 연결 안 함 (계약으로 확정할 때 현장을 새로 만들어요) —</option>`+list.map(j=>`<option value="${esc(j.id)}" ${j.id===sel?"selected":""}>${esc(j.name)}${j.item?` · ${esc(j.item)}`:""}</option>`).join("");}
 function esRowEl(r){const div=document.createElement("div");
   const tools=`<span class="es-tools">${r.t==="i"?`<button type="button" data-rt="star" title="단가표에 넣기" aria-label="단가표에 넣기">☆</button>`:""}<button type="button" data-rt="up" title="위로" aria-label="위로">↑</button><button type="button" data-rt="down" title="아래로" aria-label="아래로">↓</button><button type="button" data-rt="del" title="빼기" aria-label="빼기">✕</button></span>`;
-  if(r.t==="h"){div.className="es-row head";div.dataset.t="h";div.innerHTML=`<input class="es-nm" value="${esc(r.name)}" placeholder="구분 (예: 주방, 안방 붙박이장)" aria-label="구분">${tools}`;return div;}
+  if(r.t==="h"){div.className="es-row head";div.dataset.t="h";div.innerHTML=`<input class="es-nm" list="es-spaces" value="${esc(r.name)}" placeholder="공간 (예: 주방)" aria-label="공간"><input class="es-en" value="${esc(r.en)}" placeholder="영문 (KITCHEN)" aria-label="공간 영문 이름"><input class="es-ds" value="${esc(r.desc)}" placeholder="주요 구성 (예: 하부장 · 상부장 · 아일랜드)" aria-label="주요 구성">${tools}`;return div;}
   div.className="es-row";div.dataset.t="i";
-  div.innerHTML=`<input class="es-nm" list="es-libnames" value="${esc(r.name)}" placeholder="품명" aria-label="품명"><input class="es-sp" value="${esc(r.spec)}" placeholder="규격 (예: W2400×D600×H2300)" aria-label="규격"><input class="es-q" inputmode="decimal" value="${r.qty?E.qtyTxt(r.qty):""}" placeholder="수량" aria-label="수량"><input class="es-u" list="es-units" value="${esc(r.unit)}" placeholder="단위" aria-label="단위"><input class="es-p won" inputmode="numeric" value="${comma(r.price)}" placeholder="단가" aria-label="단가"><span class="es-amt"></span><input class="es-nt" value="${esc(r.note)}" placeholder="비고" aria-label="비고">${tools}`;
+  div.innerHTML=`<input class="es-nm" list="es-libnames" value="${esc(r.name)}" placeholder="품목" aria-label="품목"><input class="es-sp" value="${esc(r.spec)}" placeholder="규격 W×D×H (예: 2400×600×2300)" aria-label="규격"><input class="es-mt" value="${esc(r.mat)}" placeholder="소재 · 마감 (예: 도어 무광 도장)" aria-label="소재 · 마감"><input class="es-hw" value="${esc(r.hw)}" placeholder="하드웨어 (예: Blum 힌지)" aria-label="하드웨어"><input class="es-q" inputmode="decimal" value="${r.qty?E.qtyTxt(r.qty):""}" placeholder="수량" aria-label="수량"><input class="es-u" list="es-units" value="${esc(r.unit)}" placeholder="단위" aria-label="단위"><input class="es-p won" inputmode="numeric" value="${comma(r.price)}" placeholder="단가" aria-label="단가"><span class="es-amt"></span><input class="es-nt" value="${esc(r.note)}" placeholder="비고" aria-label="비고">${tools}`;
   return div;}
 function readEstRow(el){const v=c=>(el.querySelector(c)||{}).value||"";
-  return el.dataset.t==="h"?{t:"h",name:v(".es-nm").trim()}:{t:"i",name:v(".es-nm").trim(),spec:v(".es-sp").trim(),qty:v(".es-q"),unit:v(".es-u").trim(),price:toNum(v(".es-p")),note:v(".es-nt").trim()};}
+  return el.dataset.t==="h"?{t:"h",name:v(".es-nm").trim(),en:v(".es-en").trim(),desc:v(".es-ds").trim()}:{t:"i",name:v(".es-nm").trim(),spec:v(".es-sp").trim(),mat:v(".es-mt").trim(),hw:v(".es-hw").trim(),qty:v(".es-q"),unit:v(".es-u").trim(),price:toNum(v(".es-p")),note:v(".es-nt").trim()};}
 function fillEst(d,jobId){
   $("es-job").innerHTML=jobOpts(jobId);$("es-job").value=jobId||"";if($("es-job").value!==(jobId||""))$("es-job").value="";
-  $("es-cname").value=d.cust.name;$("es-cphone").value=d.cust.phone;$("es-caddr").value=d.cust.addr;$("es-title").value=d.title;
-  $("es-date").value=d.date;$("es-valid").value=d.valid||"";$("es-disc").value=comma(d.disc);$("es-vat").value=d.vat;$("es-memo").value=d.memo;
+  $("es-cname").value=d.cust.name;$("es-cphone").value=d.cust.phone;$("es-caddr").value=d.cust.addr;$("es-cmgr").value=d.cust.mgr;$("es-title").value=d.title;
+  $("es-date").value=d.date;$("es-valid").value=d.valid||"";$("es-disc").value=comma(d.disc);$("es-adjs").value=d.adj>0?"+":"-";$("es-adj").value=comma(Math.abs(d.adj));$("es-vat").value=d.vat;$("es-memo").value=d.memo;
   $("es-rows").innerHTML="";d.rows.forEach(r=>$("es-rows").appendChild(esRowEl(r)));fillTerms("es-terms",d.terms);esSum();}
 function readEst(){const b=esCur?esCur.d:{};
   return E.norm({no:b.no,ver:b.ver,base:b.base,sentAt:b.sentAt,date:$("es-date").value,valid:$("es-valid").value,
-    cust:{name:$("es-cname").value.trim(),phone:$("es-cphone").value.trim(),addr:$("es-caddr").value.trim()},title:$("es-title").value.trim(),
-    rows:[...$("es-rows").children].map(readEstRow),disc:toNum($("es-disc").value),vat:$("es-vat").value,terms:readTerms("es-terms"),memo:$("es-memo").value.trim()});}
+    cust:{name:$("es-cname").value.trim(),phone:$("es-cphone").value.trim(),addr:$("es-caddr").value.trim(),mgr:$("es-cmgr").value.trim()},title:$("es-title").value.trim(),
+    rows:[...$("es-rows").children].map(readEstRow),disc:toNum($("es-disc").value),adj:($("es-adjs").value==="+"?1:-1)*toNum($("es-adj").value),vat:$("es-vat").value,terms:readTerms("es-terms"),memo:$("es-memo").value.trim()});}
 const esState=()=>JSON.stringify([readEst(),$("es-job").value]);
 const esDirty=()=>!$("estSheet").hidden&&esState()!==esSnap;
 function esSum(){const d=readEst(),t=E.calc(d);
   [...$("es-rows").children].forEach((el,k)=>{const a=el.querySelector(".es-amt");if(a){const x=E.lineAmt(d.rows[k]||{});a.textContent=x?won(x):"";}});
   const plan=E.payPlan(d.terms,t.total);let n=0;
   [...$("es-terms").children].forEach(el=>{const p=E.normTerms([{label:"x",pct:el.querySelector(".t-p").value}]).length?plan[n++]:null;el.querySelector(".t-a").textContent=p&&t.total?won(p.amount):"";});
-  let h=`<span>품목 합계 <b>${won(t.supply)}</b></span>${t.disc?`<span>할인 <b>-${won(t.disc)}</b></span>`:""}${d.vat==="add"?`<span>공급가액 <b>${won(t.net)}</b></span><span>부가세 <b>${won(t.vat)}</b></span>`:d.vat==="incl"?`<span>공급가액 <b>${won(t.base)}</b> <small>부가세 ${won(t.vat)} 포함</small></span>`:""}<span>합계 <b>${won(t.total)}</b></span>`;
+  let h=`<span>${d.vat==="incl"?"품목 합계":"공급가 합계"} <b>${won(t.supply)}</b></span>${t.disc?`<span>특별 할인 <b>-${won(t.disc)}</b></span>`:""}${t.adj?`<span>단수 조정 <b>${t.adj<0?"-":"+"}${won(Math.abs(t.adj))}</b></span>`:""}${d.vat==="add"?`<span>공급가액 <b>${won(t.net)}</b></span><span>부가세 <b>${won(t.vat)}</b></span>`:d.vat==="incl"?`<span>공급가액 <b>${won(t.base)}</b> <small>부가세 ${won(t.vat)} 포함</small></span>`:""}<span>총 견적금액 <b>${won(t.total)}</b></span>`;
   if(t.total)h+=`<span class="hint" style="flex-basis:100%">일금 ${E.hangul(t.total)}원정</span>`;
   const sum=d.terms.reduce((a,x)=>a+x.pct,0);
   if(d.terms.length&&Math.abs(sum-100)>0.001)h+=`<span class="neg" style="flex-basis:100%">결제 조건을 합하면 ${E.qtyTxt(sum)}%예요. 100%가 되게 맞춰 주세요.</span>`;
@@ -636,11 +638,12 @@ function closeEst(force){
   $("estSheet").hidden=true;esCur=null;esAsk("");$("printArea").innerHTML="";
   if($("jobSheet").hidden&&$("daySheet").hidden)document.body.style.overflow="";
   if(esFrom&&esFrom.isConnected&&esFrom.focus)esFrom.focus({preventScroll:true});esFrom=null;return true;}
-function nextNo(date){const p=date.slice(2).replace(/-/g,"");
-  const n=ests.map(e=>e.d.no).filter(no=>no.startsWith(p+"-")).map(no=>+no.slice(p.length+1)||0);return`${p}-${(n.length?Math.max(...n):0)+1}`;}
+/* 견적번호 = 앞글자-견적일 (엑셀과 같음, 예: NF-20261014). 같은 날 두 번째부터 -2, -3 */
+function nextNo(date){const pre=estConf.company.prefix,p=`${pre?`${pre}-`:""}${date.replace(/-/g,"")}`;
+  const n=ests.map(e=>e.d.no).filter(no=>no===p||no.startsWith(p+"-")).map(no=>no===p?1:+no.slice(p.length+1)||1);return n.length?`${p}-${Math.max(...n)+1}`:p;}
 async function saveEst(){
   const d=readEst();d.rows=d.rows.filter(r=>r.t==="h"?r.name:(r.name||r.spec||r.price));
-  if(!d.cust.name&&!d.title){esErr("고객명이나 공사명을 넣어 주세요.");return false;}
+  if(!d.cust.name&&!d.title){esErr("업체나 프로젝트를 넣어 주세요.");return false;}
   if(!d.date)d.date=TODAY;if(!d.no)d.no=nextNo(d.date);
   const job_id=$("es-job").value||null,b=$("esSave");b.disabled=true;esErr("");
   const q=esCur?sb.from("estimates").update({data:d,job_id,updated_at:new Date().toISOString()}).eq("id",esCur.id).select()
@@ -701,13 +704,16 @@ $("estSheet").addEventListener("click",async e=>{const t=e.target;
   else if(rt.dataset.rt==="up"&&row.previousElementSibling)box.insertBefore(row,row.previousElementSibling);
   else if(rt.dataset.rt==="down"&&row.nextElementSibling)box.insertBefore(row.nextElementSibling,row);
   else if(rt.dataset.rt==="star"){const x=readEstRow(row);if(!x.name){flash(rt,"?",false);row.querySelector(".es-nm").focus();return;}
-    rt.disabled=true;const ok=await saveLib(libPut({name:x.name,spec:x.spec,unit:x.unit,price:x.price}),rt);rt.disabled=false;if(ok)flash(rt,"★",true);return;}
+    rt.disabled=true;const ok=await saveLib(libPut({name:x.name,spec:x.spec,mat:x.mat,hw:x.hw,unit:x.unit,price:x.price}),rt);rt.disabled=false;if(ok)flash(rt,"★",true);return;}
   esSum();});
 $("es-addItem").onclick=()=>{const el=esRowEl({t:"i",qty:1});$("es-rows").appendChild(el);esSum();el.querySelector(".es-nm").focus();};
-$("es-addHead").onclick=()=>{const el=esRowEl({t:"h",name:""});$("es-rows").appendChild(el);el.querySelector(".es-nm").focus();};
-$("es-rows").addEventListener("change",e=>{const el=e.target;if(!el.classList.contains("es-nm"))return;const row=el.closest(".es-row");if(row.dataset.t!=="i")return;
-  const x=estConf.items.find(o=>o.name===el.value.trim());if(!x)return;const set=(c,v)=>{const i=row.querySelector(c);if(i&&!i.value.trim()&&v)i.value=v;};
-  set(".es-sp",x.spec);set(".es-u",x.unit);const p=row.querySelector(".es-p");if(!toNum(p.value)&&x.price)p.value=comma(x.price);set(".es-q","1");esSum();});
+$("es-addHead").onclick=()=>{const el=esRowEl({t:"h",name:""});$("es-rows").appendChild(el);$("es-rows").appendChild(esRowEl({t:"i",qty:1}));esSum();el.querySelector(".es-nm").focus();};
+/* 공간 이름을 고르면 영문·주요 구성, 단가표 품목을 고르면 규격·소재·하드웨어·단위·단가를 빈 칸에만 채움 */
+$("es-rows").addEventListener("change",e=>{const el=e.target;if(!el.classList.contains("es-nm"))return;const row=el.closest(".es-row");
+  const set=(c,v)=>{const i=row.querySelector(c);if(i&&!i.value.trim()&&v)i.value=v;};
+  if(row.dataset.t==="h"){const sp=E.SPACES.find(o=>o[0]===el.value.trim());if(sp){set(".es-en",sp[1]);set(".es-ds",sp[2]);esSum();}return;}
+  const x=estConf.items.find(o=>o.name===el.value.trim());if(!x)return;
+  set(".es-sp",x.spec);set(".es-mt",x.mat);set(".es-hw",x.hw);set(".es-u",x.unit);const p=row.querySelector(".es-p");if(!toNum(p.value)&&x.price)p.value=comma(x.price);set(".es-q","1");esSum();});
 $("es-job").onchange=()=>{const j=jobs.find(x=>x.id===$("es-job").value);if(!j)return;
   if(!$("es-cname").value.trim())$("es-cname").value=j.name;if(!$("es-caddr").value.trim())$("es-caddr").value=j.addr;if(!$("es-title").value.trim())$("es-title").value=j.item;};
 $("esEdit").addEventListener("input",esSum);$("esEdit").addEventListener("change",esSum);
@@ -1397,10 +1403,10 @@ function backupSheets(){
     ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),c=js.reduce((a,j)=>a+jobCost(j),0),e=expSum([ym]);
       if(r||c||e)fin.push([ym,js.length||"",r,c,e,r-c-e]);}));
     if(ests.length){const list2=[...ests].sort((x,y)=>(x.d.date||"").localeCompare(y.d.date||"")||x.d.ver-y.d.ver),jn=id=>(jobs.find(j=>j.id===id)||{}).name||"";
-      sheets.push({name:"견적",cols:[["견적번호",12,"s"],["차수",6,"n"],["견적일",12,"d"],["고객",16,"s"],["연락처",14,"s"],["공사명",24,"s"],["현장",16,"s"],["부가세",10,"s"],["품목 합계",14,"w"],["할인",12,"w"],["부가세 금액",12,"w"],["합계",14,"w"],["상태",8,"s"],["고객이 연 횟수",8,"n"]],
-        rows:list2.map(e=>{const t=E.calc(e.d);return[e.d.no,e.d.ver,e.d.date,e.d.cust.name,e.d.cust.phone,e.d.title,jn(e.job_id),E.VAT[e.d.vat],t.supply,t.disc,t.vat,t.total,EST_ST[e.status],e.views||""];})});
-      sheets.push({name:"견적 품목",cols:[["견적번호",12,"s"],["차수",6,"n"],["고객",16,"s"],["구분",14,"s"],["품명",24,"s"],["규격",22,"s"],["수량",7,"n"],["단위",6,"s"],["단가",13,"w"],["금액",14,"w"],["비고",20,"s"]],
-        rows:list2.flatMap(e=>{let sec="";return e.d.rows.flatMap(r=>{if(r.t==="h"){sec=r.name;return[];}return[[e.d.no,e.d.ver,e.d.cust.name,sec,r.name,r.spec,r.qty||"",r.unit,r.price,E.lineAmt(r),r.note]];});})});}
+      sheets.push({name:"견적",cols:[["견적번호",14,"s"],["차수",6,"n"],["견적일",12,"d"],["업체",16,"s"],["연락처",14,"s"],["담당",10,"s"],["프로젝트",24,"s"],["현장",20,"s"],["연결된 현장",16,"s"],["부가세",10,"s"],["공급가 합계",14,"w"],["특별 할인",12,"w"],["단수 조정",12,"w"],["부가세 금액",12,"w"],["총 견적금액",14,"w"],["상태",8,"s"],["고객이 연 횟수",8,"n"]],
+        rows:list2.map(e=>{const t=E.calc(e.d);return[e.d.no,e.d.ver,e.d.date,e.d.cust.name,e.d.cust.phone,e.d.cust.mgr,e.d.title,e.d.cust.addr,jn(e.job_id),E.VAT[e.d.vat],t.supply,t.disc,t.adj,t.vat,t.total,EST_ST[e.status],e.views||""];})});
+      sheets.push({name:"견적 품목",cols:[["견적번호",14,"s"],["차수",6,"n"],["업체",16,"s"],["공간",14,"s"],["품목",24,"s"],["규격",22,"s"],["소재 · 마감",26,"s"],["하드웨어",18,"s"],["수량",7,"n"],["단위",6,"s"],["단가",13,"w"],["금액",14,"w"],["비고",20,"s"]],
+        rows:list2.flatMap(e=>{let sec="";return e.d.rows.flatMap(r=>{if(r.t==="h"){sec=r.name;return[];}return[[e.d.no,e.d.ver,e.d.cust.name,sec,r.name,r.spec,r.mat,r.hw,r.qty||"",r.unit,r.price,E.lineAmt(r),r.note]];});})});}
     if(fin.length)sheets.push({name:"월별 결산",cols:[["월",9,"s"],["현장",7,"n"],["매출",14,"w"],["매입",14,"w"],["지출",14,"w"],["순이익",14,"w"]],rows:fin});}
   const clRows=[];
   list.forEach(j=>{const c=clOf(j.id);if(!c)return;const d=c.data||{},it=d.items||{},dims=d.dims||{},day=(c.submitted_at||"").slice(0,10),st=c.status==="submitted"?"제출":"작성 중";

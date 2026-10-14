@@ -21,6 +21,8 @@
     document.title = `견적서${e.cust.name ? ` · ${e.cust.name}` : ""} · ${co.name || "네스트퍼니처"}`;
     $("paper").innerHTML = E.doc(e, co);
     $("state").hidden = true; $("paper").hidden = false; $("bar").hidden = false; $("hint").hidden = false;
+    // 회사 사람이 열었는데 알림 서버가 예전 코드면 새 항목(담당 · 소재 · 단수 조정 등)이 빠져 보이니 알려 줌
+    if (staff && !(data && data.api >= 2)) $("old").hidden = false;
     const tel = co.tel.replace(/[^\d+]/g, "");
     if (tel.length >= 8) { $("telBtn").href = `tel:${tel}`; $("telBtn").hidden = false; }
   }
