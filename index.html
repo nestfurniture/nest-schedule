@@ -55,6 +55,7 @@ button{font:inherit;cursor:pointer}
 .btn.del{background:transparent;color:var(--late);border:1px solid var(--line)}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .summary{display:flex;flex-wrap:wrap;gap:8px}
+.pay-cats{margin:4px 0 10px}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px;display:flex;gap:6px;align-items:center}
 .chip b{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .chip.late{border-color:transparent;background:var(--late-bg);color:var(--late)}
@@ -905,7 +906,8 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="empty" id="payEmpty" hidden>아직 금액을 넣은 현장이 없어요. 현장을 눌러 아래쪽 <b>수금 · 매입</b>에 계약금액과 입금 일정을 넣어 보세요.</div>
     <h3>받을 돈 (입금 예정 · 지연)</h3>
     <div class="tbl stack"><table><thead><tr><th>받을 날</th><th>현장</th><th>구분</th><th class="num">금액</th><th>상태</th></tr></thead><tbody id="payTodo"></tbody></table></div>
-    <h3>현장별 수금</h3>
+    <h3>현장별 수금 <span class="hint">받을 돈을 다 받고 매입을 입력하면 정산 종료로 넘어가요</span></h3>
+    <div class="summary pay-cats" id="payCats"></div>
     <div class="tbl stack"><table><thead><tr><th>현장</th><th class="num">받을 돈</th><th class="num">받은 돈</th><th class="num">미수금</th><th>상태</th></tr></thead><tbody id="payJobs"></tbody></table></div>
     <h3>최근 30일 입금</h3>
     <div class="tbl stack"><table><thead><tr><th>입금일</th><th>현장</th><th>구분</th><th class="num">금액</th></tr></thead><tbody id="payDone"></tbody></table></div>
