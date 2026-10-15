@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="네스트퍼니처">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@500;700&display=swap">
 <style>
 /* Layout: summary chips, tabs for job board (table → cards on phone) and month calendar; one edit panel per job.
    Brand: 수채화지 바탕 + 번트 오렌지 포인트 + 차콜 글자 (네스트퍼니처 인스타 최종본 기준) */
@@ -25,7 +25,9 @@
   --c-as:#CB3E2A; --c-as-fg:#FFFFFF;
   --font:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --display:"Cormorant Garamond",Georgia,"Noto Serif KR",serif;
-  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --serif:"Noto Serif KR","Apple SD Gothic Neo",Georgia,serif;
+  /* 숫자도 본문 글꼴로 (자리 맞춤만 고정폭) */
+  --mono:var(--font);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#1E1C1A; --surface:#2A2724; --line:#3D3833; --fg:#F1E8DA; --muted:#B3A897; --accent:#D9733F; --accent-fg:#1E1C1A;
@@ -40,16 +42,16 @@
   --c-orange:#D9733F; --c-orange-fg:#1E1C1A; --c-banana:#E8C766; --c-banana-fg:#1E1C1A; --c-avocado:#A3B862; --c-avocado-fg:#1E1C1A;
   --c-as:#F0715C; --c-as-fg:#1E1C1A; color-scheme:dark}
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:20px 48px}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:20px 48px;font-variant-numeric:tabular-nums}
 .wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
-header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
 h1{margin:0;font-weight:500;text-wrap:balance;display:flex;flex-direction:column;gap:2px}
-h1 .wm{font-family:var(--display);font-weight:600;font-size:26px;letter-spacing:.22em;line-height:1.1;color:var(--accent)}
+h1 .wm{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.3em;line-height:1.1;color:var(--accent)}
 h1 .kr{font-size:15px;font-weight:500;color:var(--fg)}
 .sub{color:var(--muted);font-size:13px}
 .demo{font-size:12px;color:var(--soon);background:var(--soon-bg);padding:3px 8px;border-radius:4px;display:inline-block;margin-top:4px}
 button{font:inherit;cursor:pointer}
-.btn{background:var(--accent);color:var(--accent-fg);border:0;border-radius:6px;padding:9px 14px;font-weight:500}
+.btn{background:var(--accent);color:var(--accent-fg);border:0;border-radius:8px;padding:9px 14px;font-weight:500}
 .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .btn.sm{padding:5px 10px;font-size:13px}
 .btn.del{background:transparent;color:var(--late);border:1px solid var(--line)}
@@ -70,21 +72,23 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .tag.soon{color:var(--soon);background:var(--soon-bg)}
 .tag.wait{color:var(--muted);border:1px solid var(--line)}
 /* board */
-.board{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow-x:auto}
+.board{border-top:1px solid var(--fg);overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:860px}
 th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.03em;white-space:nowrap}
 tbody tr{cursor:pointer}
-tbody tr:hover{background:var(--bg)}
+tbody tr:hover{background:var(--surface)}
 tr:last-child td{border-bottom:0}
 .job b{display:block}
 .job small{color:var(--muted);font-size:12px}
 .cell{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
 .crew{font-size:13px}
 /* cards */
-.cards{display:none;flex-direction:column;gap:10px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;text-align:left;color:inherit}
-.card.flag{border-left:3px solid var(--late)}
+.cards{display:none;flex-direction:column;gap:0;border-top:1px solid var(--fg)}
+.card{background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:14px 2px;display:flex;flex-direction:column;gap:8px;cursor:pointer;text-align:left;color:inherit}
+.cards .job b{font-family:var(--serif);font-size:17px;font-weight:500}
+.board .job b{font-family:var(--serif);font-size:16px;font-weight:500}
+.job b .tag{font-family:var(--font);vertical-align:2px}
 .kv{display:grid;grid-template-columns:64px 1fr;gap:4px 10px;font-size:13px}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
@@ -134,9 +138,9 @@ tr:last-child td{border-bottom:0}
 @media (max-width:560px){.cal .day{min-height:88px;padding:3px;gap:2px}.cal .ev{font-size:10.5px;padding:1px 3px}.cal .day .n{font-size:12px}.cal .evc,.cal .evp{display:none}#view-cal .calhead h2{font-size:18px}}
 /* 날짜를 누르면 뜨는 그날 일정 */
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(20,18,16,.45);display:flex;align-items:center;justify-content:center;padding:16px}
-.sheet-card{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:12px;width:min(520px,100%);max-height:min(80vh,720px);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.sheet-card{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:16px;width:min(520px,100%);max-height:min(80vh,720px);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 .sheet-head{display:flex;align-items:center;gap:6px}
-.sheet-head h2{margin:0;font-size:19px;flex:1}
+.sheet-head h2{margin:0;font-family:var(--serif);font-size:20px;font-weight:700;flex:1}
 textarea{width:100%;resize:vertical;line-height:1.5}
 .apps{display:flex;flex-direction:column;gap:10px}
 .app-row{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
@@ -199,8 +203,8 @@ textarea{width:100%;resize:vertical;line-height:1.5}
 .push-prefs small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .push-note{font-size:13px;color:var(--muted);margin:0}
 .dsec h3{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--muted)}
-.dlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.dlist li{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.dlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+.dlist li{display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid var(--line);padding:12px 2px}
 .dlist .dot{margin-top:6px;flex:none;width:11px;height:11px}
 .dlist b{display:block}
 .dlist small{display:block;color:var(--muted);font-size:12px}
@@ -208,8 +212,8 @@ textarea{width:100%;resize:vertical;line-height:1.5}
 .dot.ring{background:transparent;border:2px solid var(--chip)}
 @media (max-width:560px){.sheet{align-items:flex-end;padding:0}.sheet-card{width:100%;border-radius:14px 14px 0 0;max-height:78vh;padding-bottom:max(16px,env(safe-area-inset-bottom))}}
 /* panel */
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:16px}
-.panel h2{margin:0;font-size:17px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:16px}
+.panel h2{margin:0;font-family:var(--serif);font-size:19px;font-weight:700}
 .panel h3{margin:0;font-size:14px;font-weight:700}
 .sec{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
@@ -253,9 +257,15 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .login img{width:72px;height:72px;border-radius:16px}
 .login h1 .wm{font-size:20px}
 .hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.who{font:inherit;font-size:14px;font-weight:600;color:var(--fg);background:none;border:0;padding:4px 6px;cursor:pointer;border-radius:6px}
+.who{font:inherit;font-size:14px;font-weight:600;color:var(--fg);background:none;border:0;padding:4px 6px;cursor:pointer;border-radius:6px;white-space:nowrap}
+h1 .wm{white-space:nowrap}
 .who:hover{background:var(--line)}
-.who.empty{color:var(--accent);font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.who.empty{color:var(--accent);font-weight:500}
+.icbtn{width:40px;height:40px;border-radius:20px;border:0;background:none;color:var(--fg);display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.icbtn:hover{background:var(--line)}
+.icbtn svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.hdr-actions{gap:2px!important;flex-wrap:nowrap!important}
+.nm-out{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:12px}
 .nm-form,.qa-form{display:flex;flex-direction:column;gap:10px}
 .qa-form input{font-size:16px}
 .qa-btns{display:flex;gap:8px;flex-wrap:wrap}
@@ -272,67 +282,77 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .tabs{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tab{white-space:nowrap;flex:none}
-/* 메뉴: 큰 묶음(gnav) → 그 안의 세부 화면(subbar). 큰 묶음은 PC에서 위쪽 단추 줄, 휴대폰에서 아래 막대 */
-.gnav{display:flex;gap:4px;align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px}
-.gnav button{-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:7px;background:none;border:0;border-radius:7px;padding:8px 18px 8px 14px;color:var(--muted);font:inherit;font-size:15px;font-weight:500;cursor:pointer}
+/* 메뉴: 위쪽 글자 메뉴(gnav) → 그 아래 세부 화면 글자 탭(subbar) → 화면 제목(명조). PC·휴대폰 같은 모양 */
+.gnav{display:flex;gap:30px;border-bottom:1px solid var(--line);margin-top:-6px;overflow-x:auto;scrollbar-width:none}
+.gnav::-webkit-scrollbar{display:none}
+.gnav button{-webkit-tap-highlight-color:transparent;flex:none;display:flex;align-items:flex-start;gap:1px;background:none;border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 0 11px;color:var(--muted);font:inherit;font-size:17px;font-weight:500;cursor:pointer}
 .gnav button:hover{color:var(--fg)}
-.gnav .ic{display:flex}
-.gnav svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.gnav button[aria-current="page"]{background:var(--accent);color:var(--accent-fg)}
-.subbar{display:flex;align-items:flex-end;gap:12px;border-bottom:1px solid var(--line);margin-top:-6px}
-.subbar .tabs{flex:1;min-width:0;border-bottom:0}
-.subbar .tab{margin-bottom:0;font-size:15px}
-.subbar>.btn{flex:none;margin-bottom:6px}
+.gnav button[aria-current="page"]{color:var(--fg);font-weight:700;border-bottom-color:var(--accent)}
+.gnav .nb{font-size:11px;font-weight:700;line-height:1;color:var(--late);margin-top:1px}
+.subbar{display:flex;align-items:center;gap:12px;margin-top:-8px;min-height:38px}
+.subbar .tabs{flex:1;min-width:0;border-bottom:0;gap:22px}
+.subbar .tab{margin:0;padding:6px 0;border:0;font-size:15px;color:var(--muted)}
+.subbar .tab:hover{color:var(--fg)}
+.subbar .tab[aria-selected="true"]{color:var(--accent);font-weight:700}
+.subbar .tabs.one{visibility:hidden}
+.subbar>.btn{flex:none}
+#sub-home{display:none!important}
+.pg-title{margin:-4px 0 0;font-family:var(--serif);font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+#app[data-g="home"]>#pgTitle{display:none}
 #app:not([data-g="site"]) :is(#summary,#form){display:none!important}
 #app[data-v="flow"] #summary{display:none!important}
-.gnav .ic{position:relative}
-.gnav .nb{position:absolute;top:-6px;right:-8px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--late);color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center;font-family:var(--mono);box-shadow:0 0 0 2px var(--surface)}
 /* 오늘 할 일 (홈) */
-.hm-date{flex:none;margin-bottom:9px;font-size:14px;color:var(--muted);white-space:nowrap}
+.hm-head{display:flex;flex-direction:column;gap:2px}
+.hm-head .pg-title{margin:0}
+.hm-sum{margin:0;font-size:14px;color:var(--muted)}
 .hm-tiles .tile{font:inherit;color:inherit;text-align:left;cursor:pointer}
-.hm-tiles .tile:hover{border-color:var(--accent)}
+.hm-tiles .tile:hover b{color:var(--accent)}
 .hm-cols{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start}
 .hm-col{display:flex;flex-direction:column;gap:18px;min-width:0}
 .hm-sec{display:flex;flex-direction:column;gap:8px;min-width:0}
-.hm-sec h3{margin:0;font-size:15px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.hm-sec h3{margin:0 0 2px;font-family:var(--serif);font-size:18px;font-weight:700;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.hm-sec h3 .hint{font-family:var(--font)}
 .hm-sec h3 .linkish{font-weight:700;color:var(--fg)}
-.hm .dlist li{background:var(--surface)}
-.hm .dlist .none{border-style:dashed;background:transparent;color:var(--muted);font-size:13px}
+.hm .dlist li .hm-k{font-weight:700;color:var(--accent)}
+.hm .dlist .none{color:var(--muted);font-size:13px}
 .hm-k{font-size:12px;color:var(--muted);margin-right:2px}
 .hm-days li{cursor:pointer;align-items:baseline;flex-wrap:wrap;gap:4px 10px;font-size:14px}
-.hm-days li:hover{border-color:var(--accent)}
+.hm-days li:hover{background:var(--surface)}
 .hm-days li .d{flex:none;min-width:68px}
 .hm-days li>span:last-child{flex:1;min-width:0}
-.hm-als{display:flex;flex-direction:column;gap:8px}
-.hm-al{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-.hm-al.late{border-left-color:var(--late)}
-.hm-al.soon{border-left-color:var(--soon)}
+.hm-als{display:flex;flex-direction:column;counter-reset:al}
+.hm-al{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:10px;row-gap:5px;border-bottom:1px solid var(--line);padding:12px 2px}
+.hm-al::before{counter-increment:al;content:counter(al,decimal-leading-zero);grid-row:1 / span 2;font-family:var(--serif);font-size:15px;line-height:1.5;color:var(--muted)}
+.hm-al.late::before{color:var(--late)}
+.hm-al.soon::before{color:var(--soon)}
+.hm-al>div{grid-column:2;min-width:0}
 .hm-al-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.hm-al-h b{font-size:14px}
-.hm-al.late .hm-al-h b{color:var(--late)}
-.hm-al-h .n{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.hm-al-h b{font-size:15px;font-weight:500}
+.hm-al.late .hm-al-h .n{color:var(--late)}
+.hm-al.soon .hm-al-h .n{color:var(--soon)}
+.hm-al-h .n{font-size:13px;font-weight:700;color:var(--muted)}
 .hm-al-h .btn{margin-left:auto;padding:4px 10px}
 .hm-al-b{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px}
 .hm-al-b .linkish{font-weight:500}
-.hm-none{margin:0;padding:12px;border:1px dashed var(--line);border-radius:8px;color:var(--ok);font-size:14px}
+.hm-none{margin:0;padding:12px 2px;border-bottom:1px solid var(--line);color:var(--ok);font-size:14px}
 @media (max-width:900px){.hm-cols{display:flex;flex-direction:column;align-items:stretch}.hm-col{display:contents}
   .hm-today{order:1}.hm-alert{order:2}.hm-tmr{order:3}.hm-week{order:4}}
 @media (max-width:700px){
-  .gnav{position:fixed;left:0;right:0;bottom:0;z-index:30;align-self:auto;border:0;border-top:1px solid var(--line);border-radius:0;gap:0;padding:4px 6px max(6px,env(safe-area-inset-bottom));background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-  .gnav button{flex:1;flex-direction:column;gap:2px;padding:4px 0 2px;font-size:12px;border-radius:0}
-  .gnav .ic{padding:3px 18px;border-radius:999px}
-  .gnav .nb{top:-3px;right:6px}
-  .gnav svg{width:22px;height:22px}
-  .gnav button[aria-current="page"]{background:none;color:var(--accent);font-weight:700}
-  .gnav button[aria-current="page"] .ic{background:color-mix(in srgb,var(--accent) 14%,transparent)}
-  body.gnav-on{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
-  body.typing .gnav{display:none}
-  .subbar{margin-top:-8px}
-  .subbar .tab{padding:8px 10px}
-  .subbar>.btn{padding:7px 11px;font-size:14px}
-  .subbar .tab .lg{display:none}
+  h1 .wm{font-size:17px;letter-spacing:.28em}
+  .gnav{gap:22px;margin-top:-8px}
+  .gnav button{font-size:16px;padding:9px 0 10px}
+  .subbar{margin-top:-10px;min-height:34px}
+  .subbar .tabs{gap:18px}
+  .subbar .tab{font-size:14px}
+  .pg-title{font-size:26px}
+  /* 휴대폰: + 현장 추가 · + 새 견적서는 오른쪽 아래에 떠 있는 단추 */
+  .subbar>.btn.fab{position:fixed;right:16px;bottom:max(20px,calc(env(safe-area-inset-bottom) + 12px));z-index:30;height:52px;padding:0 22px;border-radius:26px;font-size:15px;font-weight:700;box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 35%,transparent)}
+  body.gnav-on{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+  body.typing .subbar>.btn.fab,#app:has(#form:not([hidden])) #addBtn{display:none}
+  .subbar:has(.tabs.one){display:contents}
+  .subbar .tabs.one{display:none}
 }
-@media (max-width:370px){.subbar{gap:4px}.subbar .tab{font-size:14px;padding:8px 7px}.subbar>.btn{padding:6px 9px;font-size:13px}.subbar>.btn .lg{display:none}}
+@media (max-width:370px){.gnav{gap:18px}.subbar .tabs{gap:14px}h1 .wm{font-size:15px;letter-spacing:.22em}}
 .update{background:var(--soon-bg);color:var(--soon);border-radius:8px;padding:10px 12px;font-size:13px}
 .update a{color:inherit;font-weight:700}
 .warn-box{font-size:13px;color:var(--late);background:var(--late-bg);border-radius:6px;padding:8px 10px}
@@ -367,10 +387,10 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
   .crewgrid th,.crewgrid td{width:58px;min-width:58px;max-width:58px;padding:5px 4px}
   .crewgrid th.nm{width:70px;min-width:70px;max-width:70px}}
 /* 수금 · 매출 */
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
-.tile{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));column-gap:20px;border-top:1px solid var(--fg)}
+.tile{background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:12px 2px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .tile small{font-size:12px;color:var(--muted)}
-.tile b{font-family:var(--mono);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tile b{font-family:var(--serif);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .tile.warn b{color:var(--soon)}
 .tile.bad b{color:var(--late)}
 .tbl{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow-x:auto}
@@ -387,7 +407,8 @@ th.num{font-family:var(--font);font-size:12px}
 .tile small+small{margin-top:-2px}
 /* 휴대폰: 표를 한 줄씩 카드처럼 */
 @media (max-width:560px){
-  .tile b{font-size:16px}
+  .tile b{font-size:19px}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px}
   .tbl.stack table,.tbl.fit table{min-width:0}
   .tbl.stack thead{display:none}
   .tbl.stack tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -416,7 +437,8 @@ th.num{font-family:var(--font);font-size:12px}
 #exList tr{cursor:pointer}
 @media (max-width:700px){.ex-grid{grid-template-columns:1fr 1fr}.ex-grid .note{grid-column:1/-1}}
 .chip.on{outline:2px solid var(--accent);outline-offset:1px}
-.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px;cursor:pointer;text-align:left}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;text-decoration:none;text-underline-offset:3px;cursor:pointer;text-align:left}
+.linkish:hover{text-decoration:underline}
 .jv-name{color:var(--fg);font-weight:700}
 .cat-note{margin:0 0 8px}
 .tag.st-wait{color:var(--muted);border:1px solid var(--line)}
@@ -429,10 +451,11 @@ th.num{font-family:var(--font);font-size:12px}
 .fl-cats{align-items:center;margin:4px 0 6px;gap:6px}
 .fl-arr{color:var(--muted);font-size:13px}
 .fl-grp{margin-top:16px}
-.fl-grp h3{margin:0 0 8px;font-size:15px}
+.fl-grp h3{margin:0 0 4px;font-family:var(--serif);font-size:18px;font-weight:700}
+.fl-grp h3 .tag,.fl-grp h3 .hint{font-family:var(--font)}
 .fl-grp h3 .hint{font-weight:400;margin-left:4px}
 .fl-list li{cursor:pointer}
-.fl-list li:hover{border-color:var(--accent)}
+.fl-list li:hover{background:var(--surface)}
 .fl-list .dmeta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:13px;margin-top:2px}
 .fl-late{color:var(--late)}
 .fl-bar{display:flex;gap:3px;margin:7px 0 5px;max-width:240px}
@@ -657,35 +680,34 @@ th.num{font-family:var(--font);font-size:12px}
       <h1><span class="wm">NEST FURNITURE</span></h1>
       <div class="demo" id="status" hidden></div>
     </div>
-    <div class="hdr-actions"><button class="who" id="who" type="button" aria-haspopup="dialog" title="내 이름 바꾸기"></button><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button></div>
+    <div class="hdr-actions"><button class="who" id="who" type="button" aria-haspopup="dialog" title="내 이름 · 로그아웃"></button><button class="icbtn" id="pushBtn" type="button" aria-haspopup="dialog" aria-label="휴대폰 알림" title="휴대폰 알림"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg></button></div>
   </header>
 
   <div class="update" id="updNote" hidden>현장 사진·수금·매출 기능을 쓰려면 Supabase 업데이트를 한 번 해야 해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-02.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 전부 복사해 Supabase의 SQL Editor에 붙여넣고 Run을 누르면 끝나요.</div>
 
-  <!-- 메뉴: 큰 묶음(현장 · 견적 · 정산 · 결산). 휴대폰에서는 화면 아래 막대 -->
+  <!-- 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산). PC·휴대폰 모두 위쪽 글자 메뉴 -->
   <nav class="gnav" id="gnav" aria-label="메뉴" hidden>
-    <button type="button" id="nav-home" data-g="home"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="m9 14.8 2.1 2.1 4-4.2"/></svg><span class="nb" id="homeBadge" hidden></span></span><span class="lb">오늘</span></button>
-    <button type="button" id="nav-site" data-g="site"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5"/><path d="M5.5 9v10.5h13V9"/><path d="M10 19.5v-5h4v5"/></svg></span><span class="lb">현장</span></button>
-    <button type="button" class="admin-only" id="nav-est" data-g="est" hidden><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8.5h5"/><path d="M9 12.5h7M9 16h7"/></svg></span><span class="lb">견적</span></button>
-    <button type="button" class="admin-only" id="nav-money" data-g="money" hidden><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M15.5 14.5h2.5"/></svg></span><span class="lb">정산</span></button>
-    <button type="button" class="admin-only" id="nav-fin" data-g="fin" hidden><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 16.5V11M12 16.5V6.5M17 16.5v-3.5"/></svg></span><span class="lb">결산</span></button>
+    <button type="button" id="nav-home" data-g="home"><span class="lb">오늘</span><span class="nb" id="homeBadge" hidden></span></button>
+    <button type="button" id="nav-site" data-g="site"><span class="lb">현장</span></button>
+    <button type="button" class="admin-only" id="nav-est" data-g="est" hidden><span class="lb">견적</span></button>
+    <button type="button" class="admin-only" id="nav-money" data-g="money" hidden><span class="lb">정산</span></button>
+    <button type="button" class="admin-only" id="nav-fin" data-g="fin" hidden><span class="lb">결산</span></button>
   </nav>
   <div class="subbar" id="sub-home" hidden>
-    <div class="tabs" role="tablist" aria-label="오늘"><button class="tab" role="tab" id="tab-home" aria-selected="false">오늘 할 일</button></div>
-    <span class="hm-date" id="hmDate"></span>
+    <div class="tabs one" role="tablist" aria-label="오늘"><button class="tab" role="tab" id="tab-home" aria-selected="false">오늘 할 일</button></div>
   </div>
   <div class="subbar" id="sub-site">
     <div class="tabs" role="tablist" aria-label="현장">
-      <button class="tab" role="tab" id="tab-board" aria-selected="true"><span class="lg">현장 </span>목록</button>
-      <button class="tab" role="tab" id="tab-flow" aria-selected="false">진행<span class="lg"> 흐름</span></button>
+      <button class="tab" role="tab" id="tab-board" aria-selected="true">목록</button>
+      <button class="tab" role="tab" id="tab-flow" aria-selected="false">진행 흐름</button>
       <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
       <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
     </div>
-    <button class="btn" id="addBtn" type="button">+ <span class="lg">현장 </span>추가</button>
+    <button class="btn fab" id="addBtn" type="button">+ 현장 추가</button>
   </div>
   <div class="subbar" id="sub-est" hidden>
-    <div class="tabs" role="tablist" aria-label="견적"><button class="tab" role="tab" id="tab-est" aria-selected="false">견적서</button></div>
-    <button class="btn" type="button" id="esNew">+ 새 견적서</button>
+    <div class="tabs one" role="tablist" aria-label="견적"><button class="tab" role="tab" id="tab-est" aria-selected="false">견적서</button></div>
+    <button class="btn fab" type="button" id="esNew">+ 새 견적서</button>
   </div>
   <div class="subbar" id="sub-money" hidden>
     <div class="tabs" role="tablist" aria-label="정산">
@@ -700,6 +722,7 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
   </div>
 
+  <h2 class="pg-title" id="pgTitle">현장 목록</h2>
   <div class="summary" id="summary"></div>
 
   <section class="panel" id="form" hidden>
@@ -846,6 +869,7 @@ th.num{font-family:var(--font);font-size:12px}
   </section>
 
   <section id="view-home" class="view hm" hidden>
+    <div class="hm-head"><h2 class="pg-title" id="hmDate"></h2><p class="hm-sum" id="hmSum"></p></div>
     <div class="tiles hm-tiles" id="hmTiles"></div>
     <div class="hm-cols">
       <div class="hm-col">
@@ -1103,13 +1127,14 @@ th.num{font-family:var(--font);font-size:12px}
 </div>
 <div class="sheet" id="nameSheet" hidden role="dialog" aria-modal="true" aria-labelledby="nameTitle">
   <div class="sheet-card">
-    <div class="sheet-head"><h2 id="nameTitle">내 이름</h2><button class="btn ghost sm" type="button" id="nameClose">닫기</button></div>
+    <div class="sheet-head"><h2 id="nameTitle">내 정보</h2><button class="btn ghost sm" type="button" id="nameClose">닫기</button></div>
     <form class="nm-form" id="nameForm">
       <label>화면 위에 'ㅇㅇㅇ님'으로 보일 이름<input id="nm-in" maxlength="20" autocomplete="name" placeholder="예: 홍길동"></label>
       <p class="nm-acct" id="nmAcct"></p>
       <div class="err" id="nm-err" hidden></div>
       <div><button class="btn" id="nm-save">저장</button></div>
     </form>
+    <div class="nm-out"><span class="hint">이 기기에서 나가기</span><button class="btn ghost sm" type="button" id="logoutBtn">로그아웃</button></div>
   </div>
 </div>
 <div class="sheet" id="pushSheet" hidden role="dialog" aria-modal="true" aria-labelledby="pushTitle">

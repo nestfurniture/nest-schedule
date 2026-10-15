@@ -1235,6 +1235,7 @@ function renderHome(){if(!loaded)return;
     week.push(`<li data-day="${ds}" role="button" tabindex="0"><span class="d">${fmtW(ds)}</span><span>${[by("i","시공"),by("m","실측"),by("a","AS"),by("x","추가 투입")].filter(Boolean).join(" · ")}</span></li>`);}
   $("hmWeek").innerHTML=week.join("")||none("모레부터 7일 동안 잡힌 일정이 없어요.");
   const al=homeAlerts(),red=al.filter(a=>a.tone==="late").reduce((n,a)=>n+a.list.length,0);
+  $("hmSum").textContent=`오늘 일정 ${t0.length}건`+(red?` · 급한 일 ${red}건`:al.length?" · 급한 일 없음":" · 확인할 일 없음");
   $("hmAlerts").innerHTML=al.length?al.map(a=>`<div class="hm-al ${a.tone}"><div class="hm-al-h"><b>${a.title}</b>${a.unit?`<span class="n">${a.list.length}${a.unit}</span>`:""}${a.go?`<button type="button" class="btn ghost sm" data-go="${a.go[0]}">${a.go[1]}</button>`:""}</div><div class="hm-al-b">${a.list.slice(0,8).join("")}${a.list.length>8?`<span class="hint">외 ${a.list.length-8}${a.unit}</span>`:""}</div></div>`).join("")
     :`<p class="hm-none">지금 확인할 일이 없어요.</p>`;
   $("homeBadge").textContent=red>99?"99+":String(red);$("homeBadge").hidden=!red;$("nav-home").setAttribute("aria-label",red?`오늘, 급한 일 ${red}건`:"오늘");}
@@ -1245,6 +1246,7 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!
 
 /* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
 const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
+const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"견적서",pay:"고객 수금",wage:"시공자 정산",sales:"손익",exp:"회사 지출"};
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
@@ -1253,6 +1255,7 @@ function tab(which){if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(w
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
   Object.keys(GROUPS).forEach(k=>{$("sub-"+k).hidden=k!==g;if(k===g)$("nav-"+k).setAttribute("aria-current","page");else $("nav-"+k).removeAttribute("aria-current");});
   $("app").dataset.g=g;$("app").dataset.v=which;$("gnav").hidden=false;document.body.classList.add("gnav-on");
+  $("pgTitle").textContent=VIEW_TITLE[which]||"";
   if(which==="crew")renderCrew();
   if(which==="flow")renderFlow();
   if(which==="est"&&isAdmin)renderEst();
@@ -1928,7 +1931,7 @@ async function startApp(session){const id=session.user.id||"";
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){startedFor="";userName="";$("nameSheet").hidden=true;try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";userName="";$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
