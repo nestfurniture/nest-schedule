@@ -225,11 +225,17 @@ $("daySheet").addEventListener("click",e=>{if(e.target===$("daySheet"))closeDay(
 /* 현장 보기: 목록에서 누르면 먼저 내용만 보여 주고, '수정'을 눌러야 입력 화면이 열림 (휴대폰 키패드가 바로 뜨지 않게) */
 let viewing=null,viewFrom=null;
 const jvName=j=>`<button type="button" class="linkish jv-name" data-jv="${esc(j.id)}">${esc(j.name)}</button>`;
-function openView(j){viewing=j.id;qc={jid:j.id,done:[],err:""};renderView();
+/* 정산·결산 화면에서 현장을 누르면 '정산 보기'(수금·매입·이익·견적서·종료만), 그 밖에서는 '현장 보기' */
+let viewMode="site",msAdd=false,msErr="";
+const MONEY_TABS=["pay","wage","sales","exp"];
+const costIn=m=>m.costs.length>0;
+function openView(j,mode){viewing=j.id;qc={jid:j.id,done:[],err:""};msAdd=false;msErr="";
+  viewMode=isAdmin&&(mode==="money"||(!mode&&MONEY_TABS.includes(curTab)))?"money":"site";renderView();
   if($("jobSheet").hidden){viewFrom=document.activeElement;$("jobSheet").hidden=false;document.body.style.overflow="hidden";$("jvClose").focus({preventScroll:true});}}
 function closeView(){$("jobSheet").hidden=true;viewing=null;qc={jid:"",done:[],err:""};if($("daySheet").hidden)document.body.style.overflow="";
   if(viewFrom&&viewFrom.isConnected&&viewFrom.focus)viewFrom.focus({preventScroll:true});viewFrom=null;}
 function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobSheet").hidden)closeView();return;}
+  if(viewMode==="money"&&isAdmin)return renderMoneyView(j);
   const kv=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"",li=a=>a.length?`<ul class="jv-list">${a.map(x=>`<li>${x}</li>`).join("")}</ul>`:"";
   const off=j.i.off||[],days=dayCustom(j)?spanDays(j.i).map(d=>{const cr=crewOn(j,d);return`<span class="d">${fmtW(d)}</span> ${off.includes(d)?`<span class="tag wait">쉬는 날</span>`:cr.length?cr.map(esc).join(", "):`<span class="tag late">미배정</span>`}`;}):[];
   const c=clOf(j.id),apps=j.i.apps.filter(a=>a.model||a.type);
@@ -246,10 +252,10 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const more=[kv("가전",apps.map(a=>esc(`${NEST_CL.typeName(NEST_CL.appType(a))}${a.model?` ${a.model}`:""}`)).join(", ")),kv("체크리스트",c?(clTag(j)||(c.status==="submitted"?`<span class="tag ok">제출됨</span>`:`<span class="tag wait">링크 보냄</span>`)):""),kv("파일",fileCount(j))].join("");
   if(more)h+=`<div class="dsec"><h3>가전 · 체크리스트 · 파일</h3><dl class="kv">${more}</dl></div>`;
   if(isAdmin){const m=moneyOf(j.id),b=billTotal(m),cost=jobCost(j);
-    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",won(cost))}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl></div>`;
+    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",costIn(m)?won(cost):`${cost?`${won(cost)} `:""}<span class="tag late">매입 입력 안 됨</span>`)}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl><div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="money">정산 보기</button></div></div>`;
     if(est10){const es=estOfJob(j.id);h+=`<div class="dsec"><h3>견적서</h3>${li(es.map(e=>`<button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}`))}<div class="jv-btns"><button class="btn ghost sm" type="button" data-esnew="${esc(j.id)}">+ 견적서 작성</button></div></div>`;}}
   h+=`<div class="dsec jv-stage">${j.f.closed?`<p class="sub" style="margin:0">${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"정산 완료로 자동 종료":"종료 처리"}됐어요.</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div>`
-    :`<p class="sub" style="margin:0">받을 돈을 다 받고 시공이 끝나면 자동으로 종료 현장으로 옮겨져요${j.f.reopen?" (이 현장은 다시 열어서 자동 종료가 꺼져 있어요)":""}.</p><div><button class="btn ghost sm" type="button" id="jvEnd">지금 종료 처리</button></div>`}</div>`;
+    :`<p class="sub" style="margin:0">${isAdmin?"받을 돈을 다 받고, 매입을 입력했고, 시공이 끝나면":"정산이 끝나면"} 자동으로 종료 현장으로 옮겨져요${j.f.reopen?" (이 현장은 다시 열어서 자동 종료가 꺼져 있어요)":""}.</p><div><button class="btn ghost sm" type="button" id="jvEnd">지금 종료 처리</button></div>`}</div>`;
   $("jvBody").innerHTML=h;}
 /* 바로 체크: '수정'에 들어가지 않고 보기 화면에서 실측 완료 · 입금 확인(관리자) · 시공 마감 완료 · AS 완료를 체크.
    체크하면 바로 저장되고 그 체크칸은 사라짐. 잘못 눌렀을 때를 위해 이 화면을 닫기 전까지는 '되돌리기'가 남음 */
@@ -268,6 +274,10 @@ function qcHtml(j){if(qc.jid!==j.id)qc={jid:j.id,done:[],err:""};
 function qcChange(j,k,on,prev){
   if(k==="m")return{col:"m",val:{...j.m,done:on,date:on?(j.m.date||TODAY):(prev&&"date" in prev?prev.date:j.m.date)}};
   if(k==="f")return{col:"f",val:{...j.f,done:on}};
+  if(k==="pall"){const m=moneyOf(j.id),idx=on?m.pays.map((p,i)=>p.paid?-1:i).filter(i=>i>=0):((prev&&prev.idx)||[]);if(!idx.length)return null;
+    return{col:"money",idx,val:{...m,pays:m.pays.map((p,i)=>idx.includes(i)?{...p,paid:on,paidOn:on?TODAY:""}:p)}};}
+  if(k==="c"){const m=moneyOf(j.id),x=prev&&prev.cost,n=x?m.costs.map((y,i)=>y.cat===x.cat&&y.amount===x.amount&&y.note===x.note?i:-1).filter(i=>i>=0).pop():undefined;
+    if(on||n===undefined)return null;return{col:"money",val:{...m,costs:m.costs.filter((y,i)=>i!==n)}};}
   const n=+k.slice(1);
   if(k[0]==="a"){if(!j.f.as[n])return null;return{col:"f",val:{...j.f,as:j.f.as.map((a,i)=>i===n?{...a,done:on}:a)}};}
   const m=moneyOf(j.id);if(!m.pays[n])return null;
@@ -279,7 +289,7 @@ function qcRun(jid,fn){qcQ=qcQ.then(async()=>{const j=jobs.find(x=>x.id===jid);i
 $("jvBody").addEventListener("change",e=>{const box=e.target.closest("input[data-qc]");if(!box||!box.checked)return;const k=box.dataset.qc;
   box.disabled=true;const label=box.nextElementSibling.innerHTML;
   qcRun(viewing,async j=>{const prev={date:j.m.date},c=qcChange(j,k,true);
-    if(c&&await qcWrite(j,c)){if(qc.jid===j.id){qc.done.push({k,l:label,prev});qc.err="";}render();if(c.col==="money")autoClose();}
+    if(c&&await qcWrite(j,c)){if(qc.jid===j.id){qc.done.push({k,l:k==="pall"?"수금 완료 체크":label,prev:{...prev,idx:c.idx}});qc.err="";}render();if(c.col==="money")autoClose();}
     else{if(qc.jid===j.id)qc.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 체크해 주세요.";render();}});});
 $("jvBody").addEventListener("click",e=>{const u=e.target.closest("[data-qu]");if(!u)return;const x=qc.done[+u.dataset.qu];if(!x)return;u.disabled=true;
   qcRun(viewing,async j=>{const c=qcChange(j,x.k,false,x.prev);
@@ -287,14 +297,66 @@ $("jvBody").addEventListener("click",e=>{const u=e.target.closest("[data-qu]");i
       // 입금 확인 때문에 자동 종료됐던 현장은 되돌리면 다시 진행 상태로
       if(c.col==="money"&&j.f.closedBy==="auto"&&!settled(j))await qcWrite(j,{col:"f",val:{...j.f,closed:"",closedBy:"",reopen:false}});}
     else qc.err="되돌리지 못했어요. 다시 눌러 주세요.";render();});});
+/* 정산 보기 (관리자): 수금(입금 확인·수금 완료 체크) · 매입(바로 입력) · 이익 · 견적서 · 종료 조건.
+   수금 완료가 돼도 매입이 없으면 종료 현장으로 넘어가지 않음 */
+function renderMoneyView(j){const m=moneyOf(j.id),b=billTotal(m),u=unpaidOf(m),net=m.contract.amount,auto=autoCosts(j,m),cost=jobCost(j),lw=lastWork(j);
+  const kv=(k,v)=>`<dt>${k}</dt><dd>${v}</dd>`,done=pre=>qc.done.map((x,i)=>x.k.startsWith(pre)?`<div class="qc-done"><span>✓ ${x.l}했어요</span><button type="button" class="linkish" data-qu="${i}">되돌리기</button></div>`:"").join("");
+  $("jvTitle").innerHTML=`${esc(j.name)} ${stageTag(j)}`;
+  let h=`<p class="sub" style="margin:0">${[sub(j),j.i.start?`시공 ${range(j)}`:""].filter(Boolean).join(" · ")}</p>`;
+  // 수금
+  const open=m.pays.map((p,n)=>({p,n})).filter(x=>!x.p.paid),gap=b-m.pays.reduce((a,p)=>a+p.amount,0);
+  h+=`<div class="dsec ms-sec"><h3>수금 ${b?(u?`<span class="tag ${overdue(m).length?"late":"soon"}">미수 ${won(u)}</span>`:`<span class="tag ok">수금 완료</span>`):""}</h3>`;
+  if(!b)h+=`<p class="ms-note">계약금액이 아직 없어요. <b>수정</b>에서 넣거나, 견적서를 계약으로 확정하면 들어가요.</p>`;
+  else{h+=`<dl class="kv">${kv("계약금액",`${won(net)}${m.contract.vat?` <span class="hint">+ 부가세 ${won(b-net)}</span>`:""}`)}${kv("받은 돈",won(received(m)))}</dl><div class="ms-list">`;
+    h+=m.pays.map((p,n)=>p.paid?`<div class="ms-row paid"><span class="ms-l">✓ ${esc(p.label)}</span><span class="hint">입금 ${p.paidOn?fmt(p.paidOn):"됨"}</span><b class="num">${won(p.amount)}</b></div>`
+      :`<label class="qc"><input type="checkbox" data-qc="p${n}"><span class="ms-l">${esc(p.label)} 입금 확인</span>${open.length===1&&gap<=0?`<em class="ms-fin">→ 수금 완료</em>`:""}<span class="hint">${p.due?`${fmt(p.due)}까지`:"받을 날 없음"}</span>${p.due&&p.due<TODAY?`<span class="tag late">지남</span>`:""}<b class="num">${won(p.amount)}</b></label>`).join("");
+    if(open.length>=2)h+=`<label class="qc ms-all"><input type="checkbox" data-qc="pall"><span class="ms-l"><b>수금 완료</b></span><span class="hint">남은 ${open.length}건 모두 입금 확인</span><b class="num">${won(open.reduce((a,x)=>a+x.p.amount,0))}</b></label>`;
+    h+=`</div>${done("p")}`;
+    if(!m.pays.length)h+=`<p class="ms-note">입금 일정이 없어요. <b>수정</b>에서 계약금·잔금 등을 넣어 주세요.</p>`;
+    else if(gap>0)h+=`<p class="ms-note">입금 일정 합계가 받을 돈보다 ${won(gap)} 적어요. 다 받아도 수금 완료가 안 되니 <b>수정</b>에서 맞춰 주세요.</p>`;
+    if(!u&&!costIn(m)&&!j.f.closed)h+=`<p class="ms-warn">수금은 끝났는데 매입이 입력되지 않아서 종료 현장으로 넘어가지 않았어요. 아래에서 매입을 입력해 주세요.</p>`;}
+  if(qc.err)h+=`<p class="err">${qc.err}</p>`;
+  h+=`</div>`;
+  // 매입
+  h+=`<div class="dsec ms-sec ms-cost"><h3>매입 ${costIn(m)?`<span class="hint">${won(cost)}</span>`:`<span class="tag late">매입 입력 안 됨</span>`}</h3><div class="ms-list">`;
+  h+=m.costs.map(x=>`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span>${x.note?`<span class="hint">${esc(x.note)}</span>`:""}<b class="num">${won(x.amount)}</b></div>`).join("")
+    +auto.map(x=>`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span><span class="hint">${esc(x.note)}</span><b class="num">${won(x.amount)}</b></div>`).join("");
+  h+=`</div>${done("c")}`;
+  if(!costIn(m))h+=`<p class="ms-note">자재비·외주 같은 매입을 입력해야 수금이 끝났을 때 종료 현장으로 넘어가요.${auto.length?" 자동으로 계산된 인건비만으로는 넘어가지 않아요.":""}</p>`;
+  h+=msAdd?`<div class="ms-add"><label>항목<select id="ms-cat">${COST_CATS.map(c=>`<option>${esc(c)}</option>`).join("")}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="ms-amt" placeholder="0"></label><label class="note">메모<input id="ms-note" placeholder="예: 도장 외주, 하드웨어"></label><div class="ms-add-btns"><button class="btn sm" type="button" id="ms-save">추가</button><button class="btn ghost sm" type="button" id="ms-cancel">취소</button></div></div>${msErr?`<p class="err">${msErr}</p>`:""}`
+    :`<div class="jv-btns"><button type="button" class="btn sm ${costIn(m)?"ghost":"ms-red"}" data-msadd>${costIn(m)?"+ 매입 추가":"매입 입력"}</button></div>`;
+  h+=`</div>`;
+  // 이익
+  if(net)h+=`<div class="dsec"><h3>이익</h3><dl class="kv">${kv("매출",won(net))}${kv("매입",won(cost))}${kv("이익",`<b class="${net-cost<0?"neg":""}">${won(net-cost)}</b> <span class="hint">${pct(net-cost,net)}</span>`)}</dl></div>`;
+  // 견적서
+  if(est10){const es=estOfJob(j.id);h+=`<div class="dsec"><h3>견적서</h3>${es.length?`<ul class="jv-list">${es.map(e=>`<li><button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}</li>`).join("")}</ul>`:""}<div class="jv-btns"><button class="btn ghost sm" type="button" data-esnew="${esc(j.id)}">+ 견적서 작성</button></div></div>`;}
+  // 종료
+  if(j.f.closed)h+=`<div class="dsec jv-stage"><p class="sub" style="margin:0">${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"정산 완료로 자동 종료":"종료 처리"}됐어요.</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div></div>`;
+  else{const cs=[[b>0&&!u,"받을 돈 다 받음",!b?"계약금액 없음":u?`미수 ${won(u)}`:""],[costIn(m),"매입 입력",costIn(m)?"":"아직 안 함"],[!!lw&&lw<=TODAY,"시공 끝남",!lw?"시공일 없음":lw>TODAY?`${fmt(lw)}에 끝나요`:""]];
+    h+=`<div class="dsec jv-stage"><h3>종료 현장으로 넘어가려면</h3><ul class="ms-conds">${cs.map(([ok,l,more])=>`<li class="${ok?"ok":"no"}">${ok?"✓":"○"} ${l}${more?` <span class="hint">${more}</span>`:""}</li>`).join("")}</ul><p class="sub" style="margin:0">세 가지가 다 되면 자동으로 종료 현장으로 넘어가요.${j.f.reopen?" 이 현장은 다시 열어서 자동 종료가 꺼져 있어요.":""}</p></div>`;}
+  h+=`<div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="site">현장 내용 보기</button></div>`;
+  // 매입 입력 중에 화면이 다시 그려져도 적던 값은 그대로
+  const keep=["ms-cat","ms-amt","ms-note"].map(id=>$(id)?$(id).value:null),foc=document.activeElement&&document.activeElement.id;
+  $("jvBody").innerHTML=h;
+  ["ms-cat","ms-amt","ms-note"].forEach((id,i)=>{if($(id)&&keep[i]!==null)$(id).value=keep[i];});if(foc&&foc.startsWith("ms-")&&$(foc))$(foc).focus({preventScroll:true});}
+$("jvBody").addEventListener("click",e=>{const vm=e.target.closest("[data-vmode]");if(vm){viewMode=vm.dataset.vmode;msAdd=false;renderView();$("jobSheet").querySelector(".sheet-card").scrollTop=0;return;}
+  if(e.target.closest("[data-msadd]")){msAdd=true;msErr="";renderView();if($("ms-amt"))$("ms-amt").focus();return;}
+  if(e.target.id==="ms-cancel"){msAdd=false;msErr="";renderView();return;}
+  if(e.target.id!=="ms-save")return;const cat=$("ms-cat").value,amount=toNum($("ms-amt").value),note=$("ms-note").value.trim();
+  if(!amount&&!note){msErr="금액을 넣어 주세요.";renderView();$("ms-amt").focus();return;}
+  e.target.disabled=true;
+  qcRun(viewing,async j=>{const m=moneyOf(j.id),val={...m,costs:[...m.costs,{cat,amount,note}]};
+    if(await qcWrite(j,{col:"money",val})){["ms-amt","ms-note"].forEach(id=>{if($(id))$(id).value=""});msAdd=false;msErr="";if(qc.jid===j.id)qc.done.push({k:"c",l:`매입 ${esc(cat)} ${won(amount)} 입력`,prev:{cost:{cat,amount,note}}});render();autoClose();}
+    else{msErr="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";render();}});});
 async function setClosed(j,close,btn){
   const f={...j.f,closed:close?TODAY:"",closedBy:close?"manual":"",reopen:!close};
   if(btn)btn.disabled=true;
   const {error}=await sb.from("jobs").update({f,updated_at:new Date().toISOString()}).eq("id",j.id);
   if(error){if(btn){btn.disabled=false;flash(btn,"저장 못 함 · 다시 눌러 주세요",false);}return;}
   j.f=f;render();}
-/* 받을 돈을 다 받았고(정산 완료) 시공이 끝난 현장은 자동으로 종료. 금액은 관리자만 보여서 관리자 기기에서 처리 */
-const settled=j=>{const m=moneyOf(j.id),lw=lastWork(j);return billTotal(m)>0&&unpaidOf(m)===0&&!!lw&&lw<=TODAY;};
+/* 받을 돈을 다 받았고(수금 완료) 매입을 입력했고 시공이 끝난 현장은 자동으로 종료. 매입이 없으면 넘어가지 않음.
+   금액은 관리자만 보여서 관리자 기기에서 처리 */
+const settled=j=>{const m=moneyOf(j.id),lw=lastWork(j);return billTotal(m)>0&&unpaidOf(m)===0&&costIn(m)&&!!lw&&lw<=TODAY;};
 /* 관리자 앱이 열릴 때: 시공일이 바뀐(직원이 고친 것 포함) 현장의 자동 받을 날을 맞춤. 종료 현장은 건드리지 않음 */
 let duing=false;
 async function autoDue(){if(!isAdmin||duing)return;const due=[];
@@ -305,7 +367,7 @@ async function autoClose(){if(!isAdmin||closing)return;const due=jobs.filter(j=>
   closing=true;try{for(const j of due){const f={...j.f,closed:TODAY,closedBy:"auto",reopen:false};
     const {error}=await sb.from("jobs").update({f}).eq("id",j.id);if(!error)j.f=f;}}finally{closing=false;}render();}
 $("jvClose").onclick=closeView;
-$("jvEdit").onclick=()=>{const j=jobs.find(x=>x.id===viewing);closeView();if(j){tab("board");openForm(j);}};
+$("jvEdit").onclick=()=>{const j=jobs.find(x=>x.id===viewing),money=viewMode==="money";closeView();if(j){tab("board");openForm(j);if(money)setTimeout(()=>$("sec-money").scrollIntoView({block:"start"}),300);}};
 $("jobSheet").addEventListener("click",e=>{if(e.target===$("jobSheet"))closeView();
   const j=jobs.find(x=>x.id===viewing);if(!j)return;
   if(e.target.id==="jvEnd")setClosed(j,true,e.target);else if(e.target.id==="jvOpen")setClosed(j,false,e.target);});
@@ -362,7 +424,7 @@ function renderPay(){
   $("payJobs").innerHTML=perJob.length?perJob.map(({j,m})=>{const u=unpaidOf(m),next=m.pays.filter(p=>!p.paid&&p.due).map(p=>p.due).sort()[0];
     const gap=billTotal(m)-m.pays.reduce((a,p)=>a+p.amount,0);
     return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small></td><td class="num" data-l="받을 돈">${won(billTotal(m))}</td><td class="num" data-l="받은 돈">${won(received(m))}</td><td class="num" data-l="미수금">${u?`<b>${won(u)}</b>`:"0원"}</td>
-      <td class="full"><div class="cell">${payTag(j)}${next?`<span class="hint">다음 ${fmt(next)}</span>`:""}${gap>0&&u?`<span class="hint">일정 없는 금액 ${man(gap)}</span>`:""}</div></td></tr>`}).join("")
+      <td class="full"><div class="cell">${payTag(j)}${!u&&!costIn(m)&&!j.f.closed?`<span class="tag late">매입 입력</span>`:""}${next?`<span class="hint">다음 ${fmt(next)}</span>`:""}${gap>0&&u?`<span class="hint">일정 없는 금액 ${man(gap)}</span>`:""}</div></td></tr>`}).join("")
     :`<tr><td colspan="5" class="hint">계약금액을 넣은 현장이 없어요.</td></tr>`;
 }
 
@@ -1033,7 +1095,7 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   finally{$("saveBtn").disabled=false;$("saveBtn").textContent="저장"}};
 document.addEventListener("click",e=>{const c=e.target.closest("[data-cat]");if(c){boardCat=boardCat===c.dataset.cat?"":c.dataset.cat;if(curTab!=="board")tab("board");render();return;}
   const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
-  const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}});
+  const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j,r.dataset.mode);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
 /* 오늘 할 일 (홈): 앱을 열면 먼저 보이는 화면. 오늘·내일·앞으로 7일 일정, 확인할 일 */
 const locDay=ts=>{const d=new Date(ts);return isNaN(d)?"":`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
@@ -1047,12 +1109,13 @@ function homeItem(x,ds){const j=x.j;
   if(x.t==="a")return`<li><i class="dot" style="background:var(--c-as)"></i><div><span class="hm-k">AS</span> ${jBtn(j)}<div class="dmeta"><span>담당 ${esc(x.a.crew||"미정")}</span>${x.a.note?`<span class="hint">${esc(x.a.note)}</span>`:""}${x.a.done?`<span class="tag ok">완료</span>`:""}</div></div></li>`;
   return`<li><i class="dot ring ${kc(j)}"></i><div><span class="hm-k">추가 투입</span> ${jBtn(j)}<div class="dmeta"><span>+${+x.x.people}명</span>${x.x.note?`<span class="hint">${esc(x.x.note)}</span>`:""}</div></div></li>`;}
 const homeDay=ds=>dayItems(ds).sort((a,b)=>homeOrder[a.t]-homeOrder[b.t]);
-function homeAlerts(){const A=[],live=jobs.filter(j=>!j.f.closed),it=(j,more)=>`<span>${jBtn(j)}${more?` <span class="hint">${more}</span>`:""}</span>`;
+function homeAlerts(){const A=[],live=jobs.filter(j=>!j.f.closed),it=(j,more,mode)=>`<span>${mode?jBtn(j).replace("<button ",`<button data-mode="${mode}" `):jBtn(j)}${more?` <span class="hint">${more}</span>`:""}</span>`;
   const add=(tone,title,list,unit,go)=>{if(list.length)A.push({tone,title,list,unit,go});};
   const wk=addDays(TODAY,7);
   add("late","시공자 미배정 (7일 안)",live.filter(noCrewSoon).map(j=>it(j,noCrewDays(j).filter(d=>d>=TODAY&&d<=wk).map(fmt).join(", "))),"곳");
   add("late","시공자 겹침",clashList(TODAY,addDays(TODAY,60)).sort((a,b)=>a.d.localeCompare(b.d)).map(c=>`<span><button type="button" class="linkish" data-day="${c.d}">${esc(c.n)} ${fmt(c.d)}</button></span>`),"건",["crew","시공자별 보기"]);
-  if(isAdmin)add("late","입금 지연",jobs.flatMap(j=>overdue(moneyOf(j.id)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due)).map(x=>it(x.j,`${esc(x.p.label)} ${won(x.p.amount)} · ${dayDiff(x.p.due,TODAY)}일 지남`)),"건",["pay","고객 수금 보기"]);
+  if(isAdmin)add("late","입금 지연",jobs.flatMap(j=>overdue(moneyOf(j.id)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due)).map(x=>it(x.j,`${esc(x.p.label)} ${won(x.p.amount)} · ${dayDiff(x.p.due,TODAY)}일 지남`,"money")),"건",["pay","고객 수금 보기"]);
+  if(isAdmin)add("late","수금 끝, 매입 입력 안 함 (종료 안 됨)",live.filter(j=>{const m=moneyOf(j.id);return billTotal(m)>0&&!unpaidOf(m)&&!costIn(m);}).map(j=>it(j,"","money")),"곳",["pay","고객 수금 보기"]);
   add("late","체크리스트 문제 (조치 전)",jobs.filter(j=>clNeeds(j)==="bad").map(j=>it(j,`문제 ${clSum(j).bad.length}개`)),"곳");
   add("late","AS 날짜 지남 (완료 체크 안 함)",jobs.flatMap(j=>asOpen(j).filter(a=>a.date&&a.date<TODAY).map(a=>it(j,`${fmt(a.date)}${a.crew?` · ${esc(a.crew)}`:""}`))),"건");
   add("soon","체크리스트 미제출",jobs.filter(j=>clNeeds(j)==="late").map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
