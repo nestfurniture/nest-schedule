@@ -39,6 +39,33 @@ const ended=j=>!!(j.f.done||j.f.closed);
 const jobStage=j=>ended(j)?"end":j.i.start&&j.i.start<=TODAY?"run":"wait";
 const JOB_STAGE={wait:"대기중",run:"진행중",end:"종료"};
 const stageTag=j=>{const s=jobStage(j);return`<span class="tag st-${s}">${JOB_STAGE[s]}</span>`;};
+/* 진행 흐름: 문의 → 실측 → 설계·견적 → 도면 확정 → 생산 → 시공 대기 → 시공 → 정산 → 완료. 달력에는 넣지 않음.
+   지금 단계 = 기록된 가장 뒤 단계의 다음. 시공일이 잡힌 현장은 계약한 것으로 봄. 정산 단계는 관리자에게만 */
+const FLOW=[["ask","문의"],["msr","실측"],["des","설계·견적"],["dwg","도면 확정"],["prd","생산"],["rdy","시공 대기"],["ins","시공"],["set","정산"],["done","완료"]];
+const FLOW_NAME=Object.fromEntries(FLOW);
+const contracted=j=>!!(j.i.fl.ct||j.i.start);
+function flowStage(j){const fl=j.i.fl;
+  if(ended(j)){const m=moneyOf(j.id);return isAdmin&&billTotal(m)>0&&!settledM(m)?"set":"done";}
+  if(j.i.start&&j.i.start<=TODAY)return"ins";
+  if(fl.pr.ok)return"rdy";if(fl.dw.ok)return"prd";if(contracted(j))return"dwg";
+  return j.m.done?"des":j.m.date?"msr":"ask";}
+const flowTag=j=>{const s=flowStage(j);return`<span class="tag fl-tag fl-${s}">${FLOW_NAME[s]}</span>`;};
+/* 지나온 표시: 실측 · 계약 · 도면 확정 · 생산 · 시공 · 마감 · 정산(관리자, 계약금액 있을 때) */
+function flowSteps(j){const fl=j.i.fl,lw=lastWork(j),started=!!(j.i.start&&j.i.start<=TODAY);
+  const s=[{l:"실측",ok:j.m.done,on:j.m.date,plan:j.m.date?`${fmt(j.m.date)} 예정`:"",due:j.m.date},
+    {l:"계약",ok:contracted(j),on:j.i.fl.ct},
+    {l:"도면 확정",ok:!!fl.dw.ok,on:fl.dw.ok,plan:fl.dw.due?`${fmt(fl.dw.due)}까지`:"",due:fl.dw.due},
+    {l:"생산",ok:!!fl.pr.ok,on:fl.pr.ok,plan:fl.pr.due?`납기 ${fmt(fl.pr.due)}`:"",due:fl.pr.due},
+    {l:"시공",ok:started,on:j.i.start,plan:j.i.start?`${fmt(j.i.start)} 시작`:""},
+    {l:"마감",ok:ended(j),plan:lw?`${fmt(lw)} 끝`:"",due:lw}];
+  if(isAdmin){const m=moneyOf(j.id);if(billTotal(m)>0){const u=unpaidOf(m);s.push({l:"정산",ok:settledM(m),plan:u?`미수 ${won(u)}`:costIn(m)?"":"매입 입력 전"});}}
+  const last=s.map(x=>x.ok).lastIndexOf(true);
+  s.forEach((x,i)=>{x.c=x.ok?"ok":i<last?"gap":i===last+1?"cur":"todo";x.late=x.c==="cur"&&!!x.due&&x.due<TODAY;});
+  return s;}
+function flowStrip(j){return`<ol class="fl-steps">${flowSteps(j).map(x=>{const d=x.ok?(x.on?fmt(x.on):""):x.c==="gap"?"기록 없음":x.plan||"";
+  return`<li class="${x.c}${x.late?" late":""}"><span class="fl-l">${x.ok?"✓ ":""}${x.l}</span>${d?`<span class="fl-d">${d}</span>`:""}</li>`;}).join("")}</ol>`;}
+function flowBar(j){const s=flowSteps(j);
+  return`<span class="fl-bar" role="img" aria-label="${s.map(x=>`${x.l} ${x.ok?"됨":x.c==="gap"?"기록 없음":"전"}`).join(", ")}">${s.map(x=>`<i class="${x.c}"></i>`).join("")}</span>`;}
 const range=j=>{if(!j.i.start)return"";const one=!j.i.end||j.i.end===j.i.start;const n=workDays(j).length;
   return (one?fmtW(j.i.start):`${fmtW(j.i.start)}~${fmtW(j.i.end)}`)+(one?"":` <span class="wk">· 작업 ${n}일</span>`);};
 const COLORS=["orange","banana","avocado"];
@@ -51,9 +78,13 @@ function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.add
   m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
     gate:d.i?.gate||"",door:d.i?.door||"",tel:typeof d.i?.tel==="string"?d.i.tel:"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],days:normDays(d.i?.days),off:(Array.isArray(d.i?.off)?d.i.off:[]).filter(isDate),
     apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||"",...(typeof a.join==="boolean"?{join:a.join}:{})})),
-    chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[]},
+    chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[],fl:normFl(d.i?.fl)},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[],closed:isDate(d.f?.closed)?d.f.closed:"",closedBy:d.f?.closedBy==="auto"?"auto":d.f?.closed?"manual":""},createdAt:d.created_at||""};}
 const isDate=v=>typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v);
+/* 도면 · 생산 (진행 흐름). jobs.i.fl 에 둠 (새 칸 없이): ct 계약일(수금에서 가져옴) · dw 설계 담당·도면 확정 목표일·확정일 · pr 생산 방식·외주처·납기·생산 완료일 */
+const PR_HOW={own:"자체 공장",out:"외주",both:"자체 + 외주"};
+function normFl(x){x=x&&typeof x==="object"?x:{};const dw=x.dw||{},pr=x.pr||{},str=v=>typeof v==="string"?v:"",dt=v=>isDate(v)?v:"";
+  return{ct:dt(x.ct),dw:{by:str(dw.by),due:dt(dw.due),ok:dt(dw.ok)},pr:{how:PR_HOW[pr.how]?pr.how:"",out:str(pr.out),due:dt(pr.due),ok:dt(pr.ok)}};}
 function normDays(o){const out={};if(o&&typeof o==="object")for(const k in o)if(isDate(k)&&Array.isArray(o[k]))out[k]=o[k].map(String).filter(Boolean);return out;}
 
 /* 돈: 계약금액·입금·원가 (관리자만) */
@@ -122,12 +153,41 @@ function catDefs(){const m=crewMap(TODAY,addDays(TODAY,60)),clash=new Set();
   for(const n in m){if(!n)continue;for(const d in m[n])if(clashAt(m[n][d]))m[n][d].forEach(x=>clash.add(x.j.id));}
   return[["wait","대기중인 현장","",j=>jobStage(j)==="wait"],["run","진행중인 현장","",j=>jobStage(j)==="run"],["end","종료 현장","",j=>jobStage(j)==="end"],
     ["as","AS","soon",j=>asOpen(j).length>0],["nocrew","시공자 미배정","late",j=>!ended(j)&&noCrewDays(j).some(d=>d>=TODAY)],["clash","시공자 겹침","late",j=>clash.has(j.id)]];}
+/* 진행 흐름 화면 (현장 묶음): 단계별 현장 수 + 단계별 목록과 다음 할 일. 단계를 누르면 그 단계만, 완료는 눌러야 보임 */
+let flowCat="";
+const flowKey=(j,k)=>(k==="msr"?j.m.date:k==="dwg"?j.i.fl.dw.due:k==="prd"?j.i.fl.pr.due:k==="rdy"||k==="ins"?j.i.start:"")||"9"+j.name;
+function flowNext(j,st){const fl=j.i.fl,lw=lastWork(j);let t="",late=false,tags="";
+  if(st==="ask")t="실측일 잡기";
+  else if(st==="msr"){t=`실측 ${fmtW(j.m.date)}`;late=j.m.date<TODAY;}
+  else if(st==="des"){const es=isAdmin&&est10?estOfJob(j.id):[],e=es[es.length-1];t=e?`견적 ${estTag(e)}`:"도면·견적 → 계약";}
+  else if(st==="dwg"){t=`도면 확정 ${fl.dw.due?`${fmtW(fl.dw.due)}까지`:"목표일 없음"}`;late=!!fl.dw.due&&fl.dw.due<TODAY;}
+  else if(st==="prd"){t=`납기 ${fl.pr.due?fmtW(fl.pr.due):"미정"}${fl.pr.how?` · ${PR_HOW[fl.pr.how]}`:""}${fl.pr.out?` ${esc(fl.pr.out)}`:""}`;late=!!fl.pr.due&&fl.pr.due<TODAY;}
+  else if(st==="rdy")t=j.i.start?`시공 ${fmtW(j.i.start)}`:"시공일 잡기";
+  else if(st==="ins"){late=!!lw&&lw<TODAY;t=late?`시공 끝 ${fmt(lw)} · 마감 완료 체크 전`:`시공 중 · ${fmt(lw)}까지`;}
+  else if(st==="set"){const u=unpaidOf(moneyOf(j.id));t=u?`미수 ${won(u)}`:"매입 입력 전";}
+  if((st==="dwg"||st==="prd")&&j.i.start&&j.i.start<=addDays(TODAY,7))tags+=`<span class="tag late">시공 ${fmt(j.i.start)}</span>`;
+  if(prLate(j))tags+=`<span class="tag late">납기가 시공보다 늦음</span>`;
+  if(fl.dw.by&&(st==="des"||st==="dwg"))tags+=`<span class="hint">설계 ${esc(fl.dw.by)}</span>`;
+  return{t,late,tags};}
+function renderFlow(){if(!loaded)return;
+  const st=new Map(jobs.map(j=>[j.id,flowStage(j)])),stages=FLOW.filter(([k])=>k!=="set"||isAdmin),cnt=k=>jobs.filter(j=>st.get(j.id)===k).length;
+  if(!stages.some(([k])=>k===flowCat))flowCat="";
+  $("flCats").innerHTML=stages.map(([k,l],i)=>`${i?`<span class="fl-arr" aria-hidden="true">›</span>`:""}<button class="chip${k===flowCat?" on":""}" type="button" data-flcat="${k}" aria-pressed="${k===flowCat}">${l} <b>${cnt(k)}</b></button>`).join("");
+  let h="";
+  stages.filter(([k])=>flowCat?k===flowCat:k!=="done").forEach(([k,l])=>{const list=jobs.filter(j=>st.get(j.id)===k).map(j=>({j,x:flowNext(j,k)}));if(!list.length)return;
+    list.sort((a,b)=>(b.x.late-a.x.late)||flowKey(a.j,k).localeCompare(flowKey(b.j,k)));
+    h+=`<div class="fl-grp"><h3>${l} <span class="hint">${list.length}곳</span></h3><ul class="dlist fl-list">${list.map(({j,x})=>`<li data-j="${esc(j.id)}" tabindex="0" role="button"><div><b>${esc(j.name)}</b>${sub(j)?`<small>${sub(j)}</small>`:""}${flowBar(j)}<div class="dmeta"><span class="${x.late?"fl-late":""}">${x.t}</span>${x.late?`<span class="tag late">지남</span>`:""}${x.tags}</div></div></li>`).join("")}</ul></div>`;});
+  $("flList").innerHTML=h||`<div class="empty">${flowCat?"이 단계에 있는 현장이 없어요.":"진행 중인 현장이 없어요."}</div>`;
+  const doneN=cnt("done");
+  $("flNote").innerHTML=flowCat?`<b>${FLOW_NAME[flowCat]}</b>만 보고 있어요. <button class="linkish" type="button" data-flcat="${flowCat}">전체 보기</button>`:doneN?`완료된 현장 ${doneN}곳은 위의 <b>완료</b>를 누르면 보여요.`:"";
+  $("flNote").hidden=!$("flNote").innerHTML;}
+document.addEventListener("click",e=>{const c=e.target.closest("[data-flcat]");if(!c)return;flowCat=flowCat===c.dataset.flcat?"":c.dataset.flcat;renderFlow();});
 /* 현장 검색: 이름·품목·주소·고객 전화·시공자·현장 담당자. 검색할 때는 종료 현장도 같이 찾음. 전화는 숫자만 맞아도 찾음 */
 let boardQ="";
 function qHit(j){const q=boardQ.trim().toLowerCase();if(!q)return true;
   if([j.name,j.item,j.addr,j.i.tel,...crewAll(j),...j.i.mgr].join(" ").toLowerCase().includes(q))return true;
   const d=q.replace(/[^\d]/g,"");return d.length>=3&&d.length===q.replace(/[\s-]/g,"").length&&[j.i.tel,...j.i.mgr].some(t=>String(t||"").replace(/\D/g,"").includes(d));}
-function render(){renderBoard();
+function render(){renderBoard();renderFlow();
   renderCal();renderCrew();
   if(isAdmin){renderPay();renderSales();renderWage();renderEst();}
   renderHome();
@@ -246,6 +306,8 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   $("jvTitle").innerHTML=`${esc(j.name)} ${stageTag(j)}`;
   let h=sub(j)?`<p class="sub" style="margin:0">${sub(j)}</p>`:"";
   if(j.i.tel)h+=`<div class="jv-tel"><span>고객 전화</span><b class="d">${esc(j.i.tel)}</b>${telBtns(j.i.tel)}</div>`;
+  const fl=j.i.fl,flm=[fl.dw.by&&`설계 ${esc(fl.dw.by)}`,fl.pr.how&&`생산 ${PR_HOW[fl.pr.how]}${fl.pr.out?` (${esc(fl.pr.out)})`:""}`].filter(Boolean);
+  h+=`<div class="dsec jv-flow"><h3>진행 단계 ${flowTag(j)}</h3>${flowStrip(j)}${flm.length?`<p class="sub" style="margin:0">${flm.join(" · ")}</p>`:""}${prLate(j)?`<p class="ms-warn">납기(${fmt(fl.pr.due)})가 시공 시작(${fmt(j.i.start)})보다 늦어요.</p>`:""}</div>`;
   h+=qcHtml(j);
   h+=`<div class="dsec"><h3>일정</h3><dl class="kv">${kv("실측",`<span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}`)}${kv("시공",`<span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span>`)}
     ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}</div>`;
@@ -267,6 +329,9 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
 let qc={jid:"",done:[],err:""},qcQ=Promise.resolve();
 function qcItems(j){const out=[];
   if(!j.m.done)out.push({k:"m",l:"실측 완료",h:j.m.date?fmtW(j.m.date):"실측일이 없으면 오늘 날짜로 적혀요",late:j.m.date&&j.m.date<TODAY});
+  const st=flowStage(j),fl=j.i.fl;
+  if(st==="dwg")out.push({k:"dw",l:"도면 확정",h:fl.dw.due?`${fmt(fl.dw.due)}까지 · 고객이 최종 도면을 확인하면`:"고객이 최종 도면을 확인하면 체크",late:fl.dw.due&&fl.dw.due<TODAY});
+  if(st==="prd")out.push({k:"pr",l:"생산 완료",h:fl.pr.due?`납기 ${fmt(fl.pr.due)}`:"납기 미정",late:fl.pr.due&&fl.pr.due<TODAY});
   if(isAdmin)moneyOf(j.id).pays.forEach((p,n)=>{if(!p.paid&&p.amount>0)out.push({k:`p${n}`,l:`${esc(p.label)} 입금 확인`,h:`${won(p.amount)}${p.due?` · ${fmt(p.due)}까지`:""}`,late:p.due&&p.due<TODAY});});
   if(!j.f.done&&j.i.start&&j.i.start<=TODAY){const lw=lastWork(j);out.push({k:"f",l:"시공 마감 완료",h:`${lw&&lw<TODAY?`시공 끝 ${fmt(lw)}`:"시공 중"} · 체크하면 종료 현장으로`});}
   j.f.as.forEach((a,n)=>{if(!a.done)out.push({k:`a${n}`,l:"AS 완료",h:`${a.date?fmtW(a.date):"날짜 미정"}${a.note?` · ${esc(a.note)}`:""}`,late:a.date&&a.date<TODAY});});
@@ -279,6 +344,7 @@ function qcHtml(j){if(qc.jid!==j.id)qc={jid:j.id,done:[],err:""};
 function qcChange(j,k,on,prev){
   if(k==="m")return{col:"m",val:{...j.m,done:on,date:on?(j.m.date||TODAY):(prev&&"date" in prev?prev.date:j.m.date)}};
   if(k==="f")return{col:"f",val:{...j.f,done:on}};
+  if(k==="dw"||k==="pr"){const fl=j.i.fl;return{col:"i",val:{...j.i,fl:{...fl,[k]:{...fl[k],ok:on?TODAY:""}}}};}
   if(k==="pall"){const m=moneyOf(j.id),idx=on?m.pays.map((p,i)=>p.paid?-1:i).filter(i=>i>=0):((prev&&prev.idx)||[]);if(!idx.length)return null;
     return{col:"money",idx,val:{...m,pays:m.pays.map((p,i)=>idx.includes(i)?{...p,paid:on,paidOn:on?TODAY:""}:p)}};}
   if(k==="c"){const m=moneyOf(j.id),x=prev&&prev.cost,n=x?m.costs.map((y,i)=>y.cat===x.cat&&y.amount===x.amount&&y.note===x.note?i:-1).filter(i=>i>=0).pop():undefined;
@@ -363,6 +429,11 @@ let duing=false;
 async function autoDue(){if(!isAdmin||duing)return;const due=[];
   jobs.forEach(j=>{if(j.f.closed||!money[j.id])return;const m=fillDues(j,money[j.id]);if(m)due.push([j,m]);});if(!due.length)return;
   duing=true;try{for(const [j,m] of due){const {error}=await sb.from("job_money").upsert({job_id:j.id,data:m,updated_at:new Date().toISOString()});if(!error)money[j.id]=m;}}finally{duing=false;}render();}
+/* 관리자 앱이 열릴 때: 계약금액이 있는데 현장에 계약일이 없으면 적어 둠 (직원도 '계약' 단계를 보게) */
+let cting=false;
+async function autoCt(){if(!isAdmin||cting)return;const due=jobs.filter(j=>!j.i.fl.ct&&billTotal(moneyOf(j.id))>0);if(!due.length)return;
+  cting=true;try{for(const j of due){const i={...j.i,fl:{...j.i.fl,ct:moneyOf(j.id).contract.date||TODAY}};const {error}=await sb.from("jobs").update({i}).eq("id",j.id);if(!error)j.i=i;}}finally{cting=false;}render();}
+const prLate=j=>{const fl=j.i.fl;return!fl.pr.ok&&!!fl.pr.due&&!!j.i.start&&j.i.start>TODAY&&fl.pr.due>j.i.start;};
 $("jvClose").onclick=closeView;
 $("jvEdit").onclick=()=>{const j=jobs.find(x=>x.id===viewing),money=viewMode==="money";closeView();if(j){tab("board");openForm(j);if(money)setTimeout(()=>$("sec-money").scrollIntoView({block:"start"}),300);}};
 $("jobSheet").addEventListener("click",e=>{if(e.target===$("jobSheet"))closeView();
@@ -819,6 +890,7 @@ async function doWin(btn){const e=esCur,t=E.calc(e.d),plan=E.payPlan(e.d.terms,t
     if(!m.pays.length)m.pays=plan.map(p=>({label:p.label,amount:p.amount,due:"",paid:false,paidOn:""}));
     const fd=fillDues(jobs.find(x=>x.id===jid),m);if(fd)m.pays=fd.pays;
     const {error:me}=await sb.from("job_money").upsert({job_id:jid,data:m,updated_at:new Date().toISOString()});if(me)throw me;money[jid]=m;laborCache=null;
+    const jj=jobs.find(x=>x.id===jid);if(jj&&jj.i.fl.ct!==m.contract.date)await qcWrite(jj,{col:"i",val:{...jj.i,fl:{...jj.i.fl,ct:m.contract.date}}});
     const {data:ed,error:ee}=await sb.from("estimates").update({status:"won",job_id:jid,updated_at:new Date().toISOString()}).eq("id",e.id).select();if(ee||!ed||!ed[0])throw ee||new Error("est");
     const r=normEstRow(ed[0]);ests=ests.filter(x=>x.id!==r.id);ests.push(r);esCur={...r};
     $("es-job").innerHTML=jobOpts(jid);$("es-job").value=jid;esSnap=esState();render();renderEsMeta();
@@ -1002,10 +1074,12 @@ function openForm(j){editing=j||null;dayPick={days:JSON.parse(JSON.stringify((j&
   const v=j||norm("",{});
   $("f-name").value=v.name;$("f-tel").value=v.i.tel;$("f-item").value=v.item;$("f-addr").value=v.addr;
   $("f-gate").value=v.i.gate;$("f-door").value=v.i.door;$("f-newmgr").value="";renderMgrPick(v.i.mgr);
-  $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
+  $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;
+  const fl=v.i.fl;$("f-dwby").value=fl.dw.by;$("f-dwdue").value=fl.dw.due;$("f-dwok").value=fl.dw.ok;$("f-prhow").value=fl.pr.how;$("f-prout").value=fl.pr.out;$("f-prdue").value=fl.pr.due;$("f-prok").value=fl.pr.ok;
+  $("dwByList").innerHTML=[...new Set(jobs.map(x=>x.i.fl.dw.by).filter(Boolean))].map(n=>`<option value="${esc(n)}">`).join("");$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
   setColor(v.i.color||"orange");colorTouched=!!(j&&j.i.start);
   [...v.i.crew,...Object.values(v.i.days||{}).flat()].forEach(c=>{if(c&&!CREW.includes(c))CREW.push(c)});renderCrewPick(v.i.crew);$("f-newcrew").value="";
-  renderDayPick();$("f-daysBox").open=dayCustom(v);checkClash();
+  renderDayPick();$("f-daysBox").open=dayCustom(v);checkClash();prForm();
   $("f-fdone").checked=v.f.done;$("f-extras").innerHTML="";v.f.extra.forEach(extraRow);
   $("f-as").innerHTML="";v.f.as.forEach(asRow);
   $("ph-stage").value=guessStage(v);
@@ -1015,6 +1089,11 @@ function openForm(j){editing=j||null;dayPick={days:JSON.parse(JSON.stringify((j&
   // 새 현장을 PC에서 만들 때만 이름 칸에 커서 (휴대폰은 키패드가 화면을 가려서 안 함)
   if(!j&&matchMedia("(pointer:fine)").matches)$("f-name").focus({preventScroll:true});}
 const showErr=m=>{$("f-err").textContent=m;$("f-err").hidden=false};
+/* 수정 화면의 도면 · 생산: 외주일 때만 외주처, 납기가 시공 시작보다 늦으면 경고 */
+function prForm(){const how=$("f-prhow").value,due=$("f-prdue").value,s=$("f-istart").value,late=!$("f-prok").value&&due&&s&&due>s;
+  $("f-prout-l").hidden=!(how==="out"||how==="both");
+  $("f-prwarn").hidden=!late;if(late)$("f-prwarn").textContent=`납기(${fmt(due)})가 시공 시작일(${fmt(s)})보다 늦어요. 납기나 시공일을 다시 확인해 주세요.`;}
+["f-prhow","f-prdue","f-prok","f-istart"].forEach(id=>$(id).addEventListener("change",prForm));
 $("addExtra").onclick=()=>extraRow();
 $("addAs").onclick=()=>asRow();
 $("addBtn").onclick=()=>openQuick();
@@ -1066,9 +1145,11 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
     m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew,days,off,sat,sun,color:getColor(),tel:fmtTel($("f-tel").value),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
-      apps:readApps(),chk:$("f-chk").value.split("\n").map(x=>x.trim()).filter(Boolean)},
+      apps:readApps(),chk:$("f-chk").value.split("\n").map(x=>x.trim()).filter(Boolean),
+      fl:{ct:editing?editing.i.fl.ct:"",dw:{by:$("f-dwby").value.trim(),due:$("f-dwdue").value,ok:$("f-dwok").value},pr:{how:$("f-prhow").value,out:$("f-prout").value.trim(),due:$("f-prdue").value,ok:$("f-prok").value}}},
     f:{...(editing&&!(editing.f.done&&!$("f-fdone").checked)?{closed:editing.f.closed,closedBy:editing.f.closedBy}:{}),done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
   let mo=isAdmin?readMoney():null;
+  if(mo&&billTotal(mo)>0)data.i.fl.ct=mo.contract.date||data.i.fl.ct||TODAY;
   $("saveBtn").disabled=true;$("f-err").hidden=true;
   try{
     const q=editing?sb.from("jobs").update(data).eq("id",editing.id).select():sb.from("jobs").insert(data).select();
@@ -1098,7 +1179,7 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
 document.addEventListener("click",e=>{const c=e.target.closest("[data-cat]");if(c){boardCat=boardCat===c.dataset.cat?"":c.dataset.cat;if(curTab!=="board")tab("board");render();return;}
   const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
   const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j,r.dataset.mode);}});
-document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j],li[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
 /* 오늘 할 일 (홈): 앱을 열면 먼저 보이는 화면. 오늘·내일·앞으로 7일 일정, 확인할 일 */
 const locDay=ts=>{const d=new Date(ts);return isNaN(d)?"":`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
 const jBtn=j=>`<button type="button" class="linkish" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
@@ -1116,10 +1197,15 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
   const wk=addDays(TODAY,7);
   add("late","시공자 미배정 (7일 안)",live.filter(noCrewSoon).map(j=>it(j,noCrewDays(j).filter(d=>d>=TODAY&&d<=wk).map(fmt).join(", "))),"곳");
   add("late","시공자 겹침",clashList(TODAY,addDays(TODAY,60)).sort((a,b)=>a.d.localeCompare(b.d)).map(c=>`<span><button type="button" class="linkish" data-day="${c.d}">${esc(c.n)} ${fmt(c.d)}</button></span>`),"건",["crew","시공자별 보기"]);
+  const fs=flowStage;
+  add("late","납기 지남, 생산 완료 체크 안 함",live.filter(j=>fs(j)==="prd"&&j.i.fl.pr.due&&j.i.fl.pr.due<TODAY).map(j=>it(j,`납기 ${fmt(j.i.fl.pr.due)}`)),"곳",["flow","진행 흐름 보기"]);
+  add("late","시공 7일 안, 생산 완료 전",live.filter(j=>["dwg","prd"].includes(fs(j))&&j.i.start&&j.i.start<=wk).map(j=>it(j,`시공 ${fmt(j.i.start)} · 지금 ${FLOW_NAME[fs(j)]}`)),"곳",["flow","진행 흐름 보기"]);
+  add("late","납기가 시공 시작보다 늦음",live.filter(prLate).map(j=>it(j,`납기 ${fmt(j.i.fl.pr.due)} · 시공 ${fmt(j.i.start)}`)),"곳");
   if(isAdmin)add("late","입금 지연",jobs.flatMap(j=>overdue(moneyOf(j.id)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due)).map(x=>it(x.j,`${esc(x.p.label)} ${won(x.p.amount)} · ${dayDiff(x.p.due,TODAY)}일 지남`,"money")),"건",["pay","고객 수금 보기"]);
   if(isAdmin)add("late","수금 끝, 매입 입력 안 함 (정산 종료 안 됨)",jobs.filter(j=>{const m=moneyOf(j.id);return billTotal(m)>0&&!unpaidOf(m)&&!costIn(m);}).map(j=>it(j,"","money")),"곳",["pay","고객 수금 보기"]);
   add("late","체크리스트 문제 (조치 전)",jobs.filter(j=>clNeeds(j)==="bad").map(j=>it(j,`문제 ${clSum(j).bad.length}개`)),"곳");
   add("late","AS 날짜 지남 (완료 체크 안 함)",jobs.flatMap(j=>asOpen(j).filter(a=>a.date&&a.date<TODAY).map(a=>it(j,`${fmt(a.date)}${a.crew?` · ${esc(a.crew)}`:""}`))),"건");
+  add("soon","도면 확정 목표일 지남",live.filter(j=>fs(j)==="dwg"&&j.i.fl.dw.due&&j.i.fl.dw.due<TODAY).map(j=>it(j,`${fmt(j.i.fl.dw.due)}${j.i.fl.dw.by?` · ${esc(j.i.fl.dw.by)}`:""}`)),"곳",["flow","진행 흐름 보기"]);
   add("soon","체크리스트 미제출",jobs.filter(j=>clNeeds(j)==="late").map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
   add("soon","실측 완료 체크 안 함",live.filter(j=>j.m.date&&j.m.date<TODAY&&!j.m.done).map(j=>it(j,fmt(j.m.date))),"곳");
   add("soon","시공 끝, 마감 완료 체크 안 함",live.filter(j=>!j.f.done&&lastWork(j)&&lastWork(j)<TODAY).map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
@@ -1158,7 +1244,7 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!
   tab(v);if(v==="board")render();if(v==="wage")renderWage();window.scrollTo({top:0});});
 
 /* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
-const GROUPS={home:["home"],site:["board","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
+const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
@@ -1166,8 +1252,9 @@ function tab(which){if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(w
   const g=groupOf(which);lastSub[g]=which;
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
   Object.keys(GROUPS).forEach(k=>{$("sub-"+k).hidden=k!==g;if(k===g)$("nav-"+k).setAttribute("aria-current","page");else $("nav-"+k).removeAttribute("aria-current");});
-  $("app").dataset.g=g;$("gnav").hidden=false;document.body.classList.add("gnav-on");
+  $("app").dataset.g=g;$("app").dataset.v=which;$("gnav").hidden=false;document.body.classList.add("gnav-on");
   if(which==="crew")renderCrew();
+  if(which==="flow")renderFlow();
   if(which==="est"&&isAdmin)renderEst();
   if(which==="home")renderHome();
   try{localStorage.setItem("nest-sub",JSON.stringify(lastSub));sessionStorage.setItem("nest-cur",which)}catch(e){}}
@@ -1616,8 +1703,8 @@ const OX=b=>b?"O":"";
 function backupSheets(){
   const list=[...jobs].sort((a,b)=>(a.i.start||a.m.date||"9999").localeCompare(b.i.start||b.m.date||"9999")||a.name.localeCompare(b.name,"ko"));
   const sheets=[
-    {name:"현장",cols:[["현장",18,"s"],["상태",8,"s"],["품목",14,"s"],["주소",30,"s"],["고객 전화",15,"s"],["실측일",12,"d"],["실측 완료",9,"s"],["시공 시작",12,"d"],["시공 끝",12,"d"],["작업일",7,"n"],["시공자",16,"s"],["날짜별 시공자",30,"s"],["주말 작업",10,"s"],["공동현관 비밀번호",16,"s"],["세대현관 비밀번호",16,"s"],["현장 담당자",22,"s"],["마감 완료",9,"s"],["추가 투입",9,"n"],["AS",6,"n"],["사진·파일",9,"n"]],
-      rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.i.tel,j.m.date,OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||""])},
+    {name:"현장",cols:[["현장",18,"s"],["상태",8,"s"],["품목",14,"s"],["주소",30,"s"],["고객 전화",15,"s"],["실측일",12,"d"],["실측 완료",9,"s"],["시공 시작",12,"d"],["시공 끝",12,"d"],["작업일",7,"n"],["시공자",16,"s"],["날짜별 시공자",30,"s"],["주말 작업",10,"s"],["공동현관 비밀번호",16,"s"],["세대현관 비밀번호",16,"s"],["현장 담당자",22,"s"],["마감 완료",9,"s"],["추가 투입",9,"n"],["AS",6,"n"],["사진·파일",9,"n"],["진행 단계",10,"s"],["계약일",12,"d"],["설계 담당",12,"s"],["도면 확정 목표",12,"d"],["도면 확정일",12,"d"],["생산",11,"s"],["외주처",14,"s"],["납기",12,"d"],["생산 완료일",12,"d"]],
+      rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.i.tel,j.m.date,OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||"",FLOW_NAME[flowStage(j)],j.i.fl.ct,j.i.fl.dw.by,j.i.fl.dw.due,j.i.fl.dw.ok,PR_HOW[j.i.fl.pr.how]||"",j.i.fl.pr.out,j.i.fl.pr.due,j.i.fl.pr.ok])},
     {name:"마감 추가 투입",cols:[["현장",18,"s"],["날짜",12,"d"],["인원",7,"n"],["메모",36,"s"]],
       rows:list.flatMap(j=>j.f.extra.map(x=>[j.name,x.date||"",+x.people||"",x.note||""]))},
     {name:"AS",cols:[["현장",18,"s"],["날짜",12,"d"],["담당",12,"s"],["내용",40,"s"],["완료",7,"s"]],
@@ -1823,7 +1910,7 @@ async function loadAll(){
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
   cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
   if(!ck.error){checks={};(ck.data||[]).forEach(r=>{checks[r.job_id]=r});}
-  loaded=true;render();renderBackup();specStatus();autoDue();
+  loaded=true;render();renderBackup();specStatus();autoDue();autoCt();
   if(!$("form").hidden&&editing){renderFiles();renderPhotos();renderCl();}
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
