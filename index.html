@@ -255,7 +255,16 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .who{font:inherit;font-size:14px;font-weight:600;color:var(--fg);background:none;border:0;padding:4px 6px;cursor:pointer;border-radius:6px}
 .who:hover{background:var(--line)}
 .who.empty{color:var(--accent);font-weight:500;text-decoration:underline;text-underline-offset:3px}
-.nm-form{display:flex;flex-direction:column;gap:10px}
+.nm-form,.qa-form{display:flex;flex-direction:column;gap:10px}
+.qa-form input{font-size:16px}
+.qa-btns{display:flex;gap:8px;flex-wrap:wrap}
+.qa-dup{margin:-4px 0 0;font-size:13px;color:var(--soon);background:var(--soon-bg);border-radius:6px;padding:6px 10px}
+.qa-note{margin:0;font-size:13px}
+.bd-search{margin:0 0 10px}
+.bd-search input{width:100%;font-size:16px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)}
+.jv-tel{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.jv-tel>span{color:var(--muted);font-size:13px}
+.jv-tel .btn{text-decoration:none}
 .nm-form input{font-size:16px}
 .nm-acct{margin:0;font-size:13px;color:var(--muted);line-height:1.6}
 button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
@@ -645,6 +654,7 @@ th.num{font-family:var(--font);font-size:12px}
     <h2 id="formTitle">새 현장 등록</h2>
     <div class="grid">
       <label>고객명<input id="f-name" placeholder="예: 김OO 고객"></label>
+      <label>고객 전화번호<input id="f-tel" type="tel" inputmode="tel" placeholder="010-0000-0000" autocomplete="off"></label>
       <label>품목<input id="f-item" placeholder="예: 붙박이장 3자"></label>
       <label>현장 주소<span class="withcp"><input id="f-addr" placeholder="예: 송파구 OO아파트 101동 1001호"><button class="btn ghost sm cp" type="button" data-cp="f-addr">복사</button></span></label>
     </div>
@@ -751,7 +761,7 @@ th.num{font-family:var(--font);font-size:12px}
         <label class="check"><input type="checkbox" id="mo-vat">부가세 별도 (10% 더 받음)</label>
       </div>
       <h4>입금</h4>
-      <div class="hint">계약금·중도금·잔금을 받을 날과 함께 넣고, 들어오면 '입금됨'에 체크하세요.</div>
+      <div class="hint">계약금·중도금·잔금을 넣고, 들어오면 '입금됨'에 체크하세요. 받을 날을 비워 두면 계약금은 계약일, 중도금은 시공 시작일, 잔금은 시공 끝나는 날로 자동으로 들어가요(시공일이 바뀌면 따라 바뀜). 날짜를 직접 고치면 그 날짜 그대로 둬요.</div>
       <div class="rows" id="mo-pays"></div>
       <div><button class="btn ghost sm" type="button" id="addPay">+ 입금 일정 추가</button></div>
       <h4>매입 (현장 원가)</h4>
@@ -783,6 +793,7 @@ th.num{font-family:var(--font);font-size:12px}
   </section>
 
   <section id="view-board">
+    <div class="bd-search"><input type="search" id="q" enterkeyhint="search" autocomplete="off" placeholder="현장 검색 · 이름, 주소, 전화번호, 시공자" aria-label="현장 검색"></div>
     <p class="sub cat-note" id="catNote" hidden></p>
     <div class="board"><table>
       <thead id="thead"></thead>
@@ -999,6 +1010,21 @@ th.num{font-family:var(--font);font-size:12px}
 <datalist id="es-spaces"></datalist>
 <datalist id="es-units"><option value="자"><option value="EA"><option value="개"><option value="짝"><option value="세트"><option value="식"><option value="m"><option value="㎡"><option value="대"></datalist>
 <div id="printArea"></div>
+<div class="sheet" id="quickSheet" hidden role="dialog" aria-modal="true" aria-labelledby="quickTitle">
+  <div class="sheet-card">
+    <div class="sheet-head"><h2 id="quickTitle">새 현장 빠른 등록</h2><button class="btn ghost sm" type="button" id="quickClose">닫기</button></div>
+    <form class="qa-form" id="quickForm">
+      <label>고객명<input id="qa-name" placeholder="예: 김OO 고객" autocomplete="off"></label>
+      <label>전화번호<input id="qa-tel" type="tel" inputmode="tel" placeholder="010-0000-0000" autocomplete="off"></label>
+      <p class="qa-dup" id="qa-dup" hidden></p>
+      <label>현장 주소<input id="qa-addr" placeholder="예: 송파구 OO아파트 101동 1001호" autocomplete="off"></label>
+      <label>실측일 <small class="hint">(아직 모르면 비워 두기)</small><input id="qa-mdate" type="date"></label>
+      <div class="err" id="qa-err" hidden></div>
+      <div class="qa-btns"><button class="btn" id="qa-save">저장</button><button class="btn ghost" type="button" id="qa-more">자세히 입력</button></div>
+      <p class="hint qa-note">품목, 시공일, 시공자 같은 나머지는 나중에 현장을 눌러 <b>수정</b>에서 넣으면 돼요.</p>
+    </form>
+  </div>
+</div>
 <div class="sheet" id="nameSheet" hidden role="dialog" aria-modal="true" aria-labelledby="nameTitle">
   <div class="sheet-card">
     <div class="sheet-head"><h2 id="nameTitle">내 이름</h2><button class="btn ghost sm" type="button" id="nameClose">닫기</button></div>

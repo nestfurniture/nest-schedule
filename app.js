@@ -14,6 +14,12 @@ const fmt=d=>d?d.slice(5).replace("-","/"):"—";
 const addDays=(d,n)=>{const t=new Date(d+"T12:00:00");t.setDate(t.getDate()+n);return `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`};
 const dayDiff=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
 const sub=j=>[j.item,j.addr].filter(Boolean).map(esc).join(" · ");
+/* 고객 전화번호: 숫자만 적어도 010-1234-5678 꼴로 맞춤. 보기 화면에서 누르면 전화·문자 */
+function fmtTel(v){const t=String(v||"").trim(),d=t.replace(/\D/g,"");if(!/^[\d\s.-]+$/.test(t))return t;
+  if(/^02\d{7,8}$/.test(d))return d.replace(/^(02)(\d{3,4})(\d{4})$/,"$1-$2-$3");
+  if(/^0\d{9,10}$/.test(d))return d.replace(/^(0\d{2})(\d{3,4})(\d{4})$/,"$1-$2-$3");return t;}
+const telNum=v=>{const m=String(v||"").match(/0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/);return m?m[0].replace(/\D/g,""):"";};
+const telBtns=v=>{const n=telNum(v);return n?`<a class="btn ghost sm" href="tel:${n}">전화</a><a class="btn ghost sm" href="sms:${n}">문자</a>`:"";};
 const WD="일월화수목금토";
 const dow=d=>new Date(d+"T12:00:00").getDay();
 const fmtW=d=>d?`${fmt(d)}<span class="wk">(${WD[dow(d)]})</span>`:"—";
@@ -41,7 +47,7 @@ const noCrewSoon=j=>!j.f.closed&&noCrewDays(j).some(d=>d>=TODAY&&d<=addDays(TODA
 const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
   m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
-    gate:d.i?.gate||"",door:d.i?.door||"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],days:normDays(d.i?.days),off:(Array.isArray(d.i?.off)?d.i.off:[]).filter(isDate),
+    gate:d.i?.gate||"",door:d.i?.door||"",tel:typeof d.i?.tel==="string"?d.i.tel:"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],days:normDays(d.i?.days),off:(Array.isArray(d.i?.off)?d.i.off:[]).filter(isDate),
     apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||"",...(typeof a.join==="boolean"?{join:a.join}:{})})),
     chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[]},
   f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[],closed:isDate(d.f?.closed)?d.f.closed:"",closedBy:d.f?.closedBy==="auto"?"auto":d.f?.closed?"manual":"",reopen:!!d.f?.reopen},createdAt:d.created_at||""};}
@@ -54,9 +60,17 @@ const comma=n=>n?n.toLocaleString("ko-KR"):"";
 const won=n=>`${(n<0?"-":"")+Math.abs(n).toLocaleString("ko-KR")}원`;
 const man=n=>Math.abs(n)>=10000?`${n<0?"-":""}${Math.round(Math.abs(n)/10000).toLocaleString("ko-KR")}만원`:won(n);
 const pct=(a,b)=>b?`${Math.round(a/b*100)}%`:"—";
+/* 받을 날 자동: 계약금 = 계약일, 중도금 = 시공 시작일, 잔금 = 시공 끝나는 날(마지막 작업일).
+   받을 날이 비어 있는 입금에만 넣고(auto 표시), 그 뒤 일정이 바뀌면 따라 바뀜. 받을 날을 직접 고치면 자동이 풀림 */
+const AUTO_KINDS=["contract","start","end"],AUTO_OF={계약금:"contract",중도금:"start",잔금:"end"},AUTO_TXT={contract:"계약일",start:"시공 시작일",end:"시공 끝나는 날"};
+const autoDate=(j,m,k)=>k==="contract"?m.contract.date:!j?"":k==="start"?j.i.start:(lastWork(j)||j.i.end);
+function fillDues(j,m){let ch=false;
+  const pays=m.pays.map(p=>{if(p.paid)return p;const k=p.auto||(!p.due&&AUTO_OF[p.label])||"";if(!k)return p;
+    const d=autoDate(j,m,k)||"";if(!p.auto&&!d)return p;if(p.auto===k&&p.due===d)return p;ch=true;return{...p,auto:k,due:d};});
+  return ch?{...m,pays}:null;}
 function normMoney(d){d=d||{};const c=d.contract||{};
   return{contract:{date:c.date||"",amount:toNum(c.amount),vat:!!c.vat},
-    pays:(Array.isArray(d.pays)?d.pays:[]).map(p=>({label:p.label||"계약금",amount:toNum(p.amount),due:p.due||"",paid:!!p.paid,paidOn:p.paidOn||""})),
+    pays:(Array.isArray(d.pays)?d.pays:[]).map(p=>({label:p.label||"계약금",amount:toNum(p.amount),due:p.due||"",paid:!!p.paid,paidOn:p.paidOn||"",...(AUTO_KINDS.includes(p.auto)?{auto:p.auto}:{})})),
     costs:(Array.isArray(d.costs)?d.costs:[]).map(x=>({cat:x.cat||COST_CATS[0],amount:toNum(x.amount),note:x.note||""}))};}
 const moneyOf=id=>money[id]||normMoney();
 const billTotal=m=>Math.round(m.contract.amount*(m.contract.vat?1.1:1));
@@ -107,17 +121,29 @@ function catDefs(){const m=crewMap(TODAY,addDays(TODAY,60)),clash=new Set();
   for(const n in m){if(!n)continue;for(const d in m[n])if(clashAt(m[n][d]))m[n][d].forEach(x=>clash.add(x.j.id));}
   return[["wait","대기중인 현장","",j=>jobStage(j)==="wait"],["run","진행중인 현장","",j=>jobStage(j)==="run"],["end","종료 현장","",j=>jobStage(j)==="end"],
     ["as","AS","soon",j=>asOpen(j).length>0],["nocrew","시공자 미배정","late",j=>!j.f.closed&&noCrewDays(j).some(d=>d>=TODAY)],["clash","시공자 겹침","late",j=>clash.has(j.id)]];}
-function render(){
+/* 현장 검색: 이름·품목·주소·고객 전화·시공자·현장 담당자. 검색할 때는 종료 현장도 같이 찾음. 전화는 숫자만 맞아도 찾음 */
+let boardQ="";
+function qHit(j){const q=boardQ.trim().toLowerCase();if(!q)return true;
+  if([j.name,j.item,j.addr,j.i.tel,...crewAll(j),...j.i.mgr].join(" ").toLowerCase().includes(q))return true;
+  const d=q.replace(/[^\d]/g,"");return d.length>=3&&d.length===q.replace(/[\s-]/g,"").length&&[j.i.tel,...j.i.mgr].some(t=>String(t||"").replace(/\D/g,"").includes(d));}
+function render(){renderBoard();
+  renderCal();renderCrew();
+  if(isAdmin){renderPay();renderSales();renderWage();renderEst();}
+  renderHome();
+  if(viewing)renderView();
+}
+function renderBoard(){
   const cats=catDefs(),cur=cats.find(c=>c[0]===boardCat);if(!cur)boardCat="";
   $("summary").innerHTML=cats.map(([k,label,tone,fn])=>{const n=jobs.filter(fn).length;
     return`<button class="chip ${n&&tone?tone:""}${k===boardCat?" on":""}" type="button" data-cat="${k}" aria-pressed="${k===boardCat}">${label} <b>${n}</b></button>`;}).join("");
-  const shown=cur?jobs.filter(cur[3]):jobs.filter(j=>!j.f.closed),closedN=jobs.filter(j=>j.f.closed).length;
-  $("catNote").innerHTML=cur?`<b>${cur[1]}</b>만 보고 있어요 (${shown.length}곳). <button class="linkish" type="button" data-cat="${cur[0]}">전체 보기</button>`
+  const q=boardQ.trim(),shown=(cur?jobs.filter(cur[3]):q?jobs:jobs.filter(j=>!j.f.closed)).filter(qHit),closedN=jobs.filter(j=>j.f.closed).length;
+  $("catNote").innerHTML=q?`‘${esc(q)}’ 검색 결과 ${shown.length}곳${cur?` (<b>${cur[1]}</b> 안에서)`:" (종료 현장 포함)"}. <button class="linkish" type="button" id="qClear">검색 지우기</button>`
+    :cur?`<b>${cur[1]}</b>만 보고 있어요 (${shown.length}곳). <button class="linkish" type="button" data-cat="${cur[0]}">전체 보기</button>`
     :closedN?`종료된 현장 ${closedN}곳은 위의 <b>종료 현장</b>을 누르면 보여요.`:"";
   $("catNote").hidden=!$("catNote").innerHTML;
   const key=j=>(noCrewSoon(j)?"0":"1")+(j.f.closed?"1":"0")+(j.i.start||j.m.date||"9");
   const sorted=[...shown].sort((a,b)=>key(a).localeCompare(key(b))||(boardCat==="end"?b.f.closed.localeCompare(a.f.closed):0));
-  $("catEmpty").hidden=!(loaded&&jobs.length&&!sorted.length);
+  $("catEmpty").hidden=!(loaded&&jobs.length&&!sorted.length);$("catEmpty").textContent=q?`‘${q}’에 맞는 현장이 없어요.`:"이 분류에 해당하는 현장이 없어요.";
   const empty=loaded&&!jobs.length;
   $("empty").hidden=!empty;
   $("thead").innerHTML=`<tr><th>현장</th><th>실측일</th><th>시공 기간</th><th>시공자</th><th>마감</th><th>추가 투입</th><th>파일 · 사진</th>${isAdmin?"<th>수금</th>":""}</tr>`;
@@ -138,11 +164,10 @@ function render(){
       <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}${asTag(j)}${clTag(j)}</dd>
       <dt>파일</dt><dd>${fileCount(j)}</dd>${isAdmin?`<dt>수금</dt><dd>${payTag(j)}</dd>`:""}
     </dl></button>`).join("");
-  renderCal();renderCrew();
-  if(isAdmin){renderPay();renderSales();renderWage();renderEst();}
-  renderHome();
-  if(viewing)renderView();
 }
+$("q").addEventListener("input",()=>{boardQ=$("q").value;renderBoard();});
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("q").blur();}if(e.key==="Escape"&&$("q").value){$("q").value="";boardQ="";renderBoard();}});
+document.addEventListener("click",e=>{if(e.target.id==="qClear"){$("q").value="";boardQ="";renderBoard();}});
 /* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
 let selDay="",dayFrom=null;
 function dayItems(ds){const out=[];
@@ -210,6 +235,7 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const c=clOf(j.id),apps=j.i.apps.filter(a=>a.model||a.type);
   $("jvTitle").innerHTML=`${esc(j.name)} ${stageTag(j)}`;
   let h=sub(j)?`<p class="sub" style="margin:0">${sub(j)}</p>`:"";
+  if(j.i.tel)h+=`<div class="jv-tel"><span>고객 전화</span><b class="d">${esc(j.i.tel)}</b>${telBtns(j.i.tel)}</div>`;
   h+=qcHtml(j);
   h+=`<div class="dsec"><h3>일정</h3><dl class="kv">${kv("실측",`<span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}`)}${kv("시공",`<span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span>`)}
     ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}</div>`;
@@ -269,6 +295,11 @@ async function setClosed(j,close,btn){
   j.f=f;render();}
 /* 받을 돈을 다 받았고(정산 완료) 시공이 끝난 현장은 자동으로 종료. 금액은 관리자만 보여서 관리자 기기에서 처리 */
 const settled=j=>{const m=moneyOf(j.id),lw=lastWork(j);return billTotal(m)>0&&unpaidOf(m)===0&&!!lw&&lw<=TODAY;};
+/* 관리자 앱이 열릴 때: 시공일이 바뀐(직원이 고친 것 포함) 현장의 자동 받을 날을 맞춤. 종료 현장은 건드리지 않음 */
+let duing=false;
+async function autoDue(){if(!isAdmin||duing)return;const due=[];
+  jobs.forEach(j=>{if(j.f.closed||!money[j.id])return;const m=fillDues(j,money[j.id]);if(m)due.push([j,m]);});if(!due.length)return;
+  duing=true;try{for(const [j,m] of due){const {error}=await sb.from("job_money").upsert({job_id:j.id,data:m,updated_at:new Date().toISOString()});if(!error)money[j.id]=m;}}finally{duing=false;}render();}
 let closing=false;
 async function autoClose(){if(!isAdmin||closing)return;const due=jobs.filter(j=>!j.f.closed&&!j.f.reopen&&settled(j));if(!due.length)return;
   closing=true;try{for(const j of due){const f={...j.f,closed:TODAY,closedBy:"auto",reopen:false};
@@ -624,7 +655,7 @@ document.addEventListener("click",async e=>{const d=e.target.closest("[data-libd
   const r=e.target.closest("[data-lib]");if(r){const x=estConf.items[+r.dataset.lib];if(!x)return;LIB_IN.forEach(([id,k])=>$(id).value=x[k]);$("lib-price").value=comma(x.price);$("lib-name").focus();}});
 /* 견적서 작성 화면 */
 function newEstData(j){const co=estConf.company;
-  return E.norm({date:TODAY,valid:co.valid,terms:co.terms,memo:co.memo,vat:"add",rows:[{t:"h",name:""},{t:"i",qty:1}],cust:j?{name:j.name,addr:j.addr}:{},title:j?j.item:""});}
+  return E.norm({date:TODAY,valid:co.valid,terms:co.terms,memo:co.memo,vat:"add",rows:[{t:"h",name:""},{t:"i",qty:1}],cust:j?{name:j.name,addr:j.addr,phone:j.i.tel}:{},title:j?j.item:""});}
 function jobOpts(sel){const list=jobs.filter(j=>!j.f.closed||j.id===sel).sort((a,b)=>a.name.localeCompare(b.name,"ko"));
   return`<option value="">— 연결 안 함 (계약으로 확정할 때 현장을 새로 만들어요) —</option>`+list.map(j=>`<option value="${esc(j.id)}" ${j.id===sel?"selected":""}>${esc(j.name)}${j.item?` · ${esc(j.item)}`:""}</option>`).join("");}
 function esRowEl(r){const div=document.createElement("div");
@@ -717,16 +748,17 @@ $("esWin").onclick=async()=>{if(!await esReady())return;const e=esCur,t=E.calc(e
   esAsk(`<span>합계 <b>${won(t.total)}</b>으로 계약을 확정할까요? ${j?`‘${esc(j.name)}’ 현장에`:`새 현장 ‘${esc(e.d.cust.name||e.d.title)}’을 만들고`} 계약금액 ${won(t.net)}${e.d.vat==="add"?"(부가세 별도)":""}을 넣${keep?"고, 이미 적힌 입금 일정은 그대로 둬요":plan.length?`고 입금 일정 ${plan.map(p=>`${esc(p.label)} ${won(p.amount)}`).join(", ")}을 만들어요`:"어요"}.${m&&m.contract.amount&&m.contract.amount!==t.net?` 지금 적힌 계약금액 ${won(m.contract.amount)}은 바뀌어요.`:""}</span><button class="btn sm" type="button" id="esWinYes">확정</button><button class="btn ghost sm" type="button" id="esAskNo">취소</button>`);};
 async function doWin(btn){const e=esCur,t=E.calc(e.d),plan=E.payPlan(e.d.terms,t.total);btn.disabled=true;esErr("");
   try{let jid=e.job_id&&jobs.find(x=>x.id===e.job_id)?e.job_id:"";
-    if(!jid){const {data,error}=await sb.from("jobs").insert({name:e.d.cust.name||e.d.title||"새 현장",item:e.d.title,addr:e.d.cust.addr,m:{date:"",done:false},i:{start:"",end:"",crew:[]},f:{done:false,extra:[],as:[]},updated_at:new Date().toISOString()}).select();
+    if(!jid){const {data,error}=await sb.from("jobs").insert({name:e.d.cust.name||e.d.title||"새 현장",item:e.d.title,addr:e.d.cust.addr,m:{date:"",done:false},i:{start:"",end:"",crew:[],tel:fmtTel(e.d.cust.phone)},f:{done:false,extra:[],as:[]},updated_at:new Date().toISOString()}).select();
       if(error||!data||!data[0])throw error||new Error("job");jobs.push(norm(data[0].id,data[0]));jid=data[0].id;}
     const m=normMoney(JSON.parse(JSON.stringify(moneyOf(jid))));
     m.contract={date:m.contract.date||TODAY,amount:t.net,vat:e.d.vat==="add"};
     if(!m.pays.length)m.pays=plan.map(p=>({label:p.label,amount:p.amount,due:"",paid:false,paidOn:""}));
+    const fd=fillDues(jobs.find(x=>x.id===jid),m);if(fd)m.pays=fd.pays;
     const {error:me}=await sb.from("job_money").upsert({job_id:jid,data:m,updated_at:new Date().toISOString()});if(me)throw me;money[jid]=m;laborCache=null;
     const {data:ed,error:ee}=await sb.from("estimates").update({status:"won",job_id:jid,updated_at:new Date().toISOString()}).eq("id",e.id).select();if(ee||!ed||!ed[0])throw ee||new Error("est");
     const r=normEstRow(ed[0]);ests=ests.filter(x=>x.id!==r.id);ests.push(r);esCur={...r};
     $("es-job").innerHTML=jobOpts(jid);$("es-job").value=jid;esSnap=esState();render();renderEsMeta();
-    esAsk(`<span>계약으로 확정했어요. 계약금액과 입금 일정이 수금·결산에 들어갔어요. 받을 날은 현장 수정 화면의 수금에서 정해 주세요.</span><button class="btn sm" type="button" data-jv="${esc(jid)}">현장 보기</button>`);
+    esAsk(`<span>계약으로 확정했어요. 계약금액과 입금 일정이 수금·결산에 들어갔어요. 받을 날은 계약금은 계약일, 중도금은 시공 시작일, 잔금은 시공 끝나는 날로 자동으로 들어가요(시공일을 정하면 채워져요).</span><button class="btn sm" type="button" data-jv="${esc(jid)}">현장 보기</button>`);
   }catch(err){esErr("확정하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.");btn.disabled=false;}}
 $("estSheet").addEventListener("click",async e=>{const t=e.target;
   if(t===$("estSheet")){closeEst();return;}
@@ -754,7 +786,7 @@ $("es-rows").addEventListener("change",e=>{const el=e.target;if(!el.classList.co
   const x=estConf.items.find(o=>o.name===el.value.trim());if(!x)return;
   set(".es-sp",x.spec);set(".es-mt",x.mat);set(".es-hw",x.hw);set(".es-u",x.unit);const p=row.querySelector(".es-p");if(!toNum(p.value)&&x.price)p.value=comma(x.price);set(".es-q","1");esSum();});
 $("es-job").onchange=()=>{const j=jobs.find(x=>x.id===$("es-job").value);if(!j)return;
-  if(!$("es-cname").value.trim())$("es-cname").value=j.name;if(!$("es-caddr").value.trim())$("es-caddr").value=j.addr;if(!$("es-title").value.trim())$("es-title").value=j.item;};
+  if(!$("es-cname").value.trim())$("es-cname").value=j.name;if(!$("es-cphone").value.trim())$("es-cphone").value=j.i.tel;if(!$("es-caddr").value.trim())$("es-caddr").value=j.addr;if(!$("es-title").value.trim())$("es-title").value=j.item;};
 $("esEdit").addEventListener("input",esSum);$("esEdit").addEventListener("change",esSum);
 document.addEventListener("click",e=>{const c=e.target.closest("[data-escat]");if(c){estCat=estCat===c.dataset.escat?"":c.dataset.escat;renderEst();return;}
   const n=e.target.closest("[data-esnew]");if(n){const j=jobs.find(x=>x.id===n.dataset.esnew);if(!$("jobSheet").hidden)closeView();openEst(null,{d:newEstData(j),job_id:j?j.id:""});return;}
@@ -820,17 +852,21 @@ const opt=(list,v)=>list.concat(v&&!list.includes(v)?[v]:[]).map(x=>`<option ${x
 function payRow(p){const n=mSeq++;const div=document.createElement("div");div.className="pay-row";
   if(!p){const cur=readMoney(),used=$("mo-pays").children.length,left=billTotal(cur)-cur.pays.reduce((a,x)=>a+x.amount,0);
     p={label:used===0?"계약금":"잔금",amount:used>0&&left>0?left:0,due:"",paid:false,paidOn:""};}
-  div.innerHTML=`<label>구분<select id="p-l${n}">${opt(PAY_LABELS,p.label)}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="p-a${n}" value="${comma(p.amount)}" placeholder="0"></label><label>받을 날<input type="date" class="due" id="p-d${n}" value="${esc(p.due)}"></label><label class="check"><input type="checkbox" class="paid" id="p-x${n}" ${p.paid?"checked":""}>입금됨</label><label>입금일<input type="date" class="paidOn" id="p-o${n}" value="${esc(p.paidOn)}"></label><button class="btn del sm" type="button">삭제</button>`;
+  if(p.auto)div.dataset.auto=p.auto;
+  div.innerHTML=`<label>구분<select id="p-l${n}">${opt(PAY_LABELS,p.label)}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="p-a${n}" value="${comma(p.amount)}" placeholder="0"></label><label><span>받을 날 <small class="hint auto-h"${p.auto&&!p.paid?"":" hidden"}>자동 · ${AUTO_TXT[p.auto]||""}</small></span><input type="date" class="due" id="p-d${n}" value="${esc(p.due)}"></label><label class="check"><input type="checkbox" class="paid" id="p-x${n}" ${p.paid?"checked":""}>입금됨</label><label>입금일<input type="date" class="paidOn" id="p-o${n}" value="${esc(p.paidOn)}"></label><button class="btn del sm" type="button">삭제</button>`;
   div.querySelector("button").onclick=()=>{div.remove();moneySummary();};
   div.querySelector(".paid").onchange=e=>{if(e.target.checked&&!div.querySelector(".paidOn").value)div.querySelector(".paidOn").value=TODAY;moneySummary();};
   div.querySelector(".paidOn").onchange=e=>{if(e.target.value)div.querySelector(".paid").checked=true;moneySummary();};
+  const manual=()=>{delete div.dataset.auto;div.querySelector(".auto-h").hidden=true;};
+  div.querySelector(".due").addEventListener("change",manual);
+  div.querySelector("select").addEventListener("change",()=>{if(div.dataset.auto){manual();div.querySelector(".due").value="";}});
   $("mo-pays").appendChild(div);}
 function costRow(x={cat:COST_CATS[0],amount:0,note:""}){const n=mSeq++;const div=document.createElement("div");div.className="cost-row";
   div.innerHTML=`<label>항목<select id="c-c${n}">${opt(COST_CATS,x.cat)}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="c-a${n}" value="${comma(x.amount)}" placeholder="0"></label><label class="note">메모<input id="c-n${n}" value="${esc(x.note)}" placeholder="예: 도장 외주, 하드웨어"></label><button class="btn del sm" type="button">삭제</button>`;
   div.querySelector("button").onclick=()=>{div.remove();moneySummary();};$("mo-costs").appendChild(div);}
 function readMoney(){
   return normMoney({contract:{date:$("mo-date").value,amount:toNum($("mo-amount").value),vat:$("mo-vat").checked},
-    pays:[...$("mo-pays").children].map(r=>({label:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),due:r.querySelector(".due").value,paid:r.querySelector(".paid").checked,paidOn:r.querySelector(".paidOn").value})).filter(p=>p.amount>0||p.due),
+    pays:[...$("mo-pays").children].map(r=>({label:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),due:r.querySelector(".due").value,paid:r.querySelector(".paid").checked,paidOn:r.querySelector(".paidOn").value,auto:r.dataset.auto||""})).filter(p=>p.amount>0||p.due),
     costs:[...$("mo-costs").children].map(r=>({cat:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),note:r.querySelector(".note input").value.trim()})).filter(x=>x.amount>0||x.note)});}
 function moneySummary(){if(!isAdmin)return;const m=readMoney(),auto=autoCosts(editing,m),t=billTotal(m),r=received(m),c=costSum(m)+auto.reduce((a,x)=>a+x.amount,0),p=m.contract.amount-c;
   moneyHint(m,auto);
@@ -900,10 +936,10 @@ document.addEventListener("click",async e=>{
 
 function openForm(j){editing=j||null;dayPick={days:JSON.parse(JSON.stringify((j&&j.i.days)||{})),off:new Set((j&&j.i.off)||[])};$("formTitle").textContent=j?`${j.name} 수정`:"새 현장 등록";$("delBtn").hidden=!j;$("f-err").hidden=true;$("delConfirm").hidden=true;
   const v=j||norm("",{});
-  $("f-name").value=v.name;$("f-item").value=v.item;$("f-addr").value=v.addr;
+  $("f-name").value=v.name;$("f-tel").value=v.i.tel;$("f-item").value=v.item;$("f-addr").value=v.addr;
   $("f-gate").value=v.i.gate;$("f-door").value=v.i.door;$("f-newmgr").value="";renderMgrPick(v.i.mgr);
   $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
-  setColor(v.i.color||"orange");colorTouched=!!j;
+  setColor(v.i.color||"orange");colorTouched=!!(j&&j.i.start);
   [...v.i.crew,...Object.values(v.i.days||{}).flat()].forEach(c=>{if(c&&!CREW.includes(c))CREW.push(c)});renderCrewPick(v.i.crew);$("f-newcrew").value="";
   renderDayPick();$("f-daysBox").open=dayCustom(v);checkClash();
   $("f-fdone").checked=v.f.done;$("f-extras").innerHTML="";v.f.extra.forEach(extraRow);
@@ -917,7 +953,28 @@ function openForm(j){editing=j||null;dayPick={days:JSON.parse(JSON.stringify((j&
 const showErr=m=>{$("f-err").textContent=m;$("f-err").hidden=false};
 $("addExtra").onclick=()=>extraRow();
 $("addAs").onclick=()=>asRow();
-$("addBtn").onclick=()=>openForm(null);
+$("addBtn").onclick=()=>openQuick();
+/* 빠른 등록: 새 문의는 고객명·전화·주소·실측일만 받아 바로 저장. 나머지는 '자세히 입력'(전체 입력 화면)이나 나중에 수정에서 */
+let quickFrom=null;
+function openQuick(){["qa-name","qa-tel","qa-addr","qa-mdate"].forEach(id=>$(id).value="");$("qa-err").hidden=true;$("qa-dup").hidden=true;
+  quickFrom=document.activeElement;$("quickSheet").hidden=false;document.body.style.overflow="hidden";$("qa-name").focus();}
+function closeQuick(){$("quickSheet").hidden=true;if($("jobSheet").hidden)document.body.style.overflow="";if(quickFrom&&quickFrom.isConnected&&quickFrom.focus)quickFrom.focus({preventScroll:true});quickFrom=null;}
+function quickDup(){const n=telNum($("qa-tel").value),same=n?jobs.filter(j=>telNum(j.i.tel)===n):[];
+  $("qa-dup").innerHTML=same.length?`같은 전화번호로 등록된 현장이 있어요: ${same.map(j=>`<b>${esc(j.name)}</b>${j.item?` (${esc(j.item)})`:""}`).join(", ")}`:"";$("qa-dup").hidden=!same.length;}
+$("quickClose").onclick=closeQuick;
+$("quickSheet").addEventListener("click",e=>{if(e.target===$("quickSheet"))closeQuick();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("quickSheet").hidden)closeQuick();});
+$("qa-tel").addEventListener("input",quickDup);
+["qa-tel","f-tel"].forEach(id=>$(id).addEventListener("change",()=>{$(id).value=fmtTel($(id).value);if(id==="qa-tel")quickDup();}));
+$("qa-more").onclick=()=>{const v={name:$("qa-name").value.trim(),tel:fmtTel($("qa-tel").value),addr:$("qa-addr").value.trim(),mdate:$("qa-mdate").value};
+  closeQuick();tab("board");openForm(null);$("f-name").value=v.name;$("f-tel").value=v.tel;$("f-addr").value=v.addr;$("f-mdate").value=v.mdate;updateMsg();};
+$("quickForm").addEventListener("submit",async e=>{e.preventDefault();const name=$("qa-name").value.trim();
+  if(!name){$("qa-err").textContent="고객명을 넣어 주세요.";$("qa-err").hidden=false;$("qa-name").focus();return;}
+  const data={name,item:"",addr:$("qa-addr").value.trim(),m:{date:$("qa-mdate").value,done:false},i:{start:"",end:"",crew:[],tel:fmtTel($("qa-tel").value)},f:{done:false,extra:[],as:[]},updated_at:new Date().toISOString()};
+  $("qa-save").disabled=true;$("qa-err").hidden=true;
+  const {data:rows,error}=await sb.from("jobs").insert(data).select();$("qa-save").disabled=false;
+  if(error||!rows||!rows[0]){$("qa-err").textContent="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";$("qa-err").hidden=false;return;}
+  const j=norm(rows[0].id,rows[0]);jobs=jobs.filter(x=>x.id!==j.id);jobs.push(j);closeQuick();tab("board");render();openView(j);});
 $("cancelBtn").onclick=()=>{$("form").hidden=true};
 $("addCrew").onclick=async()=>{const nm=$("f-newcrew").value.trim();if(!nm)return;
   const sel=pickedCrew();if(!CREW.includes(nm))CREW.push(nm);sel.push(nm);renderCrewPick(sel);$("f-newcrew").value="";renderDayPick();checkClash();
@@ -944,20 +1001,21 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
   const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
-    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew,days,off,sat,sun,color:getColor(),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
+    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew,days,off,sat,sun,color:getColor(),tel:fmtTel($("f-tel").value),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
       apps:readApps(),chk:$("f-chk").value.split("\n").map(x=>x.trim()).filter(Boolean)},
     f:{...(editing?{closed:editing.f.closed,closedBy:editing.f.closedBy,reopen:editing.f.reopen}:{}),done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
-  const mo=isAdmin?readMoney():null;
+  let mo=isAdmin?readMoney():null;
   $("saveBtn").disabled=true;$("f-err").hidden=true;
   try{
     const q=editing?sb.from("jobs").update(data).eq("id",editing.id).select():sb.from("jobs").insert(data).select();
     const {data:rows,error}=await q;if(error)throw error;
     const row=rows&&rows[0];
     if(row){jobs=jobs.filter(x=>x.id!==row.id);jobs.push(norm(row.id,row));editing=jobs.find(x=>x.id===row.id);$("formTitle").textContent=`${editing.name} 수정`;$("delBtn").hidden=false;}
+    if(row&&mo){const fd=fillDues(editing,mo);if(fd)mo=fd;}
     if(row&&mo&&(hasMoney(mo)||money[row.id])){
       const {error:me}=await sb.from("job_money").upsert({job_id:row.id,data:mo,updated_at:new Date().toISOString()});
       if(me){render();showErr("현장은 저장됐는데 수금·매입을 저장하지 못했어요. 저장을 한 번 더 눌러 주세요.");return;}
-      money[row.id]=mo;}
+      money[row.id]=mo;fillMoney(editing);}
     render();
     // 처음 보는 가전 모델과 '붙여서 설치' 묶음은 시방서 찾기 시작 (기다리지 않음)
     if(row&&editing.i.apps.some(a=>NEST_CL.modelKey(a.model).length>=3))findSpecs({job:row.id},[...new Set(editing.i.apps.map(a=>NEST_CL.modelKey(a.model)).filter(k=>k.length>=3&&!specLib[k]))]);
@@ -1493,8 +1551,8 @@ const OX=b=>b?"O":"";
 function backupSheets(){
   const list=[...jobs].sort((a,b)=>(a.i.start||a.m.date||"9999").localeCompare(b.i.start||b.m.date||"9999")||a.name.localeCompare(b.name,"ko"));
   const sheets=[
-    {name:"현장",cols:[["현장",18,"s"],["상태",8,"s"],["품목",14,"s"],["주소",30,"s"],["실측일",12,"d"],["실측 완료",9,"s"],["시공 시작",12,"d"],["시공 끝",12,"d"],["작업일",7,"n"],["시공자",16,"s"],["날짜별 시공자",30,"s"],["주말 작업",10,"s"],["공동현관 비밀번호",16,"s"],["세대현관 비밀번호",16,"s"],["현장 담당자",22,"s"],["마감 완료",9,"s"],["추가 투입",9,"n"],["AS",6,"n"],["사진·파일",9,"n"]],
-      rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.m.date,OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||""])},
+    {name:"현장",cols:[["현장",18,"s"],["상태",8,"s"],["품목",14,"s"],["주소",30,"s"],["고객 전화",15,"s"],["실측일",12,"d"],["실측 완료",9,"s"],["시공 시작",12,"d"],["시공 끝",12,"d"],["작업일",7,"n"],["시공자",16,"s"],["날짜별 시공자",30,"s"],["주말 작업",10,"s"],["공동현관 비밀번호",16,"s"],["세대현관 비밀번호",16,"s"],["현장 담당자",22,"s"],["마감 완료",9,"s"],["추가 투입",9,"n"],["AS",6,"n"],["사진·파일",9,"n"]],
+      rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.i.tel,j.m.date,OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||""])},
     {name:"마감 추가 투입",cols:[["현장",18,"s"],["날짜",12,"d"],["인원",7,"n"],["메모",36,"s"]],
       rows:list.flatMap(j=>j.f.extra.map(x=>[j.name,x.date||"",+x.people||"",x.note||""]))},
     {name:"AS",cols:[["현장",18,"s"],["날짜",12,"d"],["담당",12,"s"],["내용",40,"s"],["완료",7,"s"]],
@@ -1700,7 +1758,7 @@ async function loadAll(){
   if(!mo.error){money={};(mo.data||[]).forEach(r=>{money[r.job_id]=normMoney(r.data)});}
   cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
   if(!ck.error){checks={};(ck.data||[]).forEach(r=>{checks[r.job_id]=r});}
-  loaded=true;render();renderBackup();specStatus();autoClose();
+  loaded=true;render();renderBackup();specStatus();autoClose();autoDue();
   if(!$("form").hidden&&editing){renderFiles();renderPhotos();renderCl();}
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
