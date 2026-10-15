@@ -252,7 +252,12 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .login img{width:72px;height:72px;border-radius:16px}
 .login h1 .wm{font-size:20px}
 .hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.who{font-size:12px;color:var(--muted)}
+.who{font:inherit;font-size:14px;font-weight:600;color:var(--fg);background:none;border:0;padding:4px 6px;cursor:pointer;border-radius:6px}
+.who:hover{background:var(--line)}
+.who.empty{color:var(--accent);font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.nm-form{display:flex;flex-direction:column;gap:10px}
+.nm-form input{font-size:16px}
+.nm-acct{margin:0;font-size:13px;color:var(--muted);line-height:1.6}
 button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .tabs{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
@@ -299,9 +304,8 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .hm-al-b{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px}
 .hm-al-b .linkish{font-weight:500}
 .hm-none{margin:0;padding:12px;border:1px dashed var(--line);border-radius:8px;color:var(--ok);font-size:14px}
-.hm-money .num{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 @media (max-width:900px){.hm-cols{display:flex;flex-direction:column;align-items:stretch}.hm-col{display:contents}
-  .hm-today{order:1}.hm-alert{order:2}.hm-tmr{order:3}.hm-week{order:4}.hm-money{order:5}}
+  .hm-today{order:1}.hm-alert{order:2}.hm-tmr{order:3}.hm-week{order:4}}
 @media (max-width:700px){
   .gnav{position:fixed;left:0;right:0;bottom:0;z-index:30;align-self:auto;border:0;border-top:1px solid var(--line);border-radius:0;gap:0;padding:4px 6px max(6px,env(safe-area-inset-bottom));background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .gnav button{flex:1;flex-direction:column;gap:2px;padding:4px 0 2px;font-size:12px;border-radius:0}
@@ -412,6 +416,15 @@ th.num{font-family:var(--font);font-size:12px}
 .jv-card{width:min(600px,100%)}
 .jv-list{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:3px}
 .jv-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.jv-qc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+.jv-qc h3 .hint{font-weight:400;margin-left:4px}
+.qc{flex-direction:row;align-items:center;gap:4px 10px;flex-wrap:wrap;color:var(--fg);font-size:15px;padding:9px 2px;border-top:1px dashed var(--line);cursor:pointer}
+.qc:first-of-type{border-top:0}
+.qc input{width:20px;height:20px;margin:0;accent-color:var(--accent);flex:none}
+.qc .hint{font-size:13px}
+.qc-done{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--ok);padding:7px 2px;border-top:1px dashed var(--line)}
+.qc-done .linkish{font-size:13px;font-weight:500;color:var(--muted)}
+.jv-qc .err{margin:6px 0 0}
 .jv-stage{border-top:1px solid var(--line);padding-top:12px;gap:8px;display:flex;flex-direction:column}
 .daypick summary{cursor:pointer;font-size:14px;color:var(--accent);font-weight:500}
 .dp-list{display:flex;flex-direction:column;gap:8px}
@@ -584,7 +597,7 @@ th.num{font-family:var(--font);font-size:12px}
       <h1><span class="wm">NEST FURNITURE</span></h1>
       <div class="demo" id="status" hidden></div>
     </div>
-    <div class="hdr-actions"><span class="who" id="who"></span><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button></div>
+    <div class="hdr-actions"><button class="who" id="who" type="button" aria-haspopup="dialog" title="내 이름 바꾸기"></button><button class="btn ghost sm" id="pushBtn" type="button" aria-haspopup="dialog">알림</button><button class="btn ghost sm" id="logoutBtn">로그아웃</button></div>
   </header>
 
   <div class="update" id="updNote" hidden>현장 사진·수금·매출 기능을 쓰려면 Supabase 업데이트를 한 번 해야 해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-02.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 전부 복사해 Supabase의 SQL Editor에 붙여넣고 Run을 누르면 끝나요.</div>
@@ -764,7 +777,6 @@ th.num{font-family:var(--font);font-size:12px}
       </div>
       <div class="hm-col">
         <div class="hm-sec hm-alert"><h3>확인할 일</h3><div class="hm-als" id="hmAlerts"></div></div>
-        <div class="hm-sec hm-money admin-only" hidden><h3 id="hmMoneyH">7일 안에 받을 돈</h3><ul class="dlist" id="hmMoney"></ul></div>
       </div>
     </div>
     <p class="sub">이름을 누르면 현장 내용이, 날짜를 누르면 그날 일정이 열려요.</p>
@@ -987,6 +999,17 @@ th.num{font-family:var(--font);font-size:12px}
 <datalist id="es-spaces"></datalist>
 <datalist id="es-units"><option value="자"><option value="EA"><option value="개"><option value="짝"><option value="세트"><option value="식"><option value="m"><option value="㎡"><option value="대"></datalist>
 <div id="printArea"></div>
+<div class="sheet" id="nameSheet" hidden role="dialog" aria-modal="true" aria-labelledby="nameTitle">
+  <div class="sheet-card">
+    <div class="sheet-head"><h2 id="nameTitle">내 이름</h2><button class="btn ghost sm" type="button" id="nameClose">닫기</button></div>
+    <form class="nm-form" id="nameForm">
+      <label>화면 위에 'ㅇㅇㅇ님'으로 보일 이름<input id="nm-in" maxlength="20" autocomplete="name" placeholder="예: 홍길동"></label>
+      <p class="nm-acct" id="nmAcct"></p>
+      <div class="err" id="nm-err" hidden></div>
+      <div><button class="btn" id="nm-save">저장</button></div>
+    </form>
+  </div>
+</div>
 <div class="sheet" id="pushSheet" hidden role="dialog" aria-modal="true" aria-labelledby="pushTitle">
   <div class="sheet-card">
     <div class="sheet-head"><h2 id="pushTitle">휴대폰 알림</h2><button class="btn ghost sm" type="button" id="pushClose">닫기</button></div>

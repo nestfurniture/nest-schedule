@@ -200,9 +200,9 @@ $("daySheet").addEventListener("click",e=>{if(e.target===$("daySheet"))closeDay(
 /* 현장 보기: 목록에서 누르면 먼저 내용만 보여 주고, '수정'을 눌러야 입력 화면이 열림 (휴대폰 키패드가 바로 뜨지 않게) */
 let viewing=null,viewFrom=null;
 const jvName=j=>`<button type="button" class="linkish jv-name" data-jv="${esc(j.id)}">${esc(j.name)}</button>`;
-function openView(j){viewing=j.id;renderView();
+function openView(j){viewing=j.id;qc={jid:j.id,done:[],err:""};renderView();
   if($("jobSheet").hidden){viewFrom=document.activeElement;$("jobSheet").hidden=false;document.body.style.overflow="hidden";$("jvClose").focus({preventScroll:true});}}
-function closeView(){$("jobSheet").hidden=true;viewing=null;if($("daySheet").hidden)document.body.style.overflow="";
+function closeView(){$("jobSheet").hidden=true;viewing=null;qc={jid:"",done:[],err:""};if($("daySheet").hidden)document.body.style.overflow="";
   if(viewFrom&&viewFrom.isConnected&&viewFrom.focus)viewFrom.focus({preventScroll:true});viewFrom=null;}
 function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobSheet").hidden)closeView();return;}
   const kv=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"",li=a=>a.length?`<ul class="jv-list">${a.map(x=>`<li>${x}</li>`).join("")}</ul>`:"";
@@ -210,6 +210,7 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const c=clOf(j.id),apps=j.i.apps.filter(a=>a.model||a.type);
   $("jvTitle").innerHTML=`${esc(j.name)} ${stageTag(j)}`;
   let h=sub(j)?`<p class="sub" style="margin:0">${sub(j)}</p>`:"";
+  h+=qcHtml(j);
   h+=`<div class="dsec"><h3>일정</h3><dl class="kv">${kv("실측",`<span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}`)}${kv("시공",`<span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span>`)}
     ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}</div>`;
   if(j.f.extra.length)h+=`<div class="dsec"><h3>마감 추가 투입</h3>${li(j.f.extra.map(x=>`<span class="d">${fmtW(x.date)}</span> ${+x.people}명${x.note?` · ${esc(x.note)}`:""}`))}</div>`;
@@ -224,6 +225,42 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   h+=`<div class="dsec jv-stage">${j.f.closed?`<p class="sub" style="margin:0">${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"정산 완료로 자동 종료":"종료 처리"}됐어요.</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div>`
     :`<p class="sub" style="margin:0">받을 돈을 다 받고 시공이 끝나면 자동으로 종료 현장으로 옮겨져요${j.f.reopen?" (이 현장은 다시 열어서 자동 종료가 꺼져 있어요)":""}.</p><div><button class="btn ghost sm" type="button" id="jvEnd">지금 종료 처리</button></div>`}</div>`;
   $("jvBody").innerHTML=h;}
+/* 바로 체크: '수정'에 들어가지 않고 보기 화면에서 실측 완료 · 입금 확인(관리자) · 시공 마감 완료 · AS 완료를 체크.
+   체크하면 바로 저장되고 그 체크칸은 사라짐. 잘못 눌렀을 때를 위해 이 화면을 닫기 전까지는 '되돌리기'가 남음 */
+let qc={jid:"",done:[],err:""},qcQ=Promise.resolve();
+function qcItems(j){const out=[];
+  if(!j.m.done)out.push({k:"m",l:"실측 완료",h:j.m.date?fmtW(j.m.date):"실측일이 없으면 오늘 날짜로 적혀요",late:j.m.date&&j.m.date<TODAY});
+  if(isAdmin)moneyOf(j.id).pays.forEach((p,n)=>{if(!p.paid&&p.amount>0)out.push({k:`p${n}`,l:`${esc(p.label)} 입금 확인`,h:`${won(p.amount)}${p.due?` · ${fmt(p.due)}까지`:""}`,late:p.due&&p.due<TODAY});});
+  if(!j.f.done&&j.i.start&&j.i.start<=TODAY){const lw=lastWork(j);out.push({k:"f",l:"시공 마감 완료",h:lw&&lw<TODAY?`시공 끝 ${fmt(lw)}`:"시공 중"});}
+  j.f.as.forEach((a,n)=>{if(!a.done)out.push({k:`a${n}`,l:"AS 완료",h:`${a.date?fmtW(a.date):"날짜 미정"}${a.note?` · ${esc(a.note)}`:""}`,late:a.date&&a.date<TODAY});});
+  return out;}
+function qcHtml(j){if(qc.jid!==j.id)qc={jid:j.id,done:[],err:""};
+  const items=qcItems(j);if(!items.length&&!qc.done.length)return"";
+  return`<div class="dsec jv-qc"><h3>바로 체크<span class="hint">체크하면 바로 저장돼요</span></h3>${items.map(x=>`<label class="qc"><input type="checkbox" data-qc="${x.k}"><span>${x.l}</span><span class="hint">${x.h}</span>${x.late?`<span class="tag late">지남</span>`:""}</label>`).join("")}
+    ${qc.done.map((x,i)=>`<div class="qc-done"><span>✓ ${x.l} 체크했어요</span><button type="button" class="linkish" data-qu="${i}">되돌리기</button></div>`).join("")}${qc.err?`<p class="err">${qc.err}</p>`:""}</div>`;}
+/* 바뀌는 칸(실측 m · 마감/AS f · 수금 job_money)만 저장 */
+function qcChange(j,k,on,prev){
+  if(k==="m")return{col:"m",val:{...j.m,done:on,date:on?(j.m.date||TODAY):(prev&&"date" in prev?prev.date:j.m.date)}};
+  if(k==="f")return{col:"f",val:{...j.f,done:on}};
+  const n=+k.slice(1);
+  if(k[0]==="a"){if(!j.f.as[n])return null;return{col:"f",val:{...j.f,as:j.f.as.map((a,i)=>i===n?{...a,done:on}:a)}};}
+  const m=moneyOf(j.id);if(!m.pays[n])return null;
+  return{col:"money",val:{...m,pays:m.pays.map((p,i)=>i===n?{...p,paid:on,paidOn:on?TODAY:""}:p)}};}
+async function qcWrite(j,c){const at=new Date().toISOString();
+  if(c.col==="money"){const {error}=await sb.from("job_money").upsert({job_id:j.id,data:c.val,updated_at:at});if(error)return false;money[j.id]=c.val;laborCache=null;return true;}
+  const {error}=await sb.from("jobs").update({[c.col]:c.val,updated_at:at}).eq("id",j.id);if(error)return false;j[c.col]=c.val;return true;}
+function qcRun(jid,fn){qcQ=qcQ.then(async()=>{const j=jobs.find(x=>x.id===jid);if(j)await fn(j);}).catch(()=>{});}
+$("jvBody").addEventListener("change",e=>{const box=e.target.closest("input[data-qc]");if(!box||!box.checked)return;const k=box.dataset.qc;
+  box.disabled=true;const label=box.nextElementSibling.innerHTML;
+  qcRun(viewing,async j=>{const prev={date:j.m.date},c=qcChange(j,k,true);
+    if(c&&await qcWrite(j,c)){if(qc.jid===j.id){qc.done.push({k,l:label,prev});qc.err="";}render();if(c.col==="money")autoClose();}
+    else{if(qc.jid===j.id)qc.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 체크해 주세요.";render();}});});
+$("jvBody").addEventListener("click",e=>{const u=e.target.closest("[data-qu]");if(!u)return;const x=qc.done[+u.dataset.qu];if(!x)return;u.disabled=true;
+  qcRun(viewing,async j=>{const c=qcChange(j,x.k,false,x.prev);
+    if(c&&await qcWrite(j,c)){qc.done=qc.done.filter(y=>y!==x);qc.err="";
+      // 입금 확인 때문에 자동 종료됐던 현장은 되돌리면 다시 진행 상태로
+      if(c.col==="money"&&j.f.closedBy==="auto"&&!settled(j))await qcWrite(j,{col:"f",val:{...j.f,closed:"",closedBy:"",reopen:false}});}
+    else qc.err="되돌리지 못했어요. 다시 눌러 주세요.";render();});});
 async function setClosed(j,close,btn){
   const f={...j.f,closed:close?TODAY:"",closedBy:close?"manual":"",reopen:!close};
   if(btn)btn.disabled=true;
@@ -423,10 +460,10 @@ async function loadWage(){if(!isAdmin)return;
   if(pay08&&!error&&!wageChan)wageChan=sb.channel("nest-pay").on("postgres_changes",{event:"*",schema:"public",table:"crew_pay"},()=>loadWage().then(render)).subscribe();}
 
 /* 결산 (관리자). 매출 = 계약금액(부가세 별도 계약은 부가세 뺀 금액), 매입 = 현장 원가(자재·인건비·외주 등), 지출 = 현장에 딸리지 않은 회사 비용.
-   현장 매출·매입의 기준 달 = 시공 끝나는 달(없으면 계약일), 지출은 쓴 날의 달. 매달 반복 지출은 시작한 달부터 이번 달까지(끝나는 달이 있으면 거기까지) */
+   현장 매출·매입의 기준 달 = 시공 시작한 달(없으면 계약일), 지출은 쓴 날의 달. 매달 반복 지출은 시작한 달부터 이번 달까지(끝나는 달이 있으면 거기까지) */
 let salesY=now.getFullYear(),salesM=0,expenses=[],pay09=true,expChan=null,expEdit=null;
 const EXP_CATS=["임대료","차량·유류","공구·장비","소모품","식대·복리후생","광고·홍보","급여·4대보험","세금·공과금","통신·사무","수수료·기타"];
-const jobMonth=j=>(j.i.end||j.i.start||moneyOf(j.id).contract.date||"").slice(0,7);
+const jobMonth=j=>(j.i.start||moneyOf(j.id).contract.date||"").slice(0,7);
 const bar=(v,max,cls="")=>!v?"":`<span class="bar ${cls}"><i style="width:${max>0?Math.max(0,Math.min(100,v/max*100)):0}%"></i></span>`;
 const curYM=()=>TODAY.slice(0,7);
 const expIn=(x,ym)=>x.repeat?x.day.slice(0,7)<=ym&&ym<=curYM()&&(!x.until||ym<=x.until):x.day.slice(0,7)===ym;
@@ -463,7 +500,7 @@ function renderSales(){
   $("saCosts").innerHTML=cats.length?cats.map(x=>`<tr><td>${esc(x.c)}</td><td class="num">${won(x.v)}</td><td class="num">${pct(x.v,C)}</td><td class="barcell">${bar(x.v,C,"cost")}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">매입 기록이 없어요.</td></tr>`;
   renderExpenses(yms,E);
-  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 현장 매출·매입의 기준 달은 시공이 끝나는 달이고, 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
+  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 현장 매출·매입의 기준 달은 시공을 시작한 달이고(10월 30일 시작이면 10월), 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
 }
 function renderExpenses(yms,E){
   $("exUpdate").hidden=pay09;$("exBody").hidden=!pay09;$("exFilt").hidden=!pay09;if(!pay09)return;
@@ -940,7 +977,7 @@ document.addEventListener("click",e=>{const c=e.target.closest("[data-cat]");if(
   const t=e.target.closest("[data-tab]");if(t){tab(t.dataset.tab);return;}
   const r=e.target.closest("[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"){const r=e.target.closest&&e.target.closest("tr[data-j]");if(r){const j=jobs.find(x=>x.id===r.dataset.j);if(j)openView(j);}}});
-/* 오늘 할 일 (홈): 앱을 열면 먼저 보이는 화면. 오늘·내일·앞으로 7일 일정, 확인할 일, 7일 안에 받을 돈(관리자) */
+/* 오늘 할 일 (홈): 앱을 열면 먼저 보이는 화면. 오늘·내일·앞으로 7일 일정, 확인할 일 */
 const locDay=ts=>{const d=new Date(ts);return isNaN(d)?"":`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
 const jBtn=j=>`<button type="button" class="linkish" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
 const dayLabel=ds=>`${+ds.slice(5,7)}월 ${+ds.slice(8)}일 (${WD[dow(ds)]})`;
@@ -967,8 +1004,6 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!j.f.closed),it=(j,more)=>`
     .map(e=>`<span><button type="button" class="linkish" data-es="${esc(e.id)}">${esc([e.d.cust.name,e.d.title].filter(Boolean).join(" · ")||"견적서")}</button> <span class="hint">${fmt(locDay(e.d.sentAt))} 보냄</span></span>`),"건",["est","견적서 보기"]);
   if(isAdmin&&pay08&&Object.keys(wage.rates.day).length){const pm=addDays(TODAY.slice(0,8)+"01",-1),m=+pm.slice(5,7),w=wageMonth(+pm.slice(0,4),m);
     add("soon",`${m}월 시공자 정산 지급 전`,w.people.filter(p=>!p.paid&&(p.days||p.as)).map(p=>`<span>${esc(p.n)} <span class="hint">${p.total==null?"일당 미입력":won(p.total)}</span></span>`),"명",[`wage:${pm.slice(0,7)}`,"시공자 정산 보기"]);}
-  let last="";try{last=localStorage.getItem(XLS_KEY)||""}catch(e){}
-  if(jobs.length&&(!last||dayDiff(last,TODAY)>30))A.push({tone:"wait",title:last?"엑셀 백업 한 달 넘게 안 받음":"엑셀 백업 아직 안 받음",list:[`<span class="hint">이 기기에서 기록을 엑셀 파일로 받아 두면 안전해요.</span>`],unit:"",go:["xls","엑셀로 받기"]});
   add("wait","실측일·시공일 없는 현장",live.filter(j=>!j.m.date&&!j.i.start).map(j=>it(j)),"곳");
   return A;}
 function renderHome(){if(!loaded)return;
@@ -993,12 +1028,8 @@ function renderHome(){if(!loaded)return;
   const al=homeAlerts(),red=al.filter(a=>a.tone==="late").reduce((n,a)=>n+a.list.length,0);
   $("hmAlerts").innerHTML=al.length?al.map(a=>`<div class="hm-al ${a.tone}"><div class="hm-al-h"><b>${a.title}</b>${a.unit?`<span class="n">${a.list.length}${a.unit}</span>`:""}${a.go?`<button type="button" class="btn ghost sm" data-go="${a.go[0]}">${a.go[1]}</button>`:""}</div><div class="hm-al-b">${a.list.slice(0,8).join("")}${a.list.length>8?`<span class="hint">외 ${a.list.length-8}${a.unit}</span>`:""}</div></div>`).join("")
     :`<p class="hm-none">지금 확인할 일이 없어요.</p>`;
-  $("homeBadge").textContent=red>99?"99+":String(red);$("homeBadge").hidden=!red;$("nav-home").setAttribute("aria-label",red?`오늘, 급한 일 ${red}건`:"오늘");
-  if(isAdmin){const soon=jobs.flatMap(j=>moneyOf(j.id).pays.filter(p=>!p.paid&&p.due&&p.due>=TODAY&&p.due<=addDays(TODAY,7)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due));
-    $("hmMoneyH").innerHTML=`7일 안에 받을 돈${soon.length?` <span class="hint">${soon.length}건 · ${won(soon.reduce((a,x)=>a+x.p.amount,0))}</span>`:""}`;
-    $("hmMoney").innerHTML=soon.length?soon.map(x=>`<li><span class="d">${fmtW(x.p.due)}</span><div>${jBtn(x.j)} <span class="hint">${esc(x.p.label)}</span></div><span class="num">${won(x.p.amount)}</span></li>`).join(""):none("7일 안에 받기로 한 돈이 없어요.");}}
+  $("homeBadge").textContent=red>99?"99+":String(red);$("homeBadge").hidden=!red;$("nav-home").setAttribute("aria-label",red?`오늘, 급한 일 ${red}건`:"오늘");}
 document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!g)return;const [v,arg]=g.dataset.go.split(":");
-  if(v==="xls"){downloadBackup();return;}
   if(v==="wage"&&arg){wgY=+arg.slice(0,4);wgM=+arg.slice(5,7);}
   if(v==="board"){boardCat=arg||"";}
   tab(v);if(v==="board")render();if(v==="wage")renderWage();window.scrollTo({top:0});});
@@ -1029,7 +1060,7 @@ $("next").onclick=()=>{calM++;if(calM>11){calM=0;calY++}renderCal()};
 
 
 /* 도면 · 견적서 파일 */
-let userEmail="";
+let userEmail="",userName="";
 function renderFiles(){
   for(const kind of Object.keys(KINDS)){
     const saved=editing?filesOf(editing.id,kind):[];
@@ -1613,6 +1644,24 @@ async function savePrefs(){if(!pushOn)return;pushMsg("");
 // 로그아웃하면 이 기기 알림도 끔 (다른 사람이 쓰는 기기에 일정이 뜨지 않게)
 async function forgetPush(){try{const sub=await Promise.race([curSub(),new Promise(r=>setTimeout(()=>r(null),3000))]);
   if(sub){await sb.from("push_subs").delete().eq("endpoint",sub.endpoint);await sub.unsubscribe();}}catch(e){}}
+/* 화면 위에는 계정(이메일) 대신 'ㅇㅇㅇ님'. 이름은 로그인 계정 정보(user_metadata)에 저장돼서 어느 기기에서든 같음 */
+const metaName=u=>String((u&&u.user_metadata&&u.user_metadata.name)||"").trim();
+function showWho(){const b=$("who");b.textContent=userName?`${userName}님`:"이름 넣기";b.classList.toggle("empty",!userName);
+  b.setAttribute("aria-label",userName?`${userName}님, 이름 바꾸기`:"내 이름 넣기");}
+let nameFrom=null;
+function openName(){$("nm-in").value=userName;$("nm-err").hidden=true;
+  $("nmAcct").textContent=`로그인 계정: ${userEmail} · ${isAdmin?"관리자 계정이라 돈 관련 내용(수금·매입·결산)이 보여요.":"직원 계정이라 돈 관련 내용은 안 보여요."}`;
+  nameFrom=document.activeElement;$("nameSheet").hidden=false;document.body.style.overflow="hidden";$("nm-in").focus();}
+function closeName(){$("nameSheet").hidden=true;document.body.style.overflow="";if(nameFrom&&nameFrom.focus)nameFrom.focus({preventScroll:true});nameFrom=null;}
+$("who").onclick=openName;$("nameClose").onclick=closeName;
+$("nameSheet").addEventListener("click",e=>{if(e.target===$("nameSheet"))closeName();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("nameSheet").hidden)closeName();});
+$("nameForm").addEventListener("submit",async e=>{e.preventDefault();const name=$("nm-in").value.trim().replace(/님$/,"").slice(0,20);
+  if(!name){$("nm-err").textContent="이름을 적어 주세요.";$("nm-err").hidden=false;$("nm-in").focus();return;}
+  $("nm-save").disabled=true;$("nm-err").hidden=true;
+  const {error}=await sb.auth.updateUser({data:{name}});$("nm-save").disabled=false;
+  if(error){$("nm-err").textContent="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";$("nm-err").hidden=false;return;}
+  userName=name;showWho();closeName();});
 $("pushBtn").onclick=openPush;$("pushClose").onclick=closePush;
 $("pushSheet").addEventListener("click",e=>{if(e.target===$("pushSheet"))closePush();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("pushSheet").hidden)closePush();});
@@ -1640,7 +1689,7 @@ async function checkAdmin(){
   isAdmin=!error&&!!(data&&data.length);
   $("updNote").hidden=migrated;
   document.querySelectorAll(".admin-only").forEach(el=>el.hidden=!isAdmin);
-  $("who").textContent=userEmail+(isAdmin?" · 관리자":"");
+  showWho();
 }
 async function loadAll(){
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
@@ -1661,14 +1710,15 @@ let channel=null;
 let startedFor="";
 async function startApp(session){const id=session.user.id||"";
   if(startedFor===id&&!$("app").hidden)return;startedFor=id;
-  $("login").hidden=true;$("app").hidden=false;userEmail=session.user.email||"";uid=id;$("who").textContent=userEmail;
+  $("login").hidden=true;$("app").hidden=false;userEmail=session.user.email||"";uid=id;userName=metaName(session.user);showWho();
+  sb.auth.getUser().then(({data})=>{if(data&&data.user&&uid===data.user.id){userName=metaName(data.user);showWho();}}).catch(()=>{});
   await checkAdmin();
   let cur="";try{cur=sessionStorage.getItem("nest-cur")||""}catch(e){}
   tab(VIEWS.includes(cur)?cur:"home");
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){startedFor="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";userName="";$("nameSheet").hidden=true;try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
