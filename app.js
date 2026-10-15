@@ -476,8 +476,9 @@ function dueTag(p){if(!p.due)return`<span class="tag wait">날짜 미정</span>`
   return`<span class="tag ${n<=7?"soon":"wait"}">D-${n}</span>`;}
 let payCat="open";
 function renderPay(){
-  const t=payTotals();
-  $("payTiles").innerHTML=`<div class="tile"><small>받을 돈 (전체)</small><b>${won(t.bill)}</b></div>
+  const t=payTotals(),vat=jobs.reduce((s,j)=>{const m=moneyOf(j.id);return s+billTotal(m)-m.contract.amount;},0);
+  // 받을 돈은 고객이 실제로 낼 돈(부가세 별도 계약은 부가세 포함), 기간 없이 전체. 결산 매출은 부가세 뺀 금액을 시공 시작 달로 나눔
+  $("payTiles").innerHTML=`<div class="tile"><small>받을 돈 (전체)</small><b>${won(t.bill)}</b>${vat?`<small>부가세 ${won(vat)} 포함</small>`:""}</div>
     <div class="tile"><small>받은 돈</small><b>${won(t.recv)}</b></div>
     <div class="tile ${t.unpaid?"warn":""}"><small>미수금</small><b>${won(t.unpaid)}</b></div>
     <div class="tile ${t.lateN?"bad":""}"><small>입금 지연</small><b>${t.lateN}건</b>${t.lateN?`<small>${won(t.lateAmt)}</small>`:""}</div>`;
@@ -646,7 +647,7 @@ function renderSales(){
   const rev=a=>a.reduce((s,j)=>s+moneyOf(j.id).contract.amount,0),cost=a=>a.reduce((s,j)=>s+jobCost(j),0);
   const cashIn=list=>jobs.reduce((s,j)=>s+moneyOf(j.id).pays.filter(p=>p.paid&&list.includes((p.paidOn||"").slice(0,7))).reduce((a,p)=>a+p.amount,0),0);
   const R=rev(sel),C=cost(sel),E=expSum(yms),P=R-C-E;
-  $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳</small></div><div class="tile"><small>매입 (현장 원가)</small><b>${won(C)}</b></div>
+  $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳 · 부가세 뺀 금액</small></div><div class="tile"><small>매입 (현장 원가)</small><b>${won(C)}</b></div>
     <div class="tile"><small>지출 (회사 비용)</small><b>${won(E)}</b><small><button class="linkish" type="button" data-tab="exp">지출 내역 보기</button></small></div><div class="tile ${P<0?"bad":""}"><small>순이익</small><b>${won(P)}</b><small>이익률 ${pct(P,R)}</small></div>
     <div class="tile"><small>실제 들어온 돈 (입금)</small><b>${won(cashIn(yms))}</b></div>`;
   $("saYearsBox").hidden=!!salesM;$("saMonthsBox").hidden=!!salesM;
