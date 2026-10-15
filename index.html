@@ -397,6 +397,8 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .tbl table{min-width:560px}
 .num{text-align:right;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 th.num{font-family:var(--font);font-size:12px}
+#saCosts tr.grp td{padding-top:14px}
+#saCosts tr:not(.grp) td:first-child{padding-left:28px;color:var(--muted)}
 .neg{color:var(--late)}
 .bar{display:block;height:6px;border-radius:3px;background:color-mix(in srgb,var(--line) 60%,transparent);overflow:hidden;min-width:80px}
 .bar i{display:block;height:100%;background:var(--accent)}
@@ -998,15 +1000,15 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="tiles" id="saTiles"></div>
     <div id="saYearsBox" class="view">
       <h3>연도별</h3>
-      <div class="tbl stack two"><table><thead><tr><th>연도</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th></th></tr></thead><tbody id="saYears"></tbody></table></div>
+      <div class="tbl stack two"><table><thead><tr><th>연도</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th></th></tr></thead><tbody id="saYears"></tbody></table></div>
     </div>
     <div id="saMonthsBox" class="view">
       <h3>월별</h3>
-      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>매입+지출</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
+      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>매입+시공비+지출</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
     </div>
     <h3>현장별</h3>
-    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">현장 이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
-    <h3>매입 구성 (현장 원가)</h3>
+    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">현장 이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
+    <h3>매입 · 시공비 구성 (현장 원가)</h3>
     <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
     <p class="sub" id="saNote"></p>
   </section>
