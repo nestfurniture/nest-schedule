@@ -103,7 +103,12 @@ function fillDues(j,m){let ch=false;
 function normMoney(d){d=d||{};const c=d.contract||{};
   return{contract:{date:c.date||"",amount:toNum(c.amount),vat:!!c.vat},
     pays:(Array.isArray(d.pays)?d.pays:[]).map(p=>({label:p.label||"계약금",amount:toNum(p.amount),due:p.due||"",paid:!!p.paid,paidOn:p.paidOn||"",...(AUTO_KINDS.includes(p.auto)?{auto:p.auto}:{})})),
-    costs:(Array.isArray(d.costs)?d.costs:[]).map(x=>({cat:x.cat||COST_CATS[0],amount:toNum(x.amount),note:x.note||""}))};}
+    costs:(Array.isArray(d.costs)?d.costs:[]).map(normCost)};}
+/* 매입 한 줄: 항목·금액·메모 + (있을 때만) 거래처 v, 매입일 d, 입고 예정 due, 입고일 got, 지급 paid·paidOn */
+function normCost(x){x=x||{};const o={cat:x.cat||COST_CATS[0],amount:toNum(x.amount),note:x.note||""},v=String(x.v||"").trim();
+  if(v)o.v=v;["d","due","got"].forEach(k=>{if(isDate(x[k]))o[k]=x[k];});
+  if(x.paid){o.paid=true;o.paidOn=isDate(x.paidOn)?x.paidOn:"";}
+  return o;}
 const moneyOf=id=>money[id]||normMoney();
 const billTotal=m=>Math.round(m.contract.amount*(m.contract.vat?1.1:1));
 const received=m=>m.pays.filter(p=>p.paid).reduce((a,p)=>a+p.amount,0);
@@ -189,7 +194,8 @@ function qHit(j){const q=boardQ.trim().toLowerCase();if(!q)return true;
   const d=q.replace(/[^\d]/g,"");return d.length>=3&&d.length===q.replace(/[\s-]/g,"").length&&[j.i.tel,...j.i.mgr].some(t=>String(t||"").replace(/\D/g,"").includes(d));}
 function render(){renderBoard();renderFlow();
   renderCal();renderCrew();
-  if(isAdmin){renderPay();renderSales();renderWage();renderEst();}
+  if(isAdmin){renderPay();renderVend();renderSales();renderWage();renderEst();}
+  $("vendList").innerHTML=isAdmin?vendNames().map(n=>`<option value="${esc(n)}">`).join(""):"";
   renderHome();
   if(viewing)renderView();
 }
@@ -288,7 +294,7 @@ let viewing=null,viewFrom=null;
 const jvName=j=>`<button type="button" class="linkish jv-name" data-jv="${esc(j.id)}">${esc(j.name)}</button>`;
 /* 정산·결산 화면에서 현장을 누르면 '정산 보기'(수금·매입·이익·견적서·종료만), 그 밖에서는 '현장 보기' */
 let viewMode="site",msAdd=false,msErr="";
-const MONEY_TABS=["pay","wage","sales","exp"];
+const MONEY_TABS=["pay","wage","vend","sales","exp"];
 const costIn=m=>m.costs.length>0;
 /* 정산 종료: 받을 돈을 다 받았고 매입을 입력함 (일당으로 자동 계산된 인건비는 매입 입력으로 안 침). 현장 종료와는 따로 */
 const settledM=m=>billTotal(m)>0&&!unpaidOf(m)&&costIn(m);
@@ -318,7 +324,7 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const more=[kv("가전",apps.map(a=>esc(`${NEST_CL.typeName(NEST_CL.appType(a))}${a.model?` ${a.model}`:""}`)).join(", ")),kv("체크리스트",c?(clTag(j)||(c.status==="submitted"?`<span class="tag ok">제출됨</span>`:`<span class="tag wait">링크 보냄</span>`)):""),kv("파일",fileCount(j))].join("");
   if(more)h+=`<div class="dsec"><h3>가전 · 체크리스트 · 파일</h3><dl class="kv">${more}</dl></div>`;
   if(isAdmin){const m=moneyOf(j.id),b=billTotal(m),cost=jobCost(j),labor=jobLabor(j),buy=cost-labor;
-    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입 ${b?settleTag(j):""}</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",costIn(m)?won(buy):`${buy?`${won(buy)} `:""}<span class="tag late">매입 입력 안 됨</span>`)}${kv("시공비",labor?won(labor):"")}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl><div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="money">정산 보기</button></div></div>`;
+    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입 ${b?settleTag(j):""}</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",costIn(m)?won(buy):`${buy?`${won(buy)} `:""}<span class="tag late">매입 입력 안 됨</span>`)}${kv("시공비",labor?won(labor):"")}${kv("거래처 미지급",vendDue(m)?won(vendDue(m)):"")}${kv("입고 대기",(n=>n?`${n}건${m.costs.some(x=>gotWait(x)&&x.due<TODAY)?` <span class="tag late">늦음</span>`:""}`:"")(m.costs.filter(gotWait).length))}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl><div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="money">정산 보기</button></div></div>`;
     if(est10){const es=estOfJob(j.id);h+=`<div class="dsec"><h3>견적서</h3>${li(es.map(e=>`<button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}`))}<div class="jv-btns"><button class="btn ghost sm" type="button" data-esnew="${esc(j.id)}">+ 견적서 작성</button></div></div>`;}}
   const money=isAdmin&&billTotal(moneyOf(j.id))>0?` 수금·매입은 정산에서 따로 마무리해요 (${settledM(moneyOf(j.id))?"정산 종료":"정산 중"}).`:"";
   h+=`<div class="dsec jv-stage">${ended(j)?`<p class="sub" style="margin:0">${j.f.closed?`${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"종료 현장으로 옮겨졌어요":"종료 처리됐어요"}`:"시공 마감 완료라 종료 현장이에요"}.${money}</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div>`
@@ -388,11 +394,12 @@ function renderMoneyView(j){const m=moneyOf(j.id),b=billTotal(m),u=unpaidOf(m),n
   h+=`</div>`;
   // 매입
   h+=`<div class="dsec ms-sec ms-cost"><h3>매입 ${costIn(m)?`<span class="hint">${won(buy)}${labor?` · 시공비 ${won(labor)}`:""}</span>`:`<span class="tag late">매입 입력 안 됨</span>`}</h3><div class="ms-list">`;
-  h+=m.costs.map(x=>`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span>${x.note?`<span class="hint">${esc(x.note)}</span>`:""}<b class="num">${won(x.amount)}</b></div>`).join("")
+  h+=m.costs.map((x,i)=>{const sig=esc(costSig(x)),vd=isVend(x),gw=!isLabor(x)&&x.due;
+    return`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span>${x.v?`<b class="ms-v">${esc(x.v)}</b>`:""}${x.note?`<span class="hint">${esc(x.note)}</span>`:""}<b class="num">${won(x.amount)}</b>${gw||vd?`<div class="ms-st">${gw?`<label class="check"><input type="checkbox" data-cgot="${i}" data-sig="${sig}"${x.got?" checked":""}>${x.got?`입고 ${fmt(x.got)}`:`입고 확인 <span class="hint">예정 ${fmt(x.due)}</span>`}</label>${!x.got&&x.due<TODAY?`<span class="tag late">입고 늦음</span>`:""}`:""}${vd?`<label class="check"><input type="checkbox" data-cpaid="${i}" data-sig="${sig}"${x.paid?" checked":""}>${x.paid?`지급 ${x.paidOn?fmt(x.paidOn):"완료"}`:"거래처 지급"}</label>${x.paid?"":`<span class="tag wait">미지급</span>`}`:""}</div>`:""}</div>`;}).join("")
     +auto.map(x=>`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span><span class="hint">${esc(x.note)}</span><b class="num">${won(x.amount)}</b></div>`).join("");
   h+=`</div>${done("c")}`;
   if(!costIn(m))h+=`<p class="ms-note">자재비·외주 같은 매입을 입력해야 수금이 끝났을 때 정산 종료로 넘어가요.${auto.length?" 일당으로 자동 계산된 인건비는 매입 입력으로 치지 않아요.":""}</p>`;
-  h+=msAdd?`<div class="ms-add"><label>항목<select id="ms-cat">${COST_CATS.map(c=>`<option>${esc(c)}</option>`).join("")}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="ms-amt" placeholder="0"></label><label class="note">메모<input id="ms-note" placeholder="예: 도장 외주, 하드웨어"></label><div class="ms-add-btns"><button class="btn sm" type="button" id="ms-save">추가</button><button class="btn ghost sm" type="button" id="ms-cancel">취소</button></div></div>${msErr?`<p class="err">${msErr}</p>`:""}`
+  h+=msAdd?`<div class="ms-add"><label>항목<select id="ms-cat">${COST_CATS.map(c=>`<option>${esc(c)}</option>`).join("")}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="ms-amt" placeholder="0"></label><label>거래처<input id="ms-v" list="vendList" placeholder="예: OO목재"></label><label>입고 예정일<input type="date" id="ms-due"></label><label class="note">메모<input id="ms-note" placeholder="예: 도장 외주, 하드웨어"></label><p class="hint ms-add-h">거래처를 적으면 정산 › 거래처 정산에서 줄 돈으로 모여요. 입고 예정일을 적으면 들어올 때까지 확인할 일에 떠요.</p><div class="ms-add-btns"><button class="btn sm" type="button" id="ms-save">추가</button><button class="btn ghost sm" type="button" id="ms-cancel">취소</button></div></div>${msErr?`<p class="err">${msErr}</p>`:""}`
     :`<div class="jv-btns"><button type="button" class="btn sm ${costIn(m)?"ghost":"ms-red"}" data-msadd>${costIn(m)?"+ 매입 추가":"매입 입력"}</button></div>`;
   h+=`</div>`;
   // 이익
@@ -405,18 +412,25 @@ function renderMoneyView(j){const m=moneyOf(j.id),b=billTotal(m),u=unpaidOf(m),n
     h+=`<div class="dsec jv-stage"><h3>정산 종료로 넘어가려면</h3><ul class="ms-conds">${cs.map(([ok,l,more])=>`<li class="${ok?"ok":"no"}">${ok?"✓":"○"} ${l}${more?` <span class="hint">${more}</span>`:""}</li>`).join("")}</ul><p class="sub" style="margin:0">두 가지가 되면 정산 종료로 넘어가요. 현장 종료(시공 마감)와는 따로예요.</p></div>`;}
   h+=`<div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="site">현장 내용 보기</button></div>`;
   // 매입 입력 중에 화면이 다시 그려져도 적던 값은 그대로
-  const keep=["ms-cat","ms-amt","ms-note"].map(id=>$(id)?$(id).value:null),foc=document.activeElement&&document.activeElement.id;
+  const MSF=["ms-cat","ms-amt","ms-v","ms-due","ms-note"],keep=MSF.map(id=>$(id)?$(id).value:null),foc=document.activeElement&&document.activeElement.id;
   $("jvBody").innerHTML=h;
-  ["ms-cat","ms-amt","ms-note"].forEach((id,i)=>{if($(id)&&keep[i]!==null)$(id).value=keep[i];});if(foc&&foc.startsWith("ms-")&&$(foc))$(foc).focus({preventScroll:true});}
+  MSF.forEach((id,i)=>{if($(id)&&keep[i]!==null)$(id).value=keep[i];});if(foc&&foc.startsWith("ms-")&&$(foc))$(foc).focus({preventScroll:true});}
 $("jvBody").addEventListener("click",e=>{const vm=e.target.closest("[data-vmode]");if(vm){viewMode=vm.dataset.vmode;msAdd=false;renderView();$("jobSheet").querySelector(".sheet-card").scrollTop=0;return;}
   if(e.target.closest("[data-msadd]")){msAdd=true;msErr="";renderView();if($("ms-amt"))$("ms-amt").focus();return;}
   if(e.target.id==="ms-cancel"){msAdd=false;msErr="";renderView();return;}
-  if(e.target.id!=="ms-save")return;const cat=$("ms-cat").value,amount=toNum($("ms-amt").value),note=$("ms-note").value.trim();
+  if(e.target.id!=="ms-save")return;const cat=$("ms-cat").value,amount=toNum($("ms-amt").value),note=$("ms-note").value.trim(),v=$("ms-v").value.trim(),due=$("ms-due").value;
   if(!amount&&!note){msErr="금액을 넣어 주세요.";renderView();$("ms-amt").focus();return;}
   e.target.disabled=true;
-  qcRun(viewing,async j=>{const m=moneyOf(j.id),val={...m,costs:[...m.costs,{cat,amount,note}]};
-    if(await qcWrite(j,{col:"money",val})){["ms-amt","ms-note"].forEach(id=>{if($(id))$(id).value=""});msAdd=false;msErr="";if(qc.jid===j.id)qc.done.push({k:"c",l:`매입 ${esc(cat)} ${won(amount)} 입력`,prev:{cost:{cat,amount,note}}});render();}
+  qcRun(viewing,async j=>{const m=moneyOf(j.id),val={...m,costs:[...m.costs,normCost({cat,amount,note,v,d:TODAY,due})]};
+    if(await qcWrite(j,{col:"money",val})){["ms-amt","ms-v","ms-due","ms-note"].forEach(id=>{if($(id))$(id).value=""});msAdd=false;msErr="";if(qc.jid===j.id)qc.done.push({k:"c",l:`매입 ${esc(cat)} ${won(amount)} 입력`,prev:{cost:{cat,amount,note}}});render();}
     else{msErr="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";render();}});});
+/* 정산 보기 · 거래처 정산: 매입 줄의 입고 확인 · 거래처 지급 체크 (풀면 되돌림) */
+const gotPatch=on=>x=>({got:on?TODAY:""}),paidPatch=on=>x=>({paid:on,paidOn:on?TODAY:""});
+document.addEventListener("change",e=>{const b=e.target.closest("input[data-cgot],input[data-cpaid]");if(!b)return;
+  const got="cgot" in b.dataset,jid=b.dataset.jid||viewing,i=+(got?b.dataset.cgot:b.dataset.cpaid);b.disabled=true;
+  costSet([{jid,i,sig:b.dataset.sig}],got?gotPatch(b.checked):paidPatch(b.checked)).then(ok=>{
+    if(!ok){if(b.closest("#jvBody"))qc.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 체크해 주세요.";else vdErr="저장하지 못했어요. 인터넷 연결을 확인하고 다시 체크해 주세요.";}
+    else{qc.err="";vdErr="";}render();});});
 /* 지금 종료 처리(취소된 현장 등) · 다시 진행중으로(마감 완료 체크도 풀림) */
 async function setClosed(j,close,btn){
   const f=close?{...j.f,closed:TODAY,closedBy:"manual"}:{...j.f,done:false,closed:"",closedBy:""};
@@ -502,6 +516,42 @@ function renderPay(){
 }
 document.addEventListener("click",e=>{const c=e.target.closest("[data-paycat]");if(!c)return;payCat=c.dataset.paycat;renderPay();});
 
+/* 거래처 정산 (관리자): 현장 매입 중 거래처를 적은 것만 모아 거래처별 줄 돈(미지급)과 입고 대기를 봄. 지급·입고 체크는 그 현장 매입 줄에 저장 */
+let vdErr="",vdUndo=null;const vdOpen=new Set();
+function renderVend(){if(!isAdmin)return;
+  const all=costList(),rows=all.filter(o=>isVend(o.x)),mon=TODAY.slice(0,7),sum=a=>a.reduce((t,o)=>t+o.x.amount,0);
+  const unpaid=rows.filter(o=>!o.x.paid),wait=all.filter(o=>gotWait(o.x)).sort((a,b)=>a.x.due.localeCompare(b.x.due)),late=wait.filter(o=>o.x.due<TODAY);
+  const names=[...new Set(rows.map(o=>o.x.v))];
+  $("vdTiles").innerHTML=`<div class="tile ${unpaid.length?"warn":""}"><small>줄 돈 (미지급)</small><b>${won(sum(unpaid))}</b><small>거래처 ${new Set(unpaid.map(o=>o.x.v)).size}곳 · ${unpaid.length}건</small></div>
+    <div class="tile"><small>${+mon.slice(5)}월 매입</small><b>${won(sum(rows.filter(o=>(o.x.d||"").startsWith(mon))))}</b><small>매입일 기준</small></div>
+    <div class="tile"><small>${+mon.slice(5)}월 지급</small><b>${won(sum(rows.filter(o=>o.x.paid&&(o.x.paidOn||"").startsWith(mon))))}</b></div>
+    <div class="tile ${late.length?"bad":""}"><small>입고 대기</small><b>${wait.length}건</b>${late.length?`<small>예정일 지남 ${late.length}건</small>`:""}</div>`;
+  $("vdEmpty").hidden=rows.length>0||wait.length>0;
+  const chk=(o,kind)=>`<input type="checkbox" data-c${kind}="${o.i}" data-jid="${esc(o.j.id)}" data-sig="${esc(costSig(o.x))}"`;
+  const jb=j=>`<button type="button" class="wg-job" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
+  $("vdWaitBox").hidden=!wait.length;
+  $("vdWait").innerHTML=wait.map(o=>`<tr><td><span class="d">${fmtW(o.x.due)}</span></td><td class="job">${jb(o.j)}${o.j.i.start?`<small>시공 ${fmt(o.j.i.start)}</small>`:""}</td><td>${o.x.v?`<b>${esc(o.x.v)}</b> · `:""}${esc(o.x.cat)}${o.x.note?` <span class="hint">${esc(o.x.note)}</span>`:""}</td><td class="num push">${won(o.x.amount)}</td>
+    <td><div class="cell">${o.x.due<TODAY?`<span class="tag late">늦음</span>`:o.j.i.start&&o.x.due>o.j.i.start&&o.j.i.start>=TODAY?`<span class="tag late">시공보다 늦음</span>`:""}<label class="check">${chk(o,"got")}>입고 확인</label></div></td></tr>`).join("");
+  const cards=names.map(n=>{const rs=rows.filter(o=>o.x.v===n),un=rs.filter(o=>!o.x.paid),old=un.map(o=>o.x.d||"").filter(Boolean).sort()[0];
+    return{n,rs,un,due:sum(un),old};}).sort((a,b)=>b.due-a.due||a.n.localeCompare(b.n,"ko"));
+  const since=addDays(TODAY,-90),rowLi=o=>`<li class="${o.x.paid?"paid":""}"><div class="vd-l"><span class="d">${o.x.d?fmt(o.x.d):"—"}</span>${jb(o.j)}<b class="num">${won(o.x.amount)}</b></div><div class="vd-l"><span class="hint">${esc(o.x.cat)}${o.x.note?` · ${esc(o.x.note)}`:""}</span><label class="check">${chk(o,"paid")}${o.x.paid?" checked":""}>${o.x.paid?`지급 ${o.x.paidOn?fmt(o.x.paidOn):"완료"}`:"지급"}</label></div></li>`;
+  $("vdList").innerHTML=cards.map(c=>{const shown=c.rs.filter(o=>!o.x.paid||(o.x.paidOn||o.x.d||"")>=since).sort((a,b)=>(a.x.paid-b.x.paid)||(a.x.paid?(b.x.paidOn||"").localeCompare(a.x.paidOn||""):(a.x.d||"").localeCompare(b.x.d||""))),hid=c.rs.length-shown.length;
+    const undo=vdUndo&&vdUndo.n===c.n;
+    return`<div class="wg-card vd-card${c.un.length?"":" done"}"><div class="wg-head"><b class="wg-name">${esc(c.n)}</b>${c.un.length?"":`<span class="tag ok">다 지급</span>`}<b class="wg-sum">${c.un.length?won(c.due):"0원"}</b></div>
+      <div class="wg-line">${c.un.length?`미지급 ${c.un.length}건${c.old?` · 가장 오래된 매입 ${fmt(c.old)}`:""}`:`매입 ${c.rs.length}건 모두 지급`} · 이번 달 매입 ${won(sum(c.rs.filter(o=>(o.x.d||"").startsWith(mon))))}</div>
+      <details class="wg-more" data-vdd="${esc(c.n)}"${vdOpen.has(c.n)?" open":""}><summary>매입 내역 ${shown.length}건</summary><div class="wg-in"><ul class="vd-rows">${shown.map(rowLi).join("")||`<li class="hint">최근 90일 매입이 없어요.</li>`}</ul>${hid?`<p class="hint" style="margin:0">90일 전에 지급 끝난 ${hid}건은 엑셀 백업의 매입 시트에 있어요.</p>`:""}</div></details>
+      ${undo?`<div class="qc-done"><span>✓ ${vdUndo.list.length}건 지급 완료했어요</span><button type="button" class="linkish" data-vdundo>되돌리기</button></div>`:c.un.length?`<div><button class="btn ghost sm" type="button" data-vdall="${esc(c.n)}">미지급 ${c.un.length}건 모두 지급 완료</button></div>`:""}</div>`;}).join("");
+  $("vdErr").hidden=!vdErr;$("vdErr").textContent=vdErr;
+  const noV=all.filter(o=>!o.x.v&&!isLabor(o.x));
+  $("vdNote").innerHTML=`현장 정산 보기에서 매입을 넣을 때 거래처를 적으면 여기에 모여요. 지급·입고 체크는 그 현장 매입에도 똑같이 저장돼요. 시공 인건비는 시공자 정산에서 따로 봐요.${noV.length?` 거래처를 안 적은 매입 ${noV.length}건(${won(sum(noV))})은 여기 안 나와요.`:""}`;}
+document.addEventListener("toggle",e=>{const d=e.target;if(d.dataset&&d.dataset.vdd!==undefined){if(d.open)vdOpen.add(d.dataset.vdd);else vdOpen.delete(d.dataset.vdd);}},true);
+document.addEventListener("click",e=>{const a=e.target.closest("[data-vdall]");
+  if(a){const n=a.dataset.vdall,list=costList().filter(o=>isVend(o.x)&&!o.x.paid&&o.x.v===n).map(o=>({jid:o.j.id,i:o.i,sig:costSig(o.x)}));if(!list.length)return;a.disabled=true;
+    costSet(list,paidPatch(true)).then(ok=>{vdErr=ok?"":"일부를 저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";
+      vdUndo={n,list:list.map(o=>{const m=moneyOf(o.jid),x=m.costs[o.i];return x&&x.paid?{jid:o.jid,i:o.i,sig:costSig(x)}:null;}).filter(Boolean)};if(!vdUndo.list.length)vdUndo=null;render();});return;}
+  const u=e.target.closest("[data-vdundo]");if(u&&vdUndo){const x=vdUndo;u.disabled=true;
+    costSet(x.list,paidPatch(false)).then(ok=>{vdUndo=null;vdErr=ok?"":"되돌리지 못했어요. 다시 눌러 주세요.";render();});}});
+
 /* 시공자 정산 (관리자). 일당 × 시공일 + AS + 조정. 한 사람이 같은 날 두 현장이면 하루로 세고, 원가에는 그날 일당을 현장끼리 나눠 넣음 */
 let wage={rates:{day:{},extra:0,as:0},months:{}},pay08=true,wageChan=null,laborCache=null,wgLater=false;
 let wgY=now.getFullYear(),wgM=now.getMonth()+1;const wgOpen=new Set();
@@ -540,6 +590,19 @@ const jobCost=j=>jobCosts(j).reduce((a,x)=>a+x.amount,0);
 const LABOR_CATS=["시공 인건비","추가 투입 인건비"],isLabor=x=>LABOR_CATS.includes(x.cat);
 const jobLabor=j=>jobCosts(j).filter(isLabor).reduce((a,x)=>a+x.amount,0);
 const jobBuy=j=>jobCost(j)-jobLabor(j);
+/* 거래처 매입 = 거래처를 적은 자재·외주·운반 매입(시공 인건비는 시공자 정산에서). 입고 예정일을 적은 매입은 입고 확인까지 따라감 */
+const isVend=x=>!!x.v&&!isLabor(x),gotWait=x=>!!x.due&&!x.got&&!isLabor(x);
+const costSig=x=>[x.cat,x.amount,x.v||"",x.note].join("|");
+const costList=()=>jobs.flatMap(j=>moneyOf(j.id).costs.map((x,i)=>({j,x,i})));
+const vendDue=m=>m.costs.filter(x=>isVend(x)&&!x.paid).reduce((a,x)=>a+x.amount,0);
+function vendNames(){const n=new Set();jobs.forEach(j=>{moneyOf(j.id).costs.forEach(x=>{if(x.v)n.add(x.v);});if(j.i.fl&&j.i.fl.pr.out)n.add(j.i.fl.pr.out);});
+  return[...n].sort((a,b)=>a.localeCompare(b,"ko"));}
+/* 매입 줄 고치기(입고·지급 체크). list = [{jid,i,sig}], sig가 다르면(그새 바뀐 줄) 건드리지 않음 */
+function costSet(list,patch){const by={};list.forEach(o=>(by[o.jid]??=[]).push(o));
+  return Promise.all(Object.entries(by).map(([jid,os])=>new Promise(res=>{qcQ=qcQ.then(async()=>{const j=jobs.find(x=>x.id===jid);if(!j)return res(false);
+    const m=moneyOf(j.id);let hit=0;
+    const costs=m.costs.map((x,i)=>{if(!os.some(o=>o.i===i&&o.sig===costSig(x)))return x;hit++;return normCost({...x,...patch(x)});});
+    res(hit?await qcWrite(j,{col:"money",val:{...m,costs}}):false);}).catch(()=>res(false));}))).then(r=>r.every(Boolean));}
 function wageMonth(y,m){const key=ymKey(y,m),from=key+"-01",to=key+"-31",book=workBook(from,to),rec=wmOf(key);
   const people=[...new Set([...Object.keys(book),...Object.keys(rec.p)])].map(n=>{
     const days=book[n]||{},ds=Object.keys(days).sort(),iD=ds.filter(d=>days[d].i.length),aD=ds.filter(d=>!days[d].i.length);
@@ -1004,13 +1067,21 @@ function payRow(p){const n=mSeq++;const div=document.createElement("div");div.cl
   div.querySelector(".due").addEventListener("change",manual);
   div.querySelector("select").addEventListener("change",()=>{if(div.dataset.auto){manual();div.querySelector(".due").value="";}});
   $("mo-pays").appendChild(div);}
-function costRow(x={cat:COST_CATS[0],amount:0,note:""}){const n=mSeq++;const div=document.createElement("div");div.className="cost-row";
-  div.innerHTML=`<label>항목<select id="c-c${n}">${opt(COST_CATS,x.cat)}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="c-a${n}" value="${comma(x.amount)}" placeholder="0"></label><label class="note">메모<input id="c-n${n}" value="${esc(x.note)}" placeholder="예: 도장 외주, 하드웨어"></label><button class="btn del sm" type="button">삭제</button>`;
-  div.querySelector("button").onclick=()=>{div.remove();moneySummary();};$("mo-costs").appendChild(div);}
+function costRow(x={cat:COST_CATS[0],amount:0,note:"",d:TODAY}){const n=mSeq++;const div=document.createElement("div");div.className="cost-row";
+  if(x.got)div.dataset.got=x.got;
+  div.innerHTML=`<label>항목<select id="c-c${n}">${opt(COST_CATS,x.cat)}</select></label><label>거래처<input class="vend" id="c-v${n}" list="vendList" value="${esc(x.v||"")}" placeholder="예: OO목재"></label><label>금액(원)<input class="won" inputmode="numeric" id="c-a${n}" value="${comma(x.amount)}" placeholder="0"></label><label class="note">메모<input id="c-n${n}" value="${esc(x.note)}" placeholder="예: 도장 외주, 하드웨어"></label><button class="btn del sm" type="button">삭제</button>
+    <div class="cost-more"><label>매입일<input type="date" class="cd" id="c-d${n}" value="${esc(x.d||"")}"></label><label>입고 예정일<input type="date" class="cdue" id="c-e${n}" value="${esc(x.due||"")}"></label><label class="check"><input type="checkbox" class="cgot" id="c-g${n}"${x.got?" checked":""}>입고됨</label><label class="check"><input type="checkbox" class="cpaid" id="c-p${n}"${x.paid?" checked":""}>거래처 지급함</label><label>지급일<input type="date" class="cpaidOn" id="c-o${n}" value="${esc(x.paidOn||"")}"></label></div>`;
+  div.querySelector(".del").onclick=()=>{div.remove();moneySummary();};
+  const lab=()=>div.classList.toggle("labor",LABOR_CATS.includes(div.querySelector("select").value));lab();div.querySelector("select").addEventListener("change",lab);
+  div.querySelector(".cpaid").onchange=e=>{if(e.target.checked&&!div.querySelector(".cpaidOn").value)div.querySelector(".cpaidOn").value=TODAY;};
+  div.querySelector(".cpaidOn").onchange=e=>{if(e.target.value)div.querySelector(".cpaid").checked=true;};
+  $("mo-costs").appendChild(div);}
 function readMoney(){
   return normMoney({contract:{date:$("mo-date").value,amount:toNum($("mo-amount").value),vat:$("mo-vat").checked},
     pays:[...$("mo-pays").children].map(r=>({label:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),due:r.querySelector(".due").value,paid:r.querySelector(".paid").checked,paidOn:r.querySelector(".paidOn").value,auto:r.dataset.auto||""})).filter(p=>p.amount>0||p.due),
-    costs:[...$("mo-costs").children].map(r=>({cat:r.querySelector("select").value,amount:toNum(r.querySelector(".won").value),note:r.querySelector(".note input").value.trim()})).filter(x=>x.amount>0||x.note)});}
+    costs:[...$("mo-costs").children].map(r=>{const q=c=>r.querySelector(c);
+      return{cat:q("select").value,amount:toNum(q(".won").value),note:q(".note input").value.trim(),v:q(".vend").value,d:q(".cd").value,due:q(".cdue").value,
+        got:q(".cgot").checked?(r.dataset.got||TODAY):"",paid:q(".cpaid").checked,paidOn:q(".cpaidOn").value};}).filter(x=>x.amount>0||x.note)});}
 function moneySummary(){if(!isAdmin)return;const m=readMoney(),auto=autoCosts(editing,m),t=billTotal(m),r=received(m),c=costSum(m)+auto.reduce((a,x)=>a+x.amount,0),p=m.contract.amount-c;
   moneyHint(m,auto);
   const sched=m.pays.reduce((a,x)=>a+x.amount,0);
@@ -1209,6 +1280,9 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
   add("late","시공 7일 안, 생산 완료 전",live.filter(j=>["dwg","prd"].includes(fs(j))&&j.i.start&&j.i.start<=wk).map(j=>it(j,`시공 ${fmt(j.i.start)} · 지금 ${FLOW_NAME[fs(j)]}`)),"곳",["flow","진행 흐름 보기"]);
   add("late","납기가 시공 시작보다 늦음",live.filter(prLate).map(j=>it(j,`납기 ${fmt(j.i.fl.pr.due)} · 시공 ${fmt(j.i.start)}`)),"곳");
   if(isAdmin)add("late","입금 지연",jobs.flatMap(j=>overdue(moneyOf(j.id)).map(p=>({j,p}))).sort((a,b)=>a.p.due.localeCompare(b.p.due)).map(x=>it(x.j,`${esc(x.p.label)} ${won(x.p.amount)} · ${dayDiff(x.p.due,TODAY)}일 지남`,"money")),"건",["pay","고객 수금 보기"]);
+  if(isAdmin){const cw=costList().filter(o=>gotWait(o.x)),lbl=o=>`${o.x.v?esc(o.x.v):esc(o.x.cat)}${o.x.note?` ${esc(o.x.note)}`:""}`;
+    add("late","입고 예정일 지남 (입고 확인 안 함)",cw.filter(o=>o.x.due<TODAY).sort((a,b)=>a.x.due.localeCompare(b.x.due)).map(o=>it(o.j,`${lbl(o)} · 예정 ${fmt(o.x.due)}`,"money")),"건",["vend","거래처 정산 보기"]);
+    add("late","입고 예정이 시공 시작보다 늦음",cw.filter(o=>o.x.due>=TODAY&&o.j.i.start&&o.j.i.start>=TODAY&&o.x.due>o.j.i.start).map(o=>it(o.j,`${lbl(o)} · 입고 ${fmt(o.x.due)} · 시공 ${fmt(o.j.i.start)}`,"money")),"건",["vend","거래처 정산 보기"]);}
   if(isAdmin)add("late","수금 끝, 매입 입력 안 함 (정산 종료 안 됨)",jobs.filter(j=>{const m=moneyOf(j.id);return billTotal(m)>0&&!unpaidOf(m)&&!costIn(m);}).map(j=>it(j,"","money")),"곳",["pay","고객 수금 보기"]);
   add("late","체크리스트 문제 (조치 전)",jobs.filter(j=>clNeeds(j)==="bad").map(j=>it(j,`문제 ${clSum(j).bad.length}개`)),"곳");
   add("late","AS 날짜 지남 (완료 체크 안 함)",jobs.flatMap(j=>asOpen(j).filter(a=>a.date&&a.date<TODAY).map(a=>it(j,`${fmt(a.date)}${a.crew?` · ${esc(a.crew)}`:""}`))),"건");
@@ -1220,6 +1294,8 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
     .map(e=>`<span><button type="button" class="linkish" data-es="${esc(e.id)}">${esc([e.d.cust.name,e.d.title].filter(Boolean).join(" · ")||"견적서")}</button> <span class="hint">${fmt(locDay(e.d.sentAt))} 보냄</span></span>`),"건",["est","견적서 보기"]);
   if(isAdmin&&pay08&&Object.keys(wage.rates.day).length){const pm=addDays(TODAY.slice(0,8)+"01",-1),m=+pm.slice(5,7),w=wageMonth(+pm.slice(0,4),m);
     add("soon",`${m}월 시공자 정산 지급 전`,w.people.filter(p=>!p.paid&&(p.days||p.as)).map(p=>`<span>${esc(p.n)} <span class="hint">${p.total==null?"일당 미입력":won(p.total)}</span></span>`),"명",[`wage:${pm.slice(0,7)}`,"시공자 정산 보기"]);}
+  if(isAdmin){const m1=TODAY.slice(0,8)+"01",by={};costList().filter(o=>isVend(o.x)&&!o.x.paid&&o.x.d&&o.x.d<m1).forEach(o=>{by[o.x.v]=(by[o.x.v]||0)+o.x.amount;});
+    add("soon","지난달까지 거래처 매입 지급 전",Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<span>${esc(n)} <span class="hint">${won(v)}</span></span>`),"곳",["vend","거래처 정산 보기"]);}
   add("wait","실측일·시공일 없는 현장",live.filter(j=>!j.m.date&&!j.i.start).map(j=>it(j)),"곳");
   return A;}
 function renderHome(){if(!loaded)return;
@@ -1252,8 +1328,8 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!
   tab(v);if(v==="board")render();if(v==="wage")renderWage();window.scrollTo({top:0});});
 
 /* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
-const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage"],fin:["sales","exp"]};
-const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"견적서",pay:"고객 수금",wage:"시공자 정산",sales:"손익",exp:"회사 지출"};
+const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage","vend"],fin:["sales","exp"]};
+const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출"};
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
@@ -1724,8 +1800,8 @@ function backupSheets(){
       rows:list.filter(j=>hasMoney(moneyOf(j.id))).map(j=>{const m=moneyOf(j.id);return[j.name,m.contract.date,m.contract.amount,OX(m.contract.vat),billTotal(m),received(m),unpaidOf(m)];})});
     sheets.push({name:"입금 내역",cols:[["현장",18,"s"],["구분",9,"s"],["금액",14,"w"],["받을 날",12,"d"],["입금",7,"s"],["입금일",12,"d"]],
       rows:list.flatMap(j=>moneyOf(j.id).pays.map(p=>[j.name,p.label,p.amount,p.due,OX(p.paid),p.paidOn]))});
-    sheets.push({name:"매입",cols:[["현장",18,"s"],["항목",16,"s"],["금액",14,"w"],["메모",36,"s"]],
-      rows:list.flatMap(j=>jobCosts(j).map(x=>[j.name,x.cat,x.amount,x.note]))});
+    sheets.push({name:"매입",cols:[["현장",18,"s"],["항목",16,"s"],["거래처",16,"s"],["금액",14,"w"],["메모",36,"s"],["매입일",12,"d"],["입고 예정",12,"d"],["입고일",12,"d"],["거래처 지급",9,"s"],["지급일",12,"d"]],
+      rows:list.flatMap(j=>jobCosts(j).map(x=>[j.name,x.cat,x.v||"",x.amount,x.note,x.d||"",x.due||"",x.got||"",isVend(x)?OX(x.paid):"",x.paidOn||""]))});
     if(pay08)sheets.push(...wageSheets());
     if(expenses.length)sheets.push({name:"지출",cols:[["날짜",12,"d"],["항목",14,"s"],["금액",14,"w"],["메모",30,"s"],["매달 반복",9,"s"],["반복 끝",9,"s"]],
       rows:[...expenses].sort((a,b)=>a.day.localeCompare(b.day)).map(x=>[x.day,x.cat,x.amount,x.note,OX(x.repeat),x.until])});

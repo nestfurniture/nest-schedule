@@ -506,6 +506,17 @@ th.num{font-family:var(--font);font-size:12px}
 .ms-add input,.ms-add select{font-size:16px;width:100%;min-width:0;box-sizing:border-box}
 .ms-add label{min-width:0}
 .ms-add-btns{grid-column:1/-1;display:flex;gap:6px}
+.ms-add-h{grid-column:1/-1;margin:0}
+.ms-v{font-size:14px}
+.ms-st{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:13px}
+.ms-st label.check{display:inline-flex;align-items:center;gap:6px;min-height:32px}
+.vd-rows{list-style:none;margin:0;padding:0}
+.vd-rows li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.vd-rows li:first-child{border-top:0}
+.vd-rows .vd-l{display:flex;align-items:center;gap:4px 10px;min-width:0}
+.vd-rows .vd-l>:last-child{margin-left:auto;flex-shrink:0}
+.vd-rows li.paid{color:var(--muted)}
+.vd-rows label.check{display:inline-flex;align-items:center;gap:6px;min-height:32px}
 @media (max-width:560px){.ms-add{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ms-add .note{grid-column:1/-1}}
 .ms-conds{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:4px;font-size:14px}
 .ms-conds .ok{color:var(--ok)}
@@ -531,7 +542,7 @@ th.num{font-family:var(--font);font-size:12px}
 .wg-more summary{cursor:pointer;font-size:13px;color:var(--muted)}
 .wg-in{display:flex;flex-direction:column;gap:8px;padding-top:8px}
 .wg-jobs{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
-.wg-job{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:500;text-decoration:underline;cursor:pointer;text-align:left}
+.wg-job{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:500;cursor:pointer;text-align:left}
 .wg-adj{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:end}
 .wg-adj input{width:100%}
 .wg-paid{align-self:flex-start}
@@ -541,12 +552,16 @@ th.num{font-family:var(--font);font-size:12px}
 #wgSaved{margin-left:auto}
 #view-wage .calhead h2{min-width:140px}
 .pay-row{display:grid;grid-template-columns:100px 1fr 150px auto 150px auto;gap:8px;align-items:end}
-.cost-row{display:grid;grid-template-columns:160px 1fr 1.4fr auto;gap:8px;align-items:end}
+.cost-row{display:grid;grid-template-columns:150px 1fr 150px 1.4fr auto;gap:8px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.cost-more{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:end}
+.cost-more label:not(.check){width:150px}
+.cost-more label.check{padding-bottom:8px;white-space:nowrap}
+.cost-row.labor .cost-more{display:none}
 .pay-row>*,.cost-row>*{min-width:0}
 .pay-row input:not([type=checkbox]),.pay-row select,.cost-row input,.cost-row select{width:100%}
 .pay-row label.check{padding-bottom:8px;white-space:nowrap}
 .won{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
-@media (max-width:700px){.pay-row,.cost-row{grid-template-columns:1fr 1fr}.cost-row .note{grid-column:1/-1}}
+@media (max-width:700px){.pay-row,.cost-row{grid-template-columns:1fr 1fr}.cost-row .del{order:9;grid-column:1/-1;justify-self:end}.cost-more label:not(.check){width:calc(50% - 7px)}}
 .mo-sum{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px}
 .mo-sum b{font-family:var(--mono);font-weight:500}
 .mo-sum small{color:var(--muted)}
@@ -715,6 +730,7 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="tabs" role="tablist" aria-label="정산">
       <button class="tab" role="tab" id="tab-pay" aria-selected="false">고객 수금</button>
       <button class="tab" role="tab" id="tab-wage" aria-selected="false">시공자 정산</button>
+      <button class="tab" role="tab" id="tab-vend" aria-selected="false">거래처 정산</button>
     </div>
   </div>
   <div class="subbar" id="sub-fin" hidden>
@@ -995,6 +1011,19 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="tbl stack"><table><thead><tr><th>입금일</th><th>현장</th><th>구분</th><th class="num">금액</th></tr></thead><tbody id="payDone"></tbody></table></div>
   </section>
 
+  <section id="view-vend" class="view" hidden>
+    <div class="tiles" id="vdTiles"></div>
+    <div class="empty" id="vdEmpty" hidden>아직 거래처를 적은 매입이 없어요. 현장을 열어 <b>정산 보기</b> › <b>+ 매입 추가</b>에서 거래처를 적으면 여기에 거래처별로 모여요.</div>
+    <p class="err" id="vdErr" hidden></p>
+    <div id="vdWaitBox" hidden>
+      <h3>입고 대기 <span class="hint">입고 예정일을 적은 자재·외주</span></h3>
+      <div class="tbl stack"><table><thead><tr><th>입고 예정</th><th>현장</th><th>거래처 · 항목</th><th class="num">금액</th><th>입고</th></tr></thead><tbody id="vdWait"></tbody></table></div>
+    </div>
+    <h3>거래처별 줄 돈 <span class="hint">미지급이 많은 순서</span></h3>
+    <div class="wg-list" id="vdList"></div>
+    <p class="sub" id="vdNote"></p>
+  </section>
+
   <section id="view-sales" class="view" hidden>
     <div class="filters"><select id="sa-y" aria-label="연도"></select><select id="sa-m" aria-label="월"><option value="0">1년 전체</option><option value="1">1월</option><option value="2">2월</option><option value="3">3월</option><option value="4">4월</option><option value="5">5월</option><option value="6">6월</option><option value="7">7월</option><option value="8">8월</option><option value="9">9월</option><option value="10">10월</option><option value="11">11월</option><option value="12">12월</option></select></div>
     <div class="tiles" id="saTiles"></div>
@@ -1109,6 +1138,7 @@ th.num{font-family:var(--font);font-size:12px}
   </div>
 </div>
 <datalist id="es-libnames"></datalist>
+<datalist id="vendList"></datalist>
 <datalist id="es-spaces"></datalist>
 <datalist id="es-units"><option value="자"><option value="EA"><option value="개"><option value="짝"><option value="세트"><option value="식"><option value="m"><option value="㎡"><option value="대"></datalist>
 <div id="printArea"></div>
