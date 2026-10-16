@@ -530,7 +530,7 @@ function renderVend(){if(!isAdmin)return;
   const chk=(o,kind)=>`<input type="checkbox" data-c${kind}="${o.i}" data-jid="${esc(o.j.id)}" data-sig="${esc(costSig(o.x))}"`;
   const jb=j=>`<button type="button" class="wg-job" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
   $("vdWaitBox").hidden=!wait.length;
-  $("vdWait").innerHTML=wait.map(o=>`<tr><td><span class="d">${fmtW(o.x.due)}</span></td><td class="job">${jb(o.j)}${o.j.i.start?`<small>시공 ${fmt(o.j.i.start)}</small>`:""}</td><td>${o.x.v?`<b>${esc(o.x.v)}</b> · `:""}${esc(o.x.cat)}${o.x.note?` <span class="hint">${esc(o.x.note)}</span>`:""}</td><td class="num push">${won(o.x.amount)}</td>
+  $("vdWait").innerHTML=wait.map(o=>`<tr><td><span class="d">${fmtW(o.x.due)}</span></td><td class="job">${jb(o.j)}${o.j.i.start?` <small class="hint">시공 ${fmt(o.j.i.start)}</small>`:""}</td><td>${o.x.v?`<b>${esc(o.x.v)}</b> · `:""}${esc(o.x.cat)}${o.x.note?` <span class="hint">${esc(o.x.note)}</span>`:""}</td><td class="num push">${won(o.x.amount)}</td>
     <td><div class="cell">${o.x.due<TODAY?`<span class="tag late">늦음</span>`:o.j.i.start&&o.x.due>o.j.i.start&&o.j.i.start>=TODAY?`<span class="tag late">시공보다 늦음</span>`:""}<label class="check">${chk(o,"got")}>입고 확인</label></div></td></tr>`).join("");
   const cards=names.map(n=>{const rs=rows.filter(o=>o.x.v===n),un=rs.filter(o=>!o.x.paid),old=un.map(o=>o.x.d||"").filter(Boolean).sort()[0];
     return{n,rs,un,due:sum(un),old};}).sort((a,b)=>b.due-a.due||a.n.localeCompare(b.n,"ko"));
