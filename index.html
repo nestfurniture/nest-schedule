@@ -114,6 +114,18 @@ body.crew-on #gnav,body.crew-on .subbar,body.crew-on #summary,body.crew-on #push
 .mc-phh{font-size:13px;color:var(--muted);margin-bottom:6px}
 .mc-thumbs{grid-template-columns:repeat(4,minmax(0,1fr))}
 .mc .jv-btns{margin-top:6px}
+.cd-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px;margin-top:10px}
+.cd-form label{min-width:0}
+.cd-form input,.cd-form select{width:100%;min-width:0}
+.cd-form .cd-note,.cd-form .cd-job,.cd-form .cd-btns{grid-column:1/-1}
+.cd-form .cd-job{margin:0}
+.cd-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cd-ok{margin:8px 0 0;font-size:13px;color:var(--ok)}
+.cd-mon{margin-top:10px;font-size:13px}
+.cd-mon summary{cursor:pointer;color:var(--muted)}
+.cd-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.wg-reg{margin-bottom:8px}
+.wg-reg b{font-size:13px}
 .nm-crew{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
 .nm-crew h3{font-size:14px;margin:0}
 .nm-crew .hint{margin:0;line-height:1.6}
@@ -1132,6 +1144,7 @@ th.num{font-family:var(--font);font-size:12px}
   <section id="view-wage" class="view" hidden>
     <div class="update" id="wgUpdate" hidden>시공자 정산을 쓰려면 Supabase 업데이트 10이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-10.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
     <div class="view" id="wgBody">
+      <div class="update" id="wgUpd11" hidden>시공자가 시공자 화면에서 그날 일당을 직접 등록하게 하려면 Supabase 업데이트 11이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-11.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요. 지금은 정해 둔 일당으로만 계산해요.</div>
       <div class="calhead">
         <button class="btn ghost" id="wgPrev" aria-label="이전 달">‹</button>
         <h2 id="wgTitle"></h2>

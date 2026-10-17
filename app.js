@@ -657,14 +657,17 @@ function workBook(from,to){const book={},at=(n,d)=>((book[n]??={})[d]??={i:[],a:
 function laborOf(j){
   if(!laborCache){laborCache={};const get=id=>(laborCache[id]??={crew:0,extra:0,miss:new Set()});
     if(isAdmin&&pay08){
-      Object.entries(workBook("0000","9999")).forEach(([n,days])=>Object.values(days).forEach(u=>{
-        if(u.i.length){const r=rateOf(n);u.i.forEach(x=>{const o=get(x.id);if(r)o.crew+=r/u.i.length;else o.miss.add(n);});}
-        else{const r=asRateOf(n);u.a.forEach(x=>{const o=get(x.j.id);if(r)o.crew+=r/u.a.length;else o.miss.add(n);});}}));
+      const book=workBook("0000","9999");
+      Object.entries(book).forEach(([n,days])=>Object.entries(days).forEach(([d,u])=>{const reg=cdGet(n,d);
+        if(u.i.length){const r=reg?reg.amount:rateOf(n);u.i.forEach(x=>{const o=get(x.id);if(r)o.crew+=r/u.i.length;else o.miss.add(n);});}
+        else{const r=reg?reg.amount:asRateOf(n);u.a.forEach(x=>{const o=get(x.j.id);if(r)o.crew+=r/u.a.length;else o.miss.add(n);});}}));
+      /* 일정에 없는 날 시공자가 등록한 일당은 고른 현장에 */
+      cdays.forEach(r=>{if(r.job_id&&!(book[r.crew]&&book[r.crew][r.day])&&jobs.some(j=>j.id===r.job_id))get(r.job_id).crew+=r.amount;});
       if(wage.rates.extra)jobs.forEach(j=>{const n=extraSum(j);if(n)get(j.id).extra=n*wage.rates.extra;});}}
   return laborCache[j.id]||{crew:0,extra:0,miss:new Set()};}
 /* 직접 적은 같은 항목이 없을 때만 자동 인건비를 원가에 넣음 */
 function autoCosts(j,m){if(!j)return[];const L=laborOf(j),has=c=>m.costs.some(x=>x.cat===c),out=[],c=Math.round(L.crew),x=Math.round(L.extra);
-  if(c&&!has("시공 인건비"))out.push({cat:"시공 인건비",amount:c,note:"자동 · 일정 × 일당",auto:true});
+  if(c&&!has("시공 인건비"))out.push({cat:"시공 인건비",amount:c,note:"자동 · 일정 × 일당(시공자가 등록한 날은 그 금액)",auto:true});
   if(x&&!has("추가 투입 인건비"))out.push({cat:"추가 투입 인건비",amount:x,note:"자동 · 추가 인원 × 1인 일당",auto:true});
   return out;}
 const jobCosts=j=>{const m=moneyOf(j.id);return m.costs.concat(autoCosts(j,m));};
@@ -686,16 +689,19 @@ function costSet(list,patch){const by={};list.forEach(o=>(by[o.jid]??=[]).push(o
     const m=moneyOf(j.id);let hit=0;
     const costs=m.costs.map((x,i)=>{if(!os.some(o=>o.i===i&&o.sig===costSig(x)))return x;hit++;return normCost({...x,...patch(x)});});
     res(hit?await qcWrite(j,{col:"money",val:{...m,costs}}):false);}).catch(()=>res(false));}))).then(r=>r.every(Boolean));}
-function wageMonth(y,m){const key=ymKey(y,m),from=key+"-01",to=key+"-31",book=workBook(from,to),rec=wmOf(key);
-  const people=[...new Set([...Object.keys(book),...Object.keys(rec.p)])].map(n=>{
+function wageMonth(y,m){const key=ymKey(y,m),from=key+"-01",to=key+"-31",book=workBook(from,to),rec=wmOf(key),cdm=cdays.filter(r=>r.day>=from&&r.day<=to);
+  const people=[...new Set([...Object.keys(book),...Object.keys(rec.p),...cdm.map(r=>r.crew)])].map(n=>{
     const days=book[n]||{},ds=Object.keys(days).sort(),iD=ds.filter(d=>days[d].i.length),aD=ds.filter(d=>!days[d].i.length);
     const r=rec.p[n]||{adj:0,note:"",paid:"",snap:null},rate=rateOf(n),asRate=asRateOf(n);
-    const miss=!!((iD.length&&!rate)||(aD.length&&!asRate));
+    /* 시공자가 등록한 날은 그 금액, 나머지 날은 정해 둔 일당. 일정에 없는 날 등록은 따로 표시 */
+    const reg=cdm.filter(x=>x.crew===n).map(x=>({...x,off:!days[x.day]})),has=new Set(reg.map(x=>x.day));
+    const iS=iD.filter(d=>!has.has(d)).length,aS=aD.filter(d=>!has.has(d)).length,regSum=reg.reduce((a,x)=>a+x.amount,0),offN=reg.filter(x=>x.off).length;
+    const miss=!!((iS&&!rate)||(aS&&!asRate));
     const byJob=new Map(),add=(j,d,t)=>{if(!byJob.has(j.id))byJob.set(j.id,{j,i:[],a:[]});byJob.get(j.id)[t].push(d);};
     iD.forEach(d=>days[d].i.forEach(j=>add(j,d,"i")));aD.forEach(d=>days[d].a.forEach(x=>add(x.j,d,"a")));
-    return{n,days:iD.length,as:aD.length,rate,asRate,adj:r.adj,note:r.note,paid:r.paid,snap:r.snap,miss,
-      total:miss?null:iD.length*rate+aD.length*asRate+r.adj,later:ds.filter(d=>d>TODAY).length,shared:iD.filter(d=>days[d].i.length>1).length,byJob:[...byJob.values()]};})
-    .filter(p=>p.days||p.as||p.adj||p.paid).sort((a,b)=>(b.days+b.as)-(a.days+a.as)||a.n.localeCompare(b.n,"ko"));
+    return{n,days:iD.length,as:aD.length,iS,aS,reg,regSum,offN,rate,asRate,adj:r.adj,note:r.note,paid:r.paid,snap:r.snap,miss,
+      total:miss?null:iS*rate+aS*asRate+regSum+r.adj,later:ds.filter(d=>d>TODAY).length,shared:iD.filter(d=>days[d].i.length>1).length,byJob:[...byJob.values()]};})
+    .filter(p=>p.days||p.as||p.adj||p.paid||p.reg.length).sort((a,b)=>(b.days+b.as+b.offN)-(a.days+a.as+a.offN)||a.n.localeCompare(b.n,"ko"));
   const list=[];jobs.forEach(j=>j.f.extra.forEach(x=>{if(x.date&&x.date>=from&&x.date<=to&&+x.people>0)list.push({j,x});}));
   list.sort((a,b)=>a.x.date.localeCompare(b.x.date));
   const xn=list.reduce((a,o)=>a+(+o.x.people||0),0),xr=wage.rates.extra;
@@ -705,14 +711,18 @@ function wageMonth(y,m){const key=ymKey(y,m),from=key+"-01",to=key+"-31",book=wo
 const shownPay=p=>p.paid&&p.snap?+p.snap.total||0:p.total;
 const md=d=>`${+d.slice(5,7)}/${+d.slice(8)}`;
 function wageMsg(y,m,p){const L=[`[네스트퍼니처 ${y}년 ${m}월 정산] ${p.n}님`];
-  if(p.days){L.push("",`시공 ${p.days}일 × ${won(p.rate)} = ${won(p.days*p.rate)}`);p.byJob.filter(b=>b.i.length).forEach(b=>L.push(`- ${b.j.name}: ${b.i.map(md).join(", ")} (${b.i.length}일)`));
+  const rg=p.reg.length;
+  if(p.days){L.push("",rg?`시공 ${p.days}일`:`시공 ${p.days}일 × ${won(p.rate)} = ${won(p.days*p.rate)}`);p.byJob.filter(b=>b.i.length).forEach(b=>L.push(`- ${b.j.name}: ${b.i.map(md).join(", ")} (${b.i.length}일)`));
     if(p.shared)L.push(`(같은 날 두 현장은 하루로 계산)`);}
-  if(p.as){L.push("",`AS ${p.as}일 × ${won(p.asRate)} = ${won(p.as*p.asRate)}`);p.byJob.filter(b=>b.a.length).forEach(b=>L.push(`- ${b.j.name}: ${b.a.map(md).join(", ")}`));}
+  if(p.as){L.push("",rg?`AS ${p.as}일`:`AS ${p.as}일 × ${won(p.asRate)} = ${won(p.as*p.asRate)}`);p.byJob.filter(b=>b.a.length).forEach(b=>L.push(`- ${b.j.name}: ${b.a.map(md).join(", ")}`));}
+  if(rg){L.push("",`등록한 일당 ${rg}일 = ${won(p.regSum)}`);p.reg.forEach(x=>L.push(`- ${md(x.day)} ${won(x.amount)}${x.note?` (${x.note})`:""}${x.off?" · 일정에 없던 날":""}`));
+    if(p.iS)L.push(`나머지 시공 ${p.iS}일 × ${won(p.rate)} = ${won(p.iS*p.rate)}`);
+    if(p.aS)L.push(`나머지 AS ${p.aS}일 × ${won(p.asRate)} = ${won(p.aS*p.asRate)}`);}
   if(p.adj)L.push("",`조정 ${sWon(p.adj)}${p.note?` (${p.note})`:""}`);
   L.push("",`합계 ${won(p.total)}`);return L.join("\n");}
 const wgBusy=()=>{const a=document.activeElement;return!!(a&&a.tagName==="INPUT"&&a.type!=="checkbox"&&a.closest("#view-wage"));};
 function renderWage(){if(!isAdmin)return;
-  $("wgUpdate").hidden=pay08;$("wgBody").hidden=!pay08;if(!pay08)return;
+  $("wgUpdate").hidden=pay08;$("wgBody").hidden=!pay08;if(!pay08)return;$("wgUpd11").hidden=day11;
   if(wgBusy()){wgLater=true;return;}wgLater=false;
   const W=wageMonth(wgY,wgM),x=W.extra,xv=x.paid&&x.snap?+x.snap.total||0:x.total,xOn=!!(x.people||x.paid);
   $("wgTitle").textContent=`${wgY}년 ${wgM}월`;
@@ -721,18 +731,21 @@ function renderWage(){if(!isAdmin)return;
   $("wgTiles").innerHTML=`<div class="tile ${miss?"warn":""}"><small>이달 줄 돈</small><b>${won(tot)}</b>${miss?`<small>일당 미입력 ${miss}건은 빠짐</small>`:""}</div>
     <div class="tile"><small>지급 완료</small><b>${won(paid)}</b></div>
     <div class="tile ${tot-paid>0?"warn":""}"><small>남은 돈</small><b>${won(tot-paid)}</b></div>
-    <div class="tile"><small>시공 연인원</small><b>${W.people.reduce((a,p)=>a+p.days,0)+x.people}일</b>${x.people?`<small>추가 투입 ${x.people}명 포함</small>`:""}</div>`;
+    <div class="tile"><small>시공 연인원</small><b>${W.people.reduce((a,p)=>a+p.days+p.offN,0)+x.people}일</b>${x.people?`<small>추가 투입 ${x.people}명 포함</small>`:""}</div>`;
   const rt=(r,what="일당")=>r?won(r):`<span class="tag late">${what} 미입력</span>`;
   const head=(name,paidOn,v)=>`<div class="wg-head"><b class="wg-name">${name}</b>${paidOn?`<span class="tag ok">지급 ${fmt(paidOn)}</span>`:""}<b class="wg-sum">${v===null?"—":won(v)}</b></div>`;
   const jobBtn=j=>`<button type="button" class="wg-job" data-j="${esc(j.id)}">${esc(j.name)}</button>`;
   const card=p=>{const changed=p.paid&&p.snap&&p.total!==null&&p.total!==+p.snap.total,hints=[p.later&&`오늘 이후 예정 ${p.later}일 포함`,p.shared&&`같은 날 두 현장 ${p.shared}일은 하루로 계산`].filter(Boolean);
     return`<div class="wg-card${p.paid?" done":""}">${head(esc(p.n),p.paid,shownPay(p))}
-      ${p.days?`<div class="wg-line">시공 ${p.days}일 × ${rt(p.rate)}</div>`:""}
-      ${p.as?`<div class="wg-line">AS ${p.as}일 × ${rt(p.asRate)}</div>`:""}
+      ${p.iS?`<div class="wg-line">시공 ${p.iS}일 × ${rt(p.rate)}</div>`:""}
+      ${p.aS?`<div class="wg-line">AS ${p.aS}일 × ${rt(p.asRate)}</div>`:""}
+      ${p.reg.length?`<div class="wg-line">시공자가 등록한 일당 ${p.reg.length}일 · ${won(p.regSum)}${p.offN?` <span class="tag soon">일정에 없는 날 ${p.offN}일</span>`:""}</div>`:""}
       ${p.adj?`<div class="wg-line">조정 ${sWon(p.adj)}${p.note?` · ${esc(p.note)}`:""}</div>`:""}
       ${hints.length?`<div class="hint">${hints.join(" · ")}</div>`:""}
       ${changed?`<div class="hint wg-warn">지급한 뒤 일정이 바뀌었어요. 지금 계산하면 ${won(p.total)}이에요.</div>`:""}
       <details class="wg-more" data-wgd="${esc(p.n)}"${wgOpen.has(p.n)?" open":""}><summary>현장별 날짜 · 조정 · 문자</summary><div class="wg-in">
+        ${p.reg.length?`<div class="wg-reg"><b>시공자가 등록한 일당</b><ul class="wg-jobs">${p.reg.map(x=>{const j=x.job_id&&jobs.find(o=>o.id===x.job_id);
+          return`<li><span class="d">${fmtW(x.day)}</span> ${won(x.amount)}${x.note?` · ${esc(x.note)}`:""}${x.off?` <span class="tag soon">일정에 없는 날${j?` · ${esc(j.name)}`:""}</span>`:""}${x.by&&x.by!==p.n?` <span class="hint">${esc(x.by)} 등록</span>`:""}${x.locked?"":` <button class="cl-renew" type="button" data-cddel="${esc(x.id)}">지우기</button>`}</li>`;}).join("")}</ul></div>`:""}
         <ul class="wg-jobs">${p.byJob.map(b=>`<li>${jobBtn(b.j)} <span class="hint">${[b.i.length&&`시공 ${b.i.map(fmtW).join(", ")}`,b.a.length&&`AS ${b.a.map(fmtW).join(", ")}`].filter(Boolean).join(" · ")}</span></li>`).join("")||`<li class="hint">이달 일정이 없어요.</li>`}</ul>
         <div class="wg-adj"><label>조정 금액(원)<input class="swon" data-wgadj="${esc(p.n)}" value="${sComma(p.adj)}" placeholder="예: -125,000"></label><label>메모<input data-wgnote="${esc(p.n)}" value="${esc(p.note)}" placeholder="예: 반일 1번, 유류비"></label></div>
         <div><button class="btn ghost sm" type="button" data-wgmsg="${esc(p.n)}"${p.total===null?" disabled":""}>정산 문자 복사</button></div></div></details>
@@ -760,7 +773,8 @@ $("view-wage").addEventListener("change",e=>{const t=e.target,d=t.dataset||{};
   if("wgadj" in d){const v=Math.round(sNum(t.value));wmEdit(d.wgadj,o=>{o.adj=v;});return;}
   if("wgnote" in d){const v=t.value.trim();wmEdit(d.wgnote,o=>{o.note=v;});return;}
   if("wgpaid" in d||"wgxpaid" in d){const W=wageMonth(wgY,wgM),p="wgpaid" in d?W.people.find(x=>x.n===d.wgpaid):W.extra;
-    wmEdit("wgpaid" in d?d.wgpaid:null,o=>{if(t.checked&&p&&p.total!==null){o.paid=TODAY;o.snap={total:p.total,days:p.days,as:p.as,rate:p.rate,asRate:p.asRate,adj:p.adj,people:p.people};}else{o.paid="";o.snap=null;}});}});
+    wmEdit("wgpaid" in d?d.wgpaid:null,o=>{if(t.checked&&p&&p.total!==null){o.paid=TODAY;o.snap={total:p.total,days:p.days,as:p.as,rate:p.rate,asRate:p.asRate,adj:p.adj,people:p.people,...(p.reg&&p.reg.length?{reg:p.regSum,regDays:p.reg.length}:{})};}else{o.paid="";o.snap=null;}});
+    if("wgpaid" in d&&p&&p.reg)cdLock(p.reg,t.checked&&p.total!==null);}});
 $("view-wage").addEventListener("focusout",()=>setTimeout(()=>{if(wgLater&&!wgBusy())renderWage();},0));
 $("view-wage").addEventListener("toggle",e=>{const d=e.target;if(d.dataset&&"wgd" in d.dataset)(d.open?wgOpen.add(d.dataset.wgd):wgOpen.delete(d.dataset.wgd));},true);
 document.addEventListener("click",async e=>{const b=e.target.closest("[data-wgmsg]");if(!b)return;
@@ -1922,11 +1936,13 @@ function wageSheets(){const R=wage.rates,out=[];
   const rates=[...Object.entries(R.day).map(([n,v])=>[n,v]),...(R.extra?[["마감 추가 투입 1인",R.extra]]:[]),...(R.as?[["AS 하루",R.as]]:[])];
   if(rates.length)out.push({name:"시공자 일당",cols:[["시공자",22,"s"],["일당",14,"w"]],rows:rates});
   const ks=new Set(Object.keys(wage.months)),lo=ymKey(now.getFullYear()-3,1),hi=ymKey(now.getFullYear()+1,12);
-  jobs.forEach(j=>{workDays(j).forEach(d=>{if(crewOn(j,d).length)ks.add(d.slice(0,7))});j.f.as.forEach(a=>{if(a.crew&&a.date)ks.add(a.date.slice(0,7))});j.f.extra.forEach(x=>{if(x.date)ks.add(x.date.slice(0,7))});});
+  jobs.forEach(j=>{workDays(j).forEach(d=>{if(crewOn(j,d).length)ks.add(d.slice(0,7))});j.f.as.forEach(a=>{if(a.crew&&a.date)ks.add(a.date.slice(0,7))});j.f.extra.forEach(x=>{if(x.date)ks.add(x.date.slice(0,7))});});cdays.forEach(r=>ks.add(r.day.slice(0,7)));
   const rows=[];[...ks].filter(k=>/^\d{4}-\d{2}$/.test(k)&&k>=lo&&k<=hi).sort().forEach(k=>{const W=wageMonth(+k.slice(0,4),+k.slice(5)),x=W.extra;
     W.people.forEach(p=>rows.push([k,p.n,p.days||"",p.as||"",p.rate||"",p.adj||"",p.note,shownPay(p)??"",p.paid]));
     if(x.people||x.paid)rows.push([k,"마감 추가 투입 (인원)",x.people||"","",x.rate||"","","",(x.paid&&x.snap?+x.snap.total||0:x.total)??"",x.paid]);});
   if(rows.length)out.push({name:"시공자 정산",cols:[["월",9,"s"],["시공자",16,"s"],["시공일",8,"n"],["AS",6,"n"],["일당",12,"w"],["조정",12,"w"],["메모",24,"s"],["합계",14,"w"],["지급일",12,"d"]],rows});
+  if(cdays.length)out.push({name:"시공자 등록 일당",cols:[["날짜",12,"d"],["시공자",16,"s"],["일당",12,"w"],["메모",24,"s"],["현장(일정에 없는 날)",20,"s"],["등록한 사람",14,"s"],["지급 완료",10,"s"]],
+    rows:cdays.map(r=>[r.day,r.crew,r.amount,r.note,r.job_id?((jobs.find(j=>j.id===r.job_id)||{}).name||""):"",r.by,r.locked?"예":""])});
   return out;}
 const XLS_KEY="nest-backup-day";
 function renderBackup(){let last="";try{last=localStorage.getItem(XLS_KEY)||""}catch(e){}
@@ -2123,8 +2139,14 @@ function renderMine(){if(!crewAs||$("view-mine").hidden)return;
     else if(d===TODAY)today.push(x);else if(!d||d>TODAY){x.key=d||"9999";next.push(x);}else{x.key=d;past.push(x);}});
   next.sort((a,b)=>a.key.localeCompare(b.key));past.sort((a,b)=>b.key.localeCompare(a.key));
   const card=s=>x=>x.t==="i"?mineJob(x,s):mineAs(x),sec=(t,s,a,empty)=>`<section class="mine-sec"><h3>${t}${a.length?` <span class="hint">${a.length}곳</span>`:""}</h3>${a.length?a.map(card(s)).join(""):`<p class="hint mine-empty">${empty}</p>`}</section>`;
-  h+=sec("오늘","today",today,"오늘은 잡힌 일정이 없어요.")+sec("다가오는 일정","next",next,"앞으로 60일 안에 잡힌 일정이 없어요. 사무실에서 현장에 이름을 넣으면 여기에 보여요.")+(past.length?sec("지난 2주","past",past,""):"");
-  if(h===mineLast)return;mineLast=h;$("mineBody").innerHTML=h;
+  h+=mineWage()+sec("오늘","today",today,"오늘은 잡힌 일정이 없어요.")+sec("다가오는 일정","next",next,"앞으로 60일 안에 잡힌 일정이 없어요. 사무실에서 현장에 이름을 넣으면 여기에 보여요.")+(past.length?sec("지난 2주","past",past,""):"");
+  if(h===mineLast)return;mineLast=h;
+  /* 적던 일당·메모는 화면이 새로 그려져도 그대로 (같은 날짜일 때만, 저장·날짜 바꿈 뒤에는 새 값) */
+  const kp={},box=$("mineBody"),foc=document.activeElement&&box.contains(document.activeElement)?document.activeElement.dataset.keep:"";
+  if(!cdFresh&&box.dataset.cd===cdD())box.querySelectorAll("[data-keep]").forEach(el=>{kp[el.dataset.keep]=el.value;});
+  cdFresh=false;box.innerHTML=h;box.dataset.cd=cdD();
+  box.querySelectorAll("[data-keep]").forEach(el=>{if(kp[el.dataset.keep]!==undefined&&!el.disabled)el.value=kp[el.dataset.keep];});
+  if(foc){const el=box.querySelector(`[data-keep="${foc}"]`);if(el)el.focus({preventScroll:true});}
   $("mineBody").querySelectorAll(".mpick").forEach(i=>i.onchange=minePick);
   const imgs=[...$("mineBody").querySelectorAll("img[data-path]:not([src])")];if(imgs.length)signed(imgs.map(i=>i.dataset.path)).then(us=>imgs.forEach((i,k)=>{if(us[k])i.src=us[k]}));}
 /* 사진 고르는 동안 화면이 새로 그려져도(다른 기기에서 고침) 올라가게, 단추마다 직접 연결 */
@@ -2140,6 +2162,71 @@ document.addEventListener("click",async e=>{const b=e.target.closest("[data-mcl]
   b.disabled=false;
   if(error||!data||!data[0]){if(w)w.close();mineErr[j.id]="체크리스트를 열지 못했어요. 잠시 후 다시 눌러 주세요.";mineLast="";renderMine();return;}
   checks[j.id]=data[0];const u=clUrl(data[0].token);if(w)w.location.href=u;else location.href=u;render();});
+/* 시공자 일당 등록 (업데이트 11, crew_days). 시공자 화면에서 그날 일당을 직접 적음(오늘까지, 하루 한 줄).
+   관리자 시공자 정산·현장 시공비에서는 등록한 날은 그 금액, 나머지 날은 정해 둔 일당. 시공자는 자기가 적은 것만 보고(RLS), 지급 완료된 달은 잠김 */
+let cdays=[],day11=true,cdChan=null,cdIdx=null,cdDay="",cdErr="",cdOk="",cdFresh=false;
+const normCd=r=>({id:r.id,crew:String(r.crew||""),day:String(r.day||"").slice(0,10),amount:+r.amount||0,note:r.note||"",job_id:r.job_id||"",user_id:r.user_id||"",by:r.by_name||"",locked:!!r.locked});
+const cdGet=(n,d)=>{if(!cdIdx){cdIdx=new Map();cdays.forEach(r=>cdIdx.set(r.crew+"\u0000"+r.day,r));}return cdIdx.get(n+"\u0000"+d)||null;};
+function cdPut(r){cdays=cdays.filter(x=>x.id!==r.id&&!(x.crew===r.crew&&x.day===r.day)).concat([r]).sort((a,b)=>a.day.localeCompare(b.day));cdIdx=null;laborCache=null;}
+async function loadCdays(){const {data,error}=await sb.from("crew_days").select("*").order("day");
+  day11=!(error&&/crew_days|42P01|PGRST20/i.test(`${error.code} ${error.message}`));
+  if(!error){cdays=(data||[]).map(normCd).sort((a,b)=>a.day.localeCompare(b.day));cdIdx=null;laborCache=null;}
+  if(day11&&!error&&!cdChan)cdChan=sb.channel("nest-cd").on("postgres_changes",{event:"*",schema:"public",table:"crew_days"},()=>loadCdays().then(render)).subscribe();}
+const cdD=()=>cdDay&&cdDay<=TODAY?cdDay:TODAY;
+/* 그날 내 일정(시공·AS) 현장 */
+const myJobsOn=(n,d)=>jobs.filter(j=>(workDays(j).includes(d)&&crewOn(j,d).includes(n))||j.f.as.some(a=>a.crew===n&&a.date===d));
+function mineWage(){const n=crewAs,d=cdD(),pv=isAdmin;
+  if(!day11)return pv?"":`<section class="mine-sec mine-pay"><h3>일당 등록</h3><p class="hint mine-empty">일당 등록은 사무실에서 앱 업데이트를 마치면 쓸 수 있어요.</p></section>`;
+  const mine=cdays.filter(r=>r.crew===n),cur=mine.find(r=>r.day===d),last=[...mine].sort((a,b)=>b.day.localeCompare(a.day))[0],lock=!!(cur&&cur.locked),off=pv||lock;
+  const on=myJobsOn(n,d),near=jobs.filter(j=>myDays(j,n).some(x=>x>=addDays(d,-30)&&x<=addDays(d,30))||j.f.as.some(a=>a.crew===n)),pick=(near.length?near:jobs.filter(j=>!ended(j))).sort((a,b)=>a.name.localeCompare(b.name,"ko"));
+  const ym=d.slice(0,7),mon=mine.filter(r=>r.day.slice(0,7)===ym),sum=mon.reduce((a,r)=>a+r.amount,0);
+  const amt=cur?comma(cur.amount):last?comma(last.amount):"";
+  return`<section class="mine-sec mine-pay"><h3>${d===TODAY?"오늘 일당":`${fmtW(d)} 일당`}${cur?` <span class="tag ${lock?"ok":"soon"}">${lock?"지급 완료":"등록함"}</span>`:""}</h3>
+    <div class="cd-form"><label>날짜<input type="date" id="cd-day" max="${TODAY}" value="${d}"${pv?" disabled":""}></label>
+      <label>일당(원)<input class="won" inputmode="numeric" id="cd-amt" data-keep="cd-amt" value="${amt}" placeholder="예: 250,000"${off?" disabled":""}></label>
+      <label class="cd-note">메모<input id="cd-note" data-keep="cd-note" maxlength="100" value="${esc(cur?cur.note:"")}" placeholder="예: 반일, 야간, 추가 작업"${off?" disabled":""}></label>
+      ${on.length?`<p class="hint cd-job">현장: ${on.map(j=>esc(j.name)).join(", ")}</p>`
+        :`<label class="cd-note">현장 <span class="hint">(이날 일정이 없어요)</span><select id="cd-job" data-keep="cd-job"${off?" disabled":""}><option value="">현장 고르기</option>${pick.map(j=>`<option value="${esc(j.id)}"${cur&&cur.job_id===j.id?" selected":""}>${esc(j.name)}</option>`).join("")}</select></label>`}
+      <div class="cd-btns">${pv?`<span class="hint">미리 보기에서는 등록하지 않아요.</span>`:lock?`<span class="hint">지급 완료된 날이라 고칠 수 없어요.</span>`
+        :`<button class="btn sm" type="button" id="cd-save">${cur?"고쳐서 저장":"등록"}</button>${cur?`<button class="btn ghost sm" type="button" id="cd-del">지우기</button>`:""}`}</div></div>
+    ${cdErr?`<p class="err">${esc(cdErr)}</p>`:""}${cdOk?`<p class="cd-ok">${cdOk}</p>`:""}
+    ${mon.length?`<details class="cd-mon"><summary>${+ym.slice(5)}월에 등록한 일당 ${mon.length}일 · 합계 ${won(sum)}</summary><ul class="cd-list">${mon.map(r=>`<li><button type="button" class="linkish" data-cdday="${r.day}"><span class="d">${fmtW(r.day)}</span></button> ${won(r.amount)}${r.note?` <span class="hint">${esc(r.note)}</span>`:""}${r.locked?` <span class="tag ok">지급 완료</span>`:""}</li>`).join("")}</ul></details>`
+      :`<p class="hint mine-empty">${pv?"이 시공자가 등록한 일당이 아직 없어요.":"그날 일한 일당을 적어 두면 사무실 정산에 그대로 들어가요. 오늘까지의 날짜만 적을 수 있고, 지급 완료 전까지는 고칠 수 있어요."}</p>`}</section>`;}
+async function cdSave(btn){const n=crewAs,d=$("cd-day").value,amt=toNum($("cd-amt").value),note=$("cd-note").value.trim().slice(0,100),js=$("cd-job");
+  cdOk="";cdErr="";
+  if(!isDate(d)||d>TODAY)cdErr="날짜를 확인해 주세요. 오늘까지만 등록할 수 있어요.";
+  else if(!amt||amt>5000000)cdErr="일당을 원 단위로 적어 주세요. (예: 250,000)";
+  if(cdErr){mineLast="";renderMine();return;}
+  const cur=cdays.find(r=>r.crew===n&&r.day===d),row={crew:n,day:d,amount:amt,note,job_id:js&&js.value||null,by_name:(userName||n).slice(0,40),updated_at:new Date().toISOString()};
+  btn.disabled=true;
+  const res=cur?await sb.from("crew_days").update(row).eq("id",cur.id).select():await sb.from("crew_days").insert(row).select();
+  btn.disabled=false;
+  if(res.error||!res.data||!res.data[0]){const t=res.error?`${res.error.code} ${res.error.message}`:"";
+    cdErr=/23505|duplicate/i.test(t)?"이 날짜는 다른 계정으로 이미 등록돼 있어요. 사무실에 말씀해 주세요.":!res.error||/42501|row-level|policy/i.test(t)?"지급 완료된 날이라 고칠 수 없어요.":"저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";
+    if(!res.error)loadCdays().then(render);mineLast="";renderMine();return;}
+  cdPut(normCd(res.data[0]));cdDay=d;cdFresh=true;cdOk=`✓ ${fmtW(d)} 일당 ${won(amt)}을 ${cur?"고쳤어요":"등록했어요"}.`;mineLast="";render();}
+document.addEventListener("click",async e=>{
+  if(e.target.id==="cd-save"){cdSave(e.target);return;}
+  const del=e.target.id==="cd-del"?e.target:null;
+  if(del){const cur=cdGet(crewAs,cdD());if(!cur)return;
+    if(del.dataset.armed!=="1"){del.dataset.armed="1";del.textContent="정말 지우기";setTimeout(()=>{if(del.isConnected){del.dataset.armed="";del.textContent="지우기";}},4000);return;}
+    del.disabled=true;const {data,error}=await sb.from("crew_days").delete().eq("id",cur.id).select();
+    if(error||!data||!data.length){cdErr=error?"지우지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.":"지급 완료된 날이라 지울 수 없어요.";cdOk="";mineLast="";renderMine();return;}
+    cdays=cdays.filter(r=>r.id!==cur.id);cdIdx=null;laborCache=null;cdFresh=true;cdErr="";cdOk=`${fmtW(cur.day)} 일당을 지웠어요.`;mineLast="";render();return;}
+  const dd=e.target.closest("[data-cdday]");if(dd){cdDay=dd.dataset.cdday;cdErr="";cdOk="";cdFresh=true;mineLast="";renderMine();
+    const f=$("cd-amt");if(f)f.closest(".mine-pay").scrollIntoView({block:"start",behavior:"smooth"});return;}
+  const ad=e.target.closest("[data-cddel]");if(ad){
+    if(ad.dataset.armed!=="1"){ad.dataset.armed="1";ad.textContent="정말 지우기";setTimeout(()=>{if(ad.isConnected){ad.dataset.armed="";ad.textContent="지우기";}},4000);return;}
+    ad.disabled=true;const id=ad.dataset.cddel,{data,error}=await sb.from("crew_days").delete().eq("id",id).select();
+    if(error||!data||!data.length){ad.disabled=false;ad.textContent="지우지 못함";return;}
+    cdays=cdays.filter(r=>r.id!==id);cdIdx=null;laborCache=null;render();}});
+document.addEventListener("change",e=>{if(e.target.id!=="cd-day")return;const v=e.target.value;
+  if(isDate(v)&&v<=TODAY){cdDay=v;cdErr="";cdOk="";}else{cdErr="오늘까지의 날짜만 고를 수 있어요.";cdOk="";}
+  cdFresh=true;mineLast="";renderMine();});
+/* 관리자: 지급 완료를 체크하면 그 사람·그 달 등록 일당을 잠그고, 풀면 다시 열어 줌 */
+function cdLock(list,on){const ids=list.filter(r=>r.locked!==on).map(r=>r.id);if(!day11||!ids.length)return;
+  sb.from("crew_days").update({locked:on}).in("id",ids).then(({error})=>{if(!error){cdays=cdays.map(r=>ids.includes(r.id)?{...r,locked:on}:r);cdIdx=null;render();}});}
+
 /* 내 정보: 직원 계정은 시공자 화면 켜기/끄기(계정에 저장), 관리자는 미리 보기 */
 function nmCrewHtml(){const opts=n=>[...new Set([...CREW,...(n?[n]:[])])].map(c=>`<option${c===n?" selected":""}>${esc(c)}</option>`).join("");
   if(isAdmin)return`<h3>시공자 화면 미리 보기</h3><p class="hint">시공팀장·현장 소장 계정이 보는 화면이에요. 그 사람의 직원 계정으로 로그인한 뒤 여기 <b>내 정보</b>에서 이름을 고르면, 그 계정은 앱이 이 화면으로 열려요.</p>
@@ -2166,7 +2253,7 @@ async function checkAdmin(){
 }
 async function loadAll(){
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst()]);
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst(),loadCdays()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
   jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];laborCache=null;
@@ -2192,7 +2279,7 @@ async function startApp(session){const id=session.user.id||"";
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){startedFor="";userName="";userCrew="";crewAs="";adminChecked=false;mineLast="";document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";userName="";userCrew="";crewAs="";adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
