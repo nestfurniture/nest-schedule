@@ -299,7 +299,7 @@ const costIn=m=>m.costs.length>0;
 /* 정산 종료: 받을 돈을 다 받았고 매입을 입력함 (일당으로 자동 계산된 인건비는 매입 입력으로 안 침). 현장 종료와는 따로 */
 const settledM=m=>billTotal(m)>0&&!unpaidOf(m)&&costIn(m);
 const settleTag=j=>settledM(moneyOf(j.id))?`<span class="tag st-end">정산 종료</span>`:`<span class="tag st-run">정산 중</span>`;
-function openView(j,mode){viewing=j.id;qc={jid:j.id,done:[],err:""};msAdd=false;msErr="";
+function openView(j,mode){viewing=j.id;qc={jid:j.id,done:[],err:""};msAdd=false;msErr="";if(qe.jid!==j.id)qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:null};
   viewMode=isAdmin&&(mode==="money"||(!mode&&MONEY_TABS.includes(curTab)))?"money":"site";renderView();
   if($("jobSheet").hidden){viewFrom=document.activeElement;$("jobSheet").hidden=false;document.body.style.overflow="hidden";$("jvClose").focus({preventScroll:true});}}
 function closeView(){$("jobSheet").hidden=true;viewing=null;qc={jid:"",done:[],err:""};if($("daySheet").hidden)document.body.style.overflow="";
@@ -316,9 +316,12 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   h+=`<div class="dsec jv-flow"><h3>진행 단계 ${flowTag(j)}</h3>${flowStrip(j)}${flm.length?`<p class="sub" style="margin:0">${flm.join(" · ")}</p>`:""}${prLate(j)?`<p class="ms-warn">납기(${fmt(fl.pr.due)})가 시공 시작(${fmt(j.i.start)})보다 늦어요.</p>`:""}</div>`;
   h+=qcHtml(j);
   h+=`<div class="dsec"><h3>일정</h3><dl class="kv">${kv("실측",`<span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}`)}${kv("시공",`<span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span>`)}
-    ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}</div>`;
+    ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}
+    ${qeOn("sch")?qeSchHtml(j):`<div class="jv-btns"><button class="btn ghost sm" type="button" data-qe="sch">일정 바꾸기</button></div>`}${qeDone("sch")}</div>`;
   if(j.f.extra.length)h+=`<div class="dsec"><h3>마감 추가 투입</h3>${li(j.f.extra.map(x=>`<span class="d">${fmtW(x.date)}</span> ${+x.people}명${x.note?` · ${esc(x.note)}`:""}`))}</div>`;
-  if(j.f.as.length)h+=`<div class="dsec"><h3>AS</h3>${li(j.f.as.map(a=>`<span class="d">${fmtW(a.date)}</span> 담당 ${esc(a.crew||"미정")}${a.note?` · ${esc(a.note)}`:""} ${a.done?`<span class="tag ok">완료</span>`:`<span class="tag soon">예정</span>`}`))}</div>`;
+  if(j.f.as.length||ended(j)||(j.i.start&&j.i.start<=TODAY)||qeOn("as"))h+=`<div class="dsec"><h3>AS</h3>${li(j.f.as.map(a=>`<span class="d">${fmtW(a.date)}</span> 담당 ${esc(a.crew||"미정")}${a.note?` · ${esc(a.note)}`:""} ${a.done?`<span class="tag ok">완료</span>`:`<span class="tag soon">예정</span>`}`))}
+    ${qeOn("as")?qeAsHtml(j):`<div class="jv-btns"><button class="btn ghost sm" type="button" data-qe="as">+ AS 접수</button></div>`}${qeDone("as")}</div>`;
+  h+=jvPhotos(j);
   h+=`<div class="dsec"><h3>현장 출입</h3><dl class="kv">${kv("공동현관",esc(j.i.gate)||"—")}${kv("세대현관",esc(j.i.door)||"—")}${kv("담당자",j.i.mgr.map(esc).join(", ")||"—")}</dl>
     <div class="jv-btns"><button class="btn ghost sm" type="button" data-msg="${esc(j.id)}">시공자 문자 복사</button>${c?`<button class="btn ghost sm" type="button" data-clmsg="${esc(j.id)}">체크리스트 문자 복사</button>`:""}</div></div>`;
   const more=[kv("가전",apps.map(a=>esc(`${NEST_CL.typeName(NEST_CL.appType(a))}${a.model?` ${a.model}`:""}`)).join(", ")),kv("체크리스트",c?(clTag(j)||(c.status==="submitted"?`<span class="tag ok">제출됨</span>`:`<span class="tag wait">링크 보냄</span>`)):""),kv("파일",fileCount(j))].join("");
@@ -329,7 +332,68 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const money=isAdmin&&billTotal(moneyOf(j.id))>0?` 수금·매입은 정산에서 따로 마무리해요 (${settledM(moneyOf(j.id))?"정산 종료":"정산 중"}).`:"";
   h+=`<div class="dsec jv-stage">${ended(j)?`<p class="sub" style="margin:0">${j.f.closed?`${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"종료 현장으로 옮겨졌어요":"종료 처리됐어요"}`:"시공 마감 완료라 종료 현장이에요"}.${money}</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div>`
     :`<p class="sub" style="margin:0">시공 마감 완료를 체크하면 종료 현장으로 넘어가요.${money}</p><div><button class="btn ghost sm" type="button" id="jvEnd">지금 종료 처리</button></div>`}</div>`;
-  $("jvBody").innerHTML=h;}
+  const kp={},foc=document.activeElement&&document.activeElement.closest&&document.activeElement.closest("#jvBody")?document.activeElement.dataset.keep:"";
+  if($("jvBody").dataset.jid===j.id)$("jvBody").querySelectorAll("[data-keep]").forEach(el=>{kp[el.dataset.keep]=el.type==="checkbox"?el.checked:el.value;});
+  $("jvBody").innerHTML=h;$("jvBody").dataset.jid=j.id;
+  $("jvBody").querySelectorAll("[data-keep]").forEach(el=>{const v=kp[el.dataset.keep];if(v===undefined)return;if(el.type==="checkbox")el.checked=v;else el.value=v;});
+  if(foc){const el=[...$("jvBody").querySelectorAll("[data-keep]")].find(x=>x.dataset.keep===foc);if(el)el.focus({preventScroll:true});}
+  const imgs=[...$("jvBody").querySelectorAll("img[data-path]:not([src])")];if(imgs.length)signed(imgs.map(i=>i.dataset.path)).then(us=>imgs.forEach((i,k)=>{if(us[k])i.src=us[k]}));}
+/* 현장 보기에서 바로: 일정 바꾸기 · AS 접수 · 사진 올리기. 수정 화면 없이 그 칸(jobs.m/i/f, 사진 파일)만 저장 */
+let qe={jid:"",k:"",err:"",warn:"",warnKey:"",done:null};
+const qeOn=k=>qe.jid===viewing&&qe.k===k;
+function qeDone(k){return qe.jid===viewing&&qe.done&&qe.done.k===k?`<div class="qc-done"><span>✓ ${qe.done.l}</span><button type="button" class="linkish" data-qe-undo>되돌리기</button></div>`:"";}
+function clashFor(j,ni){const hits={},off=ni.off||[];
+  spanDays(ni).filter(d=>!off.includes(d)).forEach(d=>{const cs=Array.isArray(ni.days&&ni.days[d])?ni.days[d]:ni.crew;
+    cs.forEach(c=>jobs.forEach(o=>{if(o.id===j.id)return;const busy=(crewOn(o,d).includes(c)&&workDays(o).includes(d))||o.f.as.some(a=>!a.done&&a.crew===c&&a.date===d);
+      if(busy)(hits[c+"\u0000"+o.id]??={c,o,ds:[]}).ds.push(d);}));});
+  return Object.values(hits);}
+async function jobWrite(j,patch){const {error}=await sb.from("jobs").update({...patch,updated_at:new Date().toISOString()}).eq("id",j.id);if(error)return false;Object.assign(j,patch);laborCache=null;return true;}
+function qeSchHtml(j){const names=[...new Set([...CREW,...j.i.crew])];
+  return`<div class="qe"><div class="qe-grid"><label>실측일<input type="date" id="qe-m" data-keep="m" value="${esc(j.m.date)}"></label><label>시공 시작<input type="date" id="qe-s" data-keep="s" value="${esc(j.i.start)}"></label><label>시공 끝<input type="date" id="qe-e" data-keep="e" value="${esc(j.i.end)}"></label></div>
+    <div class="qe-crew"><span class="lbl">시공자</span>${names.map(n=>`<label class="qe-chk"><input type="checkbox" value="${esc(n)}" data-keep="c:${esc(n)}"${j.i.crew.includes(n)?" checked":""}>${esc(n)}</label>`).join("")}<input id="qe-new" data-keep="new" placeholder="새 이름 추가" aria-label="새 시공자 이름"></div>
+    ${dayCustom(j)?`<p class="hint" style="margin:0">날짜별로 따로 정한 시공자·쉬는 날은 새 기간 안에 있는 날만 남아요. 날짜별로 바꾸려면 <b>수정</b>에서 해요.</p>`:""}
+    ${qe.warn?`<div class="ms-warn">같은 날 다른 현장에도 잡혀 있어요.<ul>${qe.warn}</ul>한 번 더 누르면 그대로 저장돼요.</div>`:""}${qe.err?`<p class="err">${qe.err}</p>`:""}
+    <div class="qe-btns"><button class="btn sm" type="button" data-qe-save="sch">${qe.warn?"그래도 저장":"저장"}</button><button class="btn ghost sm" type="button" data-qe-cancel>취소</button></div></div>`;}
+function qeAsHtml(j){const opts=["",...CREW].map(c=>`<option value="${esc(c)}">${c?esc(c):"담당 미정"}</option>`).join("");
+  return`<div class="qe"><div class="qe-grid"><label>AS 날짜<input type="date" id="qe-ad" data-keep="ad"></label><label>담당<select id="qe-ac" data-keep="ac">${opts}</select></label><label class="wide">내용<input id="qe-an" data-keep="an" placeholder="예: 도어 경첩 조정"></label></div>
+    ${qe.err?`<p class="err">${qe.err}</p>`:""}<div class="qe-btns"><button class="btn sm" type="button" data-qe-save="as">접수</button><button class="btn ghost sm" type="button" data-qe-cancel>취소</button></div></div>`;}
+function jvPhotos(j){const all=photosOf(j.id),rec=[...all].sort((a,b)=>(b.created_at||"").localeCompare(a.created_at||"")),show=rec.slice(0,8),more=rec.length-show.length;
+  const up=pending.filter(p=>p.kind==="photo"&&p.jid===j.id).length,tu=f=>urlCache.get(f.thumb||f.path)?.url||"";
+  return`<div class="dsec jv-ph"><h3>사진 ${all.length?`<span class="hint">${all.length}장</span>`:""}</h3>
+    ${show.length?`<div class="ph-grid jv-phg">${show.map(f=>`<button type="button" class="ph" data-ph="${esc(f.id)}" aria-label="${esc(stageOf(f))} 사진 ${fmt((f.created_at||"").slice(0,10))}"><img alt="" data-path="${esc(f.thumb||f.path)}"${tu(f)?` src="${esc(tu(f))}"`:""}><span class="ph-st">${esc(stageOf(f))}</span></button>`).join("")}${more?`<button type="button" class="ph ph-more" data-ph="${esc(all[0].id)}">+${more}장<br>전체 보기</button>`:""}</div>`
+      :`<p class="hint" style="margin:0">아직 사진이 없어요. 실측·시공 전후·마감 사진을 남겨 두면 AS 때 도움이 돼요.</p>`}
+    ${up?`<p class="hint" style="margin:0">사진 ${up}장 올리는 중…</p>`:""}${qe.jid===j.id&&qe.phErr?`<p class="err">${esc(qe.phErr)}</p>`:""}
+    <div class="jv-btns jv-phbtns"><select id="qe-phs" data-keep="phs" aria-label="사진 단계">${STAGES.map(x=>`<option${x===guessStage(j)?" selected":""}>${x}</option>`).join("")}</select><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="jvpick"></label><label class="btn ghost sm">앨범에서<input type="file" accept="image/*" multiple class="jvpick"></label></div></div>`;}
+function qeSaveSch(btn){const j=jobs.find(x=>x.id===viewing);if(!j)return;
+  const md=$("qe-m").value,s=$("qe-s").value;let e=$("qe-e").value;if(!s)e="";else if(!e)e=s;
+  if(s&&e<s){qe.err="시공 끝 날짜가 시작보다 빨라요.";qe.warn="";renderView();return;}
+  const nn=$("qe-new").value.trim(),crew=[...new Set([...$("jvBody").querySelectorAll(".qe-crew input[type=checkbox]:checked")].map(x=>x.value).concat(nn?[nn]:[]))];
+  const base={...j.i,start:s,end:e,crew},span=spanDays(base),days={};span.forEach(d=>{const x=(j.i.days||{})[d];if(Array.isArray(x))days[d]=x;});
+  const pat={start:s,end:e,crew,days,off:(j.i.off||[]).filter(d=>span.includes(d))},hits=clashFor(j,{...base,...pat}),key=JSON.stringify([md,pat]);
+  if(hits.length&&qe.warnKey!==key){qe.warn=hits.map(h=>`<li><b>${esc(h.c)}</b> · ${h.ds.sort().map(fmtW).join(", ")} · ${esc(h.o.name)}</li>`).join("");qe.warnKey=key;qe.err="";renderView();return;}
+  btn.disabled=true;const prev={md:j.m.date,i:{start:j.i.start,end:j.i.end,crew:j.i.crew,days:j.i.days||{},off:j.i.off||[]}};
+  qcRun(j.id,async j=>{const ok=await jobWrite(j,{m:{...j.m,date:md},i:{...j.i,...pat}});
+    if(ok){if(nn&&!CREW.includes(nn)){CREW.push(nn);try{await sb.from("crew").upsert({name:nn})}catch(e){}}
+      qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:{k:"sch",l:"일정을 바꿨어요",fn:x=>({m:{...x.m,date:prev.md},i:{...x.i,...prev.i}})}};if(isAdmin)autoDue();}
+    else{qe.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";}
+    render();});}
+function qeSaveAs(btn){const j=jobs.find(x=>x.id===viewing);if(!j)return;const a={date:$("qe-ad").value,crew:$("qe-ac").value,note:$("qe-an").value.trim(),done:false};
+  if(!a.note&&!a.date){qe.err="날짜나 내용을 넣어 주세요.";renderView();return;}
+  btn.disabled=true;
+  qcRun(j.id,async j=>{const ok=await jobWrite(j,{f:{...j.f,as:[...j.f.as,a]}});
+    if(ok)qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:{k:"as",l:`AS 접수했어요${a.date?` (${fmt(a.date)})`:""}`,fn:x=>{const n=x.f.as.map((y,i)=>!y.done&&y.date===a.date&&(y.crew||"")===a.crew&&(y.note||"")===a.note?i:-1).filter(i=>i>=0).pop();return n===undefined?null:{f:{...x.f,as:x.f.as.filter((y,i)=>i!==n)}};}}};
+    else qe.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";
+    render();});}
+$("jvBody").addEventListener("click",e=>{
+  const o=e.target.closest("[data-qe]");if(o){qe={jid:viewing,k:o.dataset.qe,err:"",warn:"",warnKey:"",done:null};renderView();if(o.dataset.qe==="as"&&$("qe-an"))$("qe-an").focus({preventScroll:true});return;}
+  if(e.target.closest("[data-qe-cancel]")){qe={...qe,k:"",err:"",warn:"",warnKey:""};renderView();return;}
+  const u=e.target.closest("[data-qe-undo]");if(u&&qe.done){const d=qe.done;u.disabled=true;
+    qcRun(viewing,async j=>{const pt=d.fn(j),ok=pt?await jobWrite(j,pt):true;qe={...qe,done:null,err:ok?"":"되돌리지 못했어요. 다시 눌러 주세요."};if(ok&&isAdmin&&d.k==="sch")autoDue();render();});return;}
+  const sv=e.target.closest("[data-qe-save]");if(!sv)return;if(sv.dataset.qeSave==="sch")qeSaveSch(sv);else qeSaveAs(sv);});
+document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("jvpick"))return;const jid=viewing;
+  const list=[...inp.files].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)),st=$("qe-phs")?$("qe-phs").value:"기타";inp.value="";
+  if(qe.jid===jid)qe.phErr="";
+  for(const f of list)await uploadPhoto(jid,f,st,m=>{if(qe.jid===jid)qe.phErr=m;});});
 /* 바로 체크: '수정'에 들어가지 않고 보기 화면에서 실측 완료 · 입금 확인(관리자) · 시공 마감 완료 · AS 완료를 체크.
    체크하면 바로 저장되고 그 체크칸은 사라짐. 잘못 눌렀을 때를 위해 이 화면을 닫기 전까지는 '되돌리기'가 남음 */
 let qc={jid:"",done:[],err:""},qcQ=Promise.resolve();
@@ -413,7 +477,7 @@ function renderMoneyView(j){const m=moneyOf(j.id),b=billTotal(m),u=unpaidOf(m),n
   h+=`<div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="site">현장 내용 보기</button></div>`;
   // 매입 입력 중에 화면이 다시 그려져도 적던 값은 그대로
   const MSF=["ms-cat","ms-amt","ms-v","ms-due","ms-note"],keep=MSF.map(id=>$(id)?$(id).value:null),foc=document.activeElement&&document.activeElement.id;
-  $("jvBody").innerHTML=h;
+  $("jvBody").innerHTML=h;$("jvBody").dataset.jid="";
   MSF.forEach((id,i)=>{if($(id)&&keep[i]!==null)$(id).value=keep[i];});if(foc&&foc.startsWith("ms-")&&$(foc))$(foc).focus({preventScroll:true});}
 $("jvBody").addEventListener("click",e=>{const vm=e.target.closest("[data-vmode]");if(vm){viewMode=vm.dataset.vmode;msAdd=false;renderView();$("jobSheet").querySelector(".sheet-card").scrollTop=0;return;}
   if(e.target.closest("[data-msadd]")){msAdd=true;msErr="";renderView();if($("ms-amt"))$("ms-amt").focus();return;}
@@ -1680,7 +1744,7 @@ function guessStage(j){if(j.f.done)return"AS";if(!j.i.start||j.i.start>TODAY)ret
 const previews=new Map();
 function renderPhotos(){
   const saved=editing?photosOf(editing.id):[];
-  const wait=pending.filter(p=>p.kind==="photo");
+  const wait=pending.filter(p=>p.kind==="photo"&&(!p.jid||(editing&&p.jid===editing.id)));
   previews.forEach((u,f)=>{if(!wait.some(p=>p.file===f)){URL.revokeObjectURL(u);previews.delete(f);}});
   const thumbUrl=f=>urlCache.get(f.thumb||f.path)?.url||"";
   const h=STAGES.map(s=>{const a=saved.filter(f=>stageOf(f)===s),b=wait.filter(p=>p.stage===s);if(!a.length&&!b.length)return"";
@@ -1696,8 +1760,8 @@ function loadImg(file){return new Promise((res,rej)=>{const u=URL.createObjectUR
 function toJpeg(img,max,q){const s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement("canvas");
   c.width=Math.max(1,Math.round(img.naturalWidth*s));c.height=Math.max(1,Math.round(img.naturalHeight*s));c.getContext("2d").drawImage(img,0,0,c.width,c.height);
   return new Promise(res=>c.toBlob(res,"image/jpeg",q));}
-async function uploadPhoto(jobId,file,stage){
-  const tmp={kind:"photo",file,stage,busy:true};pending.push(tmp);renderPhotos();
+async function uploadPhoto(jobId,file,stage,onErr){
+  const tmp={kind:"photo",file,stage,busy:true,jid:jobId};pending.push(tmp);renderPhotos();if(viewing===jobId)renderView();
   const up=(p,b)=>sb.storage.from(BUCKET).upload(p,b,{contentType:b.type||"image/jpeg",upsert:false});
   let path="",thumb="",stored=false;
   try{
@@ -1713,7 +1777,7 @@ async function uploadPhoto(jobId,file,stage){
     if(data&&data[0]&&!files.find(f=>f.id===data[0].id))files.push(data[0]);
   }catch(e){
     if(stored)await sb.storage.from(BUCKET).remove([path,thumb].filter(Boolean));
-    showErr(!migrated?"사진을 올리려면 Supabase 업데이트가 먼저 필요해요. 위쪽 안내를 봐 주세요.":`"${file.name||"사진"}"을 올리지 못했어요. 인터넷 연결을 확인하고 다시 올려 주세요.`);}
+    const msg=!migrated?"사진을 올리려면 Supabase 업데이트가 먼저 필요해요. 위쪽 안내를 봐 주세요.":`"${file.name||"사진"}"을 올리지 못했어요. 인터넷 연결을 확인하고 다시 올려 주세요.`;(onErr||showErr)(msg);}
   finally{pending=pending.filter(p=>p!==tmp);renderPhotos();render();}
 }
 document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("phpick"))return;
