@@ -154,8 +154,10 @@ const fsize=b=>b>=1048576?(b/1048576).toFixed(1)+"MB":Math.max(1,Math.round(b/10
 
 /* 위쪽 분류: 누르면 현장 목록을 그 분류만 보여 줌 (다시 누르면 전체). 기본은 종료 현장을 뺀 전체 */
 let boardCat="";
-function catDefs(){const m=crewMap(TODAY,addDays(TODAY,60)),clash=new Set();
+function clashIds(){const m=crewMap(TODAY,addDays(TODAY,60)),clash=new Set();
   for(const n in m){if(!n)continue;for(const d in m[n])if(clashAt(m[n][d]))m[n][d].forEach(x=>clash.add(x.j.id));}
+  return clash;}
+function catDefs(clash=clashIds()){
   return[["wait","대기중인 현장","",j=>jobStage(j)==="wait"],["run","진행중인 현장","",j=>jobStage(j)==="run"],["end","종료 현장","",j=>jobStage(j)==="end"],
     ["as","AS","soon",j=>asOpen(j).length>0],["nocrew","시공자 미배정","late",j=>!ended(j)&&noCrewDays(j).some(d=>d>=TODAY)],["clash","시공자 겹침","late",j=>clash.has(j.id)]];}
 /* 진행 흐름 화면 (현장 묶음): 단계별 현장 수 + 단계별 목록과 다음 할 일. 단계를 누르면 그 단계만, 완료는 눌러야 보임 */
@@ -199,8 +201,32 @@ function render(){renderBoard();renderFlow();
   renderHome();
   if(viewing)renderView();
 }
+/* 휴대폰 현장 목록은 한 현장에 한두 줄: 윗줄 = 이름·상태·다음 날짜, 아랫줄 = 품목·주소 + 확인할 것만.
+   자세한 내용(시공자·파일·수금 등)은 현장을 누르면 보임. PC 표는 그대로 */
+function nextHtml(j){const lw=lastWork(j),wd=workDays(j);
+  if(ended(j)){const d=j.f.closed||lw;return d?`<span class="hint">종료 ${fmt(d)}</span>`:"";}
+  if(wd.includes(TODAY))return`<b class="cs-today">오늘 시공</b>${lw>TODAY?` <span class="d">~${fmtW(lw)}</span>`:""}`;
+  if(j.i.start&&j.i.start<=TODAY)return lw&&lw<TODAY?`<span class="d">시공 끝 ${fmtW(lw)}</span>`:`<span class="d">시공 중 ~${fmtW(lw)}</span>`;
+  if(j.i.start){const one=!j.i.end||j.i.end===j.i.start;return`<span class="d"><i class="dot k ${kc(j)}"></i> 시공 ${fmtW(j.i.start)}${one?"":`~${fmtW(j.i.end)}`}</span>`;}
+  if(j.m.date&&!j.m.done)return j.m.date===TODAY?`<b class="cs-today">오늘 실측</b>`:`<span class="d">실측 ${fmtW(j.m.date)}</span>`;
+  return`<span class="hint">${contracted(j)||j.m.done?"시공일 미정":"날짜 미정"}</span>`;}
+function probHtml(j,clash){const t=[];
+  if(!ended(j)){
+    if(flowStage(j)==="msr"&&j.m.date<TODAY)t.push(`<span class="tag late">실측 지남</span>`);
+    const nc=noCrewDays(j).filter(d=>d>=TODAY).length;if(nc)t.push(`<span class="tag ${noCrewSoon(j)?"late":"soon"}">시공자 미배정${nc<workDays(j).length?` ${nc}일`:""}</span>`);
+    if(clash.has(j.id))t.push(`<span class="tag late">시공자 겹침</span>`);
+    const lw=lastWork(j);if(lw&&lw<TODAY)t.push(`<span class="tag soon">마감 완료 체크 전</span>`);
+    if(prLate(j))t.push(`<span class="tag late">납기가 시공보다 늦음</span>`);}
+  t.push(asTag(j),clTag(j));
+  if(isAdmin){const m=moneyOf(j.id),u=unpaidOf(m);
+    if(u&&overdue(m).length)t.push(`<span class="tag late">수금 지연 ${won(u)}</span>`);else if(u&&ended(j))t.push(`<span class="tag soon">미수 ${won(u)}</span>`);}
+  return t.filter(Boolean).join("");}
+function cardHtml(j,clash){const s=sub(j),p=probHtml(j,clash);
+  return`<button class="card cs${noCrewSoon(j)?" flag":""}" data-j="${esc(j.id)}">
+    <span class="cs-top"><b class="cs-name">${esc(j.name)} ${stageTag(j)}</b><span class="cs-next">${nextHtml(j)}</span></span>${s||p?`
+    <span class="cs-sub">${s?`<small>${s}</small>`:""}${p}</span>`:""}</button>`;}
 function renderBoard(){
-  const cats=catDefs(),cur=cats.find(c=>c[0]===boardCat);if(!cur)boardCat="";
+  const clash=clashIds(),cats=catDefs(clash),cur=cats.find(c=>c[0]===boardCat);if(!cur)boardCat="";
   $("summary").innerHTML=cats.map(([k,label,tone,fn])=>{const n=jobs.filter(fn).length;
     return`<button class="chip ${n&&tone?tone:""}${k===boardCat?" on":""}" type="button" data-cat="${k}" aria-pressed="${k===boardCat}">${label} <b>${n}</b></button>`;}).join("");
   const q=boardQ.trim(),shown=(cur?jobs.filter(cur[3]):q?jobs:jobs.filter(j=>!ended(j))).filter(qHit),closedN=jobs.filter(ended).length;
@@ -222,15 +248,7 @@ function renderBoard(){
     <td><div class="cell">${finishTag(j)}${asTag(j)}${clTag(j)}</div></td>
     <td>${extraHtml(j)}</td>
     <td>${fileCount(j)}</td>${isAdmin?`<td>${payTag(j)}</td>`:""}</tr>`).join("");
-  $("cards").innerHTML=sorted.map(j=>`<button class="card ${noCrewSoon(j)?"flag":""}" data-j="${esc(j.id)}">
-    <div class="job"><b>${esc(j.name)} ${stageTag(j)}</b><small>${sub(j)}</small></div>
-    <dl class="kv">
-      <dt>실측</dt><dd><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</dd>
-      <dt>시공</dt><dd><span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span></dd>
-      <dt>시공자</dt><dd>${crewHtml(j)}</dd>
-      <dt>마감</dt><dd>${finishTag(j)}${extraSum(j)?extraHtml(j):""}${asTag(j)}${clTag(j)}</dd>
-      <dt>파일</dt><dd>${fileCount(j)}</dd>${isAdmin?`<dt>수금</dt><dd>${payTag(j)}</dd>`:""}
-    </dl></button>`).join("");
+  $("cards").innerHTML=sorted.map(j=>cardHtml(j,clash)).join("");
 }
 $("q").addEventListener("input",()=>{boardQ=$("q").value;renderBoard();});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("q").blur();}if(e.key==="Escape"&&$("q").value){$("q").value="";boardQ="";renderBoard();}});
@@ -1411,6 +1429,11 @@ function tab(which){if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(w
 VIEWS.forEach(v=>$("tab-"+v).onclick=()=>tab(v));
 Object.keys(GROUPS).forEach(g=>$("nav-"+g).onclick=()=>{const same=$("app").dataset.g===g,v=lastSub[g];
   if(!same)tab(GROUPS[g].includes(v)?v:GROUPS[g][0]);window.scrollTo({top:0,behavior:same?"smooth":"auto"});});
+/* 휴대폰: 아래로 내리면 + 현장 추가 단추를 내려 두고(목록 오른쪽 날짜를 안 가리게), 위로 올리거나 맨 위·맨 아래에 오면 다시 보여 줌 */
+let fabY=0;
+window.addEventListener("scroll",()=>{const y=window.scrollY,dy=y-fabY,end=y+innerHeight>=document.documentElement.scrollHeight-40;
+  if(Math.abs(dy)<6&&!end)return;fabY=y;
+  document.body.classList.toggle("fab-away",dy>0&&y>120&&!end);},{passive:true});
 /* 휴대폰에서 글자를 입력하는 동안은 아래 메뉴 막대를 숨김 (자판 위로 떠서 화면을 가리지 않게) */
 const typingEl=t=>t&&t.matches&&t.matches("textarea,input:not([type]),input[type=text],input[type=search],input[type=email],input[type=tel],input[type=url],input[type=password],input[type=number]");
 let typT;document.addEventListener("focusin",e=>{if(typingEl(e.target)){clearTimeout(typT);document.body.classList.add("typing");}});

@@ -93,6 +93,17 @@ tr:last-child td{border-bottom:0}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 @media (max-width:700px){.board{display:none}.cards{display:flex}}
+/* 휴대폰 현장 목록: 한두 줄 */
+.card.cs{gap:3px;padding:10px 2px}
+.cs-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.cs-name{font-family:var(--serif);font-size:16.5px;font-weight:500;min-width:0;overflow-wrap:anywhere}
+.cs-name .tag{font-family:var(--font);vertical-align:2px;margin-left:2px;font-weight:500}
+.cs-next{flex:none;font-size:13px;text-align:right;white-space:nowrap}
+.cs-next .d{font-size:12.5px}
+.cs-next .dot{width:8px;height:8px;vertical-align:0}
+.cs-today{color:var(--accent);font-weight:700}
+.cs-sub{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;min-width:0}
+.cs-sub small{color:var(--muted);font-size:12px;margin-right:2px;overflow-wrap:anywhere}
 /* calendar */
 .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
 .legend span{display:flex;align-items:center;gap:5px}
@@ -349,6 +360,9 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
   .subbar>.btn.fab{position:fixed;right:16px;bottom:max(20px,calc(env(safe-area-inset-bottom) + 12px));z-index:30;height:52px;padding:0 22px;border-radius:26px;font-size:15px;font-weight:700;box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 35%,transparent)}
   body.gnav-on{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
   body.typing .subbar>.btn.fab,#app:has(#form:not([hidden])) #addBtn{display:none}
+  /* 아래로 내리는 동안은 떠 있는 단추를 잠깐 내려서 목록 오른쪽(날짜)을 가리지 않게. 위로 올리거나 멈추면 다시 나옴 */
+  .subbar>.btn.fab{transition:transform .2s ease,opacity .2s ease}
+  body.fab-away .subbar>.btn.fab{transform:translateY(calc(100% + 40px));opacity:0;pointer-events:none}
   .subbar:has(.tabs.one){display:contents}
   .subbar .tabs.one{display:none}
 }
@@ -930,7 +944,7 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="cards" id="cards"></div>
     <div class="empty" id="catEmpty" hidden>이 분류에 해당하는 현장이 없어요.</div>
     <div class="empty" id="empty" hidden>아직 등록된 현장이 없어요. 위의 <b>+ 현장 추가</b>를 눌러 첫 현장을 입력해 보세요.</div>
-    <p class="sub">현장을 누르면 내용을 먼저 보여 주고, <b>수정</b>을 누르면 일정·AS·사진·도면·견적서를 고칠 수 있어요. 7일 안에 시공자가 안 정해진 날이 있으면 빨간색으로 표시됩니다.</p>
+    <p class="sub">현장을 누르면 내용을 먼저 보여 주고, 거기서 일정 바꾸기·AS 접수·사진 올리기를 바로 할 수 있어요. 휴대폰 목록에는 다음 날짜와 확인할 것만 보이고, 나머지는 현장을 누르면 보여요. 7일 안에 시공자가 안 정해진 날이 있으면 빨간색으로 표시됩니다.</p>
     <div class="backup"><button class="btn ghost sm" type="button" id="xlsBtn">엑셀로 받기</button><span class="hint" id="xlsNote"></span></div>
   </section>
 
