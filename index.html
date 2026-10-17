@@ -93,6 +93,32 @@ tr:last-child td{border-bottom:0}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 @media (max-width:700px){.board{display:none}.cards{display:flex}}
+/* 시공자 화면 */
+body.crew-on #gnav,body.crew-on .subbar,body.crew-on #summary,body.crew-on #pushBtn,body.crew-on #v-del{display:none!important}
+.mine-pv{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;background:var(--soon-bg);color:var(--soon);border-radius:8px;padding:10px 12px;font-size:13px;margin:0 0 12px}
+.mine-sub{margin:0 0 16px}
+.mine-sec{margin:0 0 22px}
+#view-mine .mine-sec>h3{font-size:13px;font-weight:600;color:var(--muted);margin:0;padding-bottom:6px;border-bottom:1px solid var(--fg)}
+.mine-sec>h3 .hint{font-weight:400}
+.mine-empty{margin:10px 2px 0}
+.mc{padding:14px 2px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:7px;min-width:0}
+#view-mine .mc h3{font-family:var(--serif);font-size:18px;font-weight:500;margin:0;overflow-wrap:anywhere}
+.mc h3 small{font-family:var(--font);font-size:13px;color:var(--muted);font-weight:400;margin-left:2px}
+.mc h3 .tag{font-family:var(--font);vertical-align:3px}
+.mc-when{font-size:14px}
+.mc .kv{grid-template-columns:70px minmax(0,1fr);font-size:14px;margin:4px 0 0;gap:6px 10px}
+.mc .kv{align-items:baseline}
+.mc a.btn{text-decoration:none}
+.mc .kv dd>span:first-child{overflow-wrap:anywhere}
+.mc-mgr{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;margin-right:8px}
+.mc-phh{font-size:13px;color:var(--muted);margin-bottom:6px}
+.mc-thumbs{grid-template-columns:repeat(4,minmax(0,1fr))}
+.mc .jv-btns{margin-top:6px}
+.nm-crew{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.nm-crew h3{font-size:14px;margin:0}
+.nm-crew .hint{margin:0;line-height:1.6}
+.nm-crow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nm-crow select{font-size:15px;height:36px;min-width:0;flex:1 1 140px}
 /* 휴대폰 현장 목록: 한두 줄 */
 .card.cs{gap:3px;padding:10px 2px}
 .cs-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
@@ -255,7 +281,7 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .fg-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .fg-btns{display:flex;gap:6px;flex-wrap:wrap}
 .fg-btns label{flex-direction:row;color:var(--fg);cursor:pointer}
-.fpick,.phpick,.specpick,.jvpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.fpick,.phpick,.specpick,.jvpick,.mpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .fg-btns label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .flist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .flist li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
@@ -919,6 +945,9 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
   </section>
 
+  <!-- 시공자 화면: 시공자 계정(내 정보에서 이름을 고른 직원 계정)은 이 화면만 보임 -->
+  <section id="view-mine" class="view" hidden><div id="mineBody"></div></section>
+
   <section id="view-home" class="view hm" hidden>
     <div class="hm-head"><h2 class="pg-title" id="hmDate"></h2><p class="hm-sum" id="hmSum"></p></div>
     <div class="tiles hm-tiles" id="hmTiles"></div>
@@ -1199,6 +1228,7 @@ th.num{font-family:var(--font);font-size:12px}
       <div class="err" id="nm-err" hidden></div>
       <div><button class="btn" id="nm-save">저장</button></div>
     </form>
+    <div class="nm-crew" id="nmCrew"></div>
     <div class="nm-out"><span class="hint">이 기기에서 나가기</span><button class="btn ghost sm" type="button" id="logoutBtn">로그아웃</button></div>
   </div>
 </div>
