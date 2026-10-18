@@ -459,6 +459,24 @@ th.num{font-family:var(--font);font-size:12px}
 .barcell{width:26%;vertical-align:middle}
 .m-only{display:none}
 .tile small+small{margin-top:-2px}
+.tile .ofr em{font-style:normal;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.tile.bad .ofr em{color:var(--late)}
+.num small.pc{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.num.neg small.pc{color:inherit}
+.sa-mix{padding:14px 2px 4px;display:flex;flex-direction:column;gap:8px}
+.sa-mix small{font-size:12px;color:var(--muted)}
+.sa-mix small.neg{color:var(--late)}
+.mixbar{display:flex;height:12px;border-radius:3px;overflow:hidden;background:color-mix(in srgb,var(--line) 60%,transparent)}
+.mixbar i{display:block;height:100%;min-width:2px}
+.mix-l{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.mix-l span{display:inline-flex;align-items:center;gap:6px}
+.mix-l b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.mix-l span.neg,.mix-l span.neg b{color:var(--late)}
+.mx-b{background:var(--muted)}
+.mx-l{background:color-mix(in srgb,var(--muted) 55%,var(--bg))}
+.mx-e{background:color-mix(in srgb,var(--muted) 25%,var(--bg))}
+.mx-p{background:var(--accent)}
+@media (max-width:380px){.tbl.fit .barcell,.tbl.fit th:empty{display:none}}
 /* 휴대폰: 표를 한 줄씩 카드처럼 */
 @media (max-width:560px){
   .tile b{font-size:19px}
@@ -479,6 +497,10 @@ th.num{font-family:var(--font);font-size:12px}
   .tbl.stack td.full{flex-basis:100%}
   .tbl.stack .barcell,.tbl.stack .d-only{display:none}
   .tbl.stack .m-only{display:inline}
+  .tbl.fit .bar{min-width:44px}
+  .tbl.fit td:first-child{white-space:nowrap}
+  .tbl.fit th.num{white-space:normal;word-break:keep-all}
+  #saCosts tr:not(.grp) td:first-child{padding-left:20px}
   .tbl.fit th,.tbl.fit td{padding:8px}
 }
 /* 수금 · 원가 입력 */
@@ -1101,18 +1123,19 @@ th.num{font-family:var(--font);font-size:12px}
   <section id="view-sales" class="view" hidden>
     <div class="filters"><select id="sa-y" aria-label="연도"></select><select id="sa-m" aria-label="월"><option value="0">1년 전체</option><option value="1">1월</option><option value="2">2월</option><option value="3">3월</option><option value="4">4월</option><option value="5">5월</option><option value="6">6월</option><option value="7">7월</option><option value="8">8월</option><option value="9">9월</option><option value="10">10월</option><option value="11">11월</option><option value="12">12월</option></select></div>
     <div class="tiles" id="saTiles"></div>
+    <div class="sa-mix" id="saMix" hidden></div>
     <div id="saYearsBox" class="view">
       <h3>연도별</h3>
-      <div class="tbl stack two"><table><thead><tr><th>연도</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th></th></tr></thead><tbody id="saYears"></tbody></table></div>
+      <div class="tbl stack two"><table><thead><tr><th>연도</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">지출</th><th class="num">순이익</th><th></th></tr></thead><tbody id="saYears"></tbody></table></div>
     </div>
     <div id="saMonthsBox" class="view">
       <h3>월별</h3>
-      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">지출</th><th class="num">순이익</th><th class="num">이익률</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>매입+시공비+지출</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
+      <div class="tbl stack two"><table><thead><tr><th>월</th><th class="num d-only">현장</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">지출</th><th class="num">순이익</th><th><span class="legend" style="gap:8px"><span><i class="dot" style="background:var(--accent)"></i>매출</span><span><i class="dot" style="background:var(--muted)"></i>매입+시공비+지출</span></span></th></tr></thead><tbody id="saMonths"></tbody></table></div>
     </div>
     <h3>현장별</h3>
-    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">현장 이익</th><th class="num">이익률</th></tr></thead><tbody id="saJobs"></tbody></table></div>
+    <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">현장 이익</th></tr></thead><tbody id="saJobs"></tbody></table></div>
     <h3>매입 · 시공비 구성 (현장 원가)</h3>
-    <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">비율</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
+    <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">매출 대비</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
     <p class="sub" id="saNote"></p>
   </section>
 

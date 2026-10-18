@@ -811,13 +811,21 @@ function renderSales(){
   const rev=a=>a.reduce((s,j)=>s+moneyOf(j.id).contract.amount,0),buy=a=>a.reduce((s,j)=>s+jobBuy(j),0),lab=a=>a.reduce((s,j)=>s+jobLabor(j),0);
   const cashIn=list=>jobs.reduce((s,j)=>s+moneyOf(j.id).pays.filter(p=>p.paid&&list.includes((p.paidOn||"").slice(0,7))).reduce((a,p)=>a+p.amount,0),0);
   const R=rev(sel),B=buy(sel),L=lab(sel),C=B+L,E=expSum(yms),P=R-C-E;
-  $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳 · 부가세 뺀 금액</small></div><div class="tile"><small>매입</small><b>${won(B)}</b><small>자재·외주·운반</small></div>
-    <div class="tile"><small>시공비</small><b>${won(L)}</b><small>시공·추가 투입 인건비</small></div>
-    <div class="tile"><small>지출 (회사 비용)</small><b>${won(E)}</b><small><button class="linkish" type="button" data-tab="exp">지출 내역 보기</button></small></div><div class="tile ${P<0?"bad":""}"><small>순이익</small><b>${won(P)}</b><small>이익률 ${pct(P,R)}</small></div>
+  const ofR=(v,t="")=>R?`<small class="ofr">매출의 <em>${pct(v,R)}</em>${t}</small>`:"";
+  $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳 · 부가세 뺀 금액</small></div><div class="tile"><small>매입</small><b>${won(B)}</b>${ofR(B)}<small>자재·외주·운반</small></div>
+    <div class="tile"><small>시공비</small><b>${won(L)}</b>${ofR(L)}<small>시공·추가 투입 인건비</small></div>
+    <div class="tile"><small>지출 (회사 비용)</small><b>${won(E)}</b>${ofR(E)}<small><button class="linkish" type="button" data-tab="exp">지출 내역 보기</button></small></div><div class="tile ${P<0?"bad":""}"><small>순이익</small><b>${won(P)}</b>${ofR(P," (이익률)")}</div>
     <div class="tile"><small>실제 들어온 돈 (입금)</small><b>${won(cashIn(yms))}</b></div>`;
+  $("saMix").hidden=!R;
+  if(R){const parts=[["b","매입",B],["l","시공비",L],["e","지출",E],["p","순이익",Math.max(P,0)]],tot=Math.max(R,C+E);
+    $("saMix").innerHTML=`<div class="mix-h"><small>매출 대비 비율 (매출 ${won(R)} = 100%)</small></div>
+      <div class="mixbar" role="img" aria-label="매입 ${pct(B,R)}, 시공비 ${pct(L,R)}, 지출 ${pct(E,R)}, 순이익 ${pct(P,R)}">${parts.filter(x=>x[2]>0).map(x=>`<i class="mx-${x[0]}" style="width:${x[2]/tot*100}%"></i>`).join("")}</div>
+      <div class="mix-l">${[["b","매입",B],["l","시공비",L],["e","지출",E],["p","순이익",P]].map(x=>`<span class="${x[0]==="p"&&P<0?"neg":""}"><i class="dot mx-${x[0]}"></i>${x[1]} <b>${pct(x[2],R)}</b></span>`).join("")}</div>
+      ${P<0?`<small class="neg">비용이 매출보다 ${won(-P)} 많아요.</small>`:""}`;}
   $("saYearsBox").hidden=!!salesM;$("saMonthsBox").hidden=!!salesM;
+  const pc=(v,r)=>r&&v?`<small class="pc">${pct(v,r)}</small>`:"";
   const row=(label,attr,n,r,b,l,e,max)=>{const c=b+l,p=r-c-e,any=r||c||e;
-    return`<tr ${attr} tabindex="0" class="${any?"":"zero"}"><td class="job"><b>${label}</b>${n?`<small class="m-only">${n}곳</small>`:""}</td><td class="num d-only">${n||""}</td><td class="num" data-l="매출">${r?won(r):"—"}</td><td class="num" data-l="매입">${b?won(b):"—"}</td><td class="num" data-l="시공비">${l?won(l):"—"}</td><td class="num" data-l="지출">${e?won(e):"—"}</td><td class="num ${p<0?"neg":""}" data-l="순이익">${any?won(p):"—"}</td><td class="num" data-l="이익률">${r?pct(p,r):"—"}</td><td class="barcell">${bar(r,max)}${bar(c+e,max,"cost")}</td></tr>`;};
+    return`<tr ${attr} tabindex="0" class="${any?"":"zero"}"><td class="job"><b>${label}</b>${n?`<small class="m-only">${n}곳</small>`:""}</td><td class="num d-only">${n||""}</td><td class="num" data-l="매출">${r?won(r):"—"}</td><td class="num" data-l="매입">${b?won(b):"—"}${pc(b,r)}</td><td class="num" data-l="시공비">${l?won(l):"—"}${pc(l,r)}</td><td class="num" data-l="지출">${e?won(e):"—"}${pc(e,r)}</td><td class="num ${p<0?"neg":""}" data-l="순이익">${any?won(p):"—"}${pc(p,r)}</td><td class="barcell">${bar(r,max)}${bar(c+e,max,"cost")}</td></tr>`;};
   if(!salesM){
     const ys=[...years].sort((a,b)=>a-b).map(y=>{const ym=yearMonths(y),js=counted.filter(j=>ym.includes(jobMonth(j)));return{y,n:js.length,r:rev(js),b:buy(js),l:lab(js),e:expSum(ym)};});
     const ymax=Math.max(1,...ys.map(x=>Math.max(x.r,x.b+x.l+x.e)));
@@ -826,14 +834,14 @@ function renderSales(){
     const max=Math.max(1,...months.map(x=>Math.max(x.r,x.b+x.l+x.e)));
     $("saMonths").innerHTML=months.map(x=>row(`${x.k}월`,`data-month="${x.k}"`,x.n,x.r,x.b,x.l,x.e,max)).join("");}
   $("saJobs").innerHTML=sel.length?[...sel].sort((a,b)=>jobMonth(a).localeCompare(jobMonth(b))).map(j=>{const m=moneyOf(j.id),r=m.contract.amount,b=jobBuy(j),l=jobLabor(j),c=b+l,auto=autoCosts(j,m).length;
-    return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small><small class="m-only">${sub(j)?" · ":""}${+jobMonth(j).slice(5)}월 기준</small></td><td class="d-only"><span class="d">${+jobMonth(j).slice(5)}월</span></td><td class="num" data-l="매출">${won(r)}</td><td class="num" data-l="매입">${won(b)}${!m.costs.some(x=>!isLabor(x))?` <span class="tag wait">미입력</span>`:""}</td><td class="num" data-l="시공비">${won(l)}${auto?` <span class="tag wait" title="시공 인건비를 일정 × 일당으로 자동 계산">자동</span>`:!l?` <span class="tag wait">미입력</span>`:""}</td><td class="num ${r-c<0?"neg":""}" data-l="현장 이익">${won(r-c)}</td><td class="num" data-l="이익률">${pct(r-c,r)}</td></tr>`}).join("")
-    :`<tr><td colspan="7" class="hint">이 기간에 계약금액이나 매입·시공비를 넣은 현장이 없어요.</td></tr>`;
+    return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small><small class="m-only">${sub(j)?" · ":""}${+jobMonth(j).slice(5)}월 기준</small></td><td class="d-only"><span class="d">${+jobMonth(j).slice(5)}월</span></td><td class="num" data-l="매출">${won(r)}</td><td class="num" data-l="매입">${won(b)}${!m.costs.some(x=>!isLabor(x))?` <span class="tag wait">미입력</span>`:""}${pc(b,r)}</td><td class="num" data-l="시공비">${won(l)}${auto?` <span class="tag wait" title="시공 인건비를 일정 × 일당으로 자동 계산">자동</span>`:!l?` <span class="tag wait">미입력</span>`:""}${pc(l,r)}</td><td class="num ${r-c<0?"neg":""}" data-l="현장 이익">${won(r-c)}${pc(r-c,r)}</td></tr>`}).join("")
+    :`<tr><td colspan="6" class="hint">이 기간에 계약금액이나 매입·시공비를 넣은 현장이 없어요.</td></tr>`;
   const cats=COST_CATS.map(c=>({c,v:sel.reduce((s,j)=>s+jobCosts(j).filter(x=>x.cat===c).reduce((a,x)=>a+x.amount,0),0)})).filter(x=>x.v);
-  const catRows=(list,tot,head)=>list.length?`<tr class="grp"><td><b>${head}</b></td><td class="num"><b>${won(tot)}</b></td><td class="num">${pct(tot,C)}</td><td></td></tr>`+list.map(x=>`<tr><td>${esc(x.c)}</td><td class="num">${won(x.v)}</td><td class="num">${pct(x.v,C)}</td><td class="barcell">${bar(x.v,C,"cost")}</td></tr>`).join(""):"";
+  const catRows=(list,tot,head)=>list.length?`<tr class="grp"><td><b>${head}</b></td><td class="num"><b>${won(tot)}</b></td><td class="num">${pct(tot,R)}</td><td class="barcell">${bar(tot,R)}</td></tr>`+list.map(x=>`<tr><td>${esc(x.c)}</td><td class="num">${won(x.v)}</td><td class="num">${pct(x.v,R)}</td><td class="barcell">${bar(x.v,R,"cost")}</td></tr>`).join(""):"";
   $("saCosts").innerHTML=cats.length?catRows(cats.filter(x=>!LABOR_CATS.includes(x.c)),B,"매입")+catRows(cats.filter(x=>LABOR_CATS.includes(x.c)),L,"시공비")
     :`<tr><td colspan="4" class="hint">매입·시공비 기록이 없어요.</td></tr>`;
   renderExpenses(yms,E);
-  $("saNote").textContent=`매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 매입은 자재비·외주·가공·운반 등이고, 시공비는 시공 인건비와 추가 투입 인건비예요. 현장 매출·매입·시공비의 기준 달은 시공을 시작한 달이고(10월 30일 시작이면 10월), 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
+  $("saNote").textContent=`매입·시공비·지출·순이익 밑의 %는 그 기간 매출에 대한 비율이에요(매출 100원 중 몇 원인지). 매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 매입은 자재비·외주·가공·운반 등이고, 시공비는 시공 인건비와 추가 투입 인건비예요. 현장 매출·매입·시공비의 기준 달은 시공을 시작한 달이고(10월 30일 시작이면 10월), 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
 }
 function renderExpenses(yms,E){
   $("exUpdate").hidden=pay09;$("exBody").hidden=!pay09;$("exFilt").hidden=!pay09;if(!pay09)return;
@@ -1911,13 +1919,13 @@ function backupSheets(){
       rows:[...expenses].sort((a,b)=>a.day.localeCompare(b.day)).map(x=>[x.day,x.cat,x.amount,x.note,OX(x.repeat),x.until])});
     const ys=[...new Set([...jobs.map(j=>jobMonth(j).slice(0,4)),...expenses.map(x=>x.day.slice(0,4))].filter(Boolean))].sort(),fin=[];
     ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),b=js.reduce((a,j)=>a+jobBuy(j),0),l=js.reduce((a,j)=>a+jobLabor(j),0),e=expSum([ym]);
-      if(r||b||l||e)fin.push([ym,js.length||"",r,b,l,e,r-b-l-e]);}));
+      const q=v=>r?pct(v,r):"";if(r||b||l||e)fin.push([ym,js.length||"",r,b,l,e,r-b-l-e,q(b),q(l),q(e),q(r-b-l-e)]);}));
     if(ests.length){const list2=[...ests].sort((x,y)=>(x.d.date||"").localeCompare(y.d.date||"")||x.d.ver-y.d.ver),jn=id=>(jobs.find(j=>j.id===id)||{}).name||"";
       sheets.push({name:"견적",cols:[["견적번호",14,"s"],["차수",6,"n"],["견적일",12,"d"],["업체",16,"s"],["연락처",14,"s"],["담당",10,"s"],["프로젝트",24,"s"],["현장",20,"s"],["연결된 현장",16,"s"],["부가세",10,"s"],["공급가 합계",14,"w"],["특별 할인",12,"w"],["단수 조정",12,"w"],["부가세 금액",12,"w"],["총 견적금액",14,"w"],["상태",8,"s"],["고객이 연 횟수",8,"n"]],
         rows:list2.map(e=>{const t=E.calc(e.d);return[e.d.no,e.d.ver,e.d.date,e.d.cust.name,e.d.cust.phone,e.d.cust.mgr,e.d.title,e.d.cust.addr,jn(e.job_id),E.VAT[e.d.vat],t.supply,t.disc,t.adj,t.vat,t.total,EST_ST[e.status],e.views||""];})});
       sheets.push({name:"견적 품목",cols:[["견적번호",14,"s"],["차수",6,"n"],["업체",16,"s"],["공간",14,"s"],["품목",24,"s"],["규격",22,"s"],["소재 · 마감",26,"s"],["하드웨어",18,"s"],["수량",7,"n"],["단위",6,"s"],["단가",13,"w"],["금액",14,"w"],["비고",20,"s"]],
         rows:list2.flatMap(e=>{let sec="";return e.d.rows.flatMap(r=>{if(r.t==="h"){sec=r.name;return[];}return[[e.d.no,e.d.ver,e.d.cust.name,sec,r.name,r.spec,r.mat,r.hw,r.qty||"",r.unit,r.price,E.lineAmt(r),r.note]];});})});}
-    if(fin.length)sheets.push({name:"월별 결산",cols:[["월",9,"s"],["현장",7,"n"],["매출",14,"w"],["매입",14,"w"],["시공비",14,"w"],["지출",14,"w"],["순이익",14,"w"]],rows:fin});}
+    if(fin.length)sheets.push({name:"월별 결산",cols:[["월",9,"s"],["현장",7,"n"],["매출",14,"w"],["매입",14,"w"],["시공비",14,"w"],["지출",14,"w"],["순이익",14,"w"],["매입 %",8,"s"],["시공비 %",8,"s"],["지출 %",8,"s"],["순이익 %",9,"s"]],rows:fin});}
   const clRows=[];
   list.forEach(j=>{const c=clOf(j.id);if(!c)return;const d=c.data||{},it=d.items||{},dims=d.dims||{},day=(c.submitted_at||"").slice(0,10),st=c.status==="submitted"?"제출":"작성 중";
     NEST_CL.sections(j).forEach(sec=>{
