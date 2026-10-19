@@ -183,8 +183,15 @@ body.crew-on #gnav,body.crew-on .subbar,body.crew-on #summary,body.crew-on #push
 .cal .day:hover{box-shadow:inset 0 0 0 1px var(--accent)}
 .cal .day.sel{box-shadow:inset 0 0 0 2px var(--accent)}
 .cal .day:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.cal .wk{grid-column:1/-1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));--nh:30px}
+.cal .wk>.day{grid-row:1/-1}
+.cal .wk>.ev{z-index:1;pointer-events:none;align-self:start;min-width:0;margin:0 5px 3px}
+.cal .wk>.ev.jl{margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0;padding-left:8px}
+.cal .wk>.ev.jr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.cal .wk>.ev.sub{box-shadow:inset 1px 0 0 color-mix(in srgb,var(--surface) 70%,transparent)}
 @media (max-width:900px){.cal .day{min-height:110px}.cal .ev{font-size:11.5px;padding:1px 4px}}
-@media (max-width:560px){.cal .day{min-height:88px;padding:3px;gap:2px}.cal .ev{font-size:10.5px;padding:1px 3px}.cal .day .n{font-size:12px}.cal .evc,.cal .evp{display:none}#view-cal .calhead h2{font-size:18px}}
+@media (max-width:560px){.cal .day{min-height:88px;padding:3px;gap:2px}.cal .ev{font-size:10.5px;padding:1px 3px}.cal .day .n{font-size:12px}.cal .evc,.cal .evp{display:none}#view-cal .calhead h2{font-size:18px}
+  .cal .wk{--nh:22px}.cal .wk>.ev{margin:0 2px 2px}.cal .wk>.ev.jl{margin-left:0;padding-left:4px}.cal .wk>.ev.jr{margin-right:0}.cal .ev.w3 .evc{display:inline}}
 /* 날짜를 누르면 뜨는 그날 일정 */
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(20,18,16,.45);display:flex;align-items:center;justify-content:center;padding:16px}
 .sheet-card{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:16px;width:min(520px,100%);max-height:min(80vh,720px);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
@@ -1032,7 +1039,7 @@ th.num{font-family:var(--font);font-size:12px}
       <span><i class="dot" style="border:1px solid var(--fg)"></i>마감 추가 투입</span>
     </div>
     <div class="cal" id="cal"></div>
-    <p class="sub">날짜를 누르면 그날 어느 현장에 일정이 있는지 보여요. 일정 수정은 현장 목록에서 현장을 눌러서 해요.</p>
+    <p class="sub">같은 현장의 시공일은 막대 하나로 이어서 보여요. 막대 안에 세로줄이 있으면 그날부터 시공자가 바뀐 거예요. 날짜를 누르면 그날 어느 현장에 일정이 있는지 보여요. 일정 수정은 현장 목록에서 현장을 눌러서 해요.</p>
   </section>
 
   <section id="view-crew" class="view" hidden>

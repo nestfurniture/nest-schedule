@@ -262,21 +262,32 @@ function dayItems(ds){const out=[];
   jobs.forEach(j=>j.f.as.forEach(a=>{if(a.date===ds)out.push({t:"a",j,a});}));
   jobs.forEach(j=>j.f.extra.forEach(x=>{if(x.date===ds)out.push({t:"x",j,x});}));
   return out;}
+/* 같은 현장의 연속된 시공일은 한 주 안에서 막대 하나로 이어서 그림. 그날 시공자가 바뀌면 막대 안에서 나눠 표시 */
 function renderCal(){
   $("calTitle").textContent=`${calY}년 ${calM+1}월`;
   const first=new Date(calY,calM,1),start=new Date(first);start.setDate(1-first.getDay());
   let h="일월화수목금토".split("").map(d=>`<div class="dow">${d}</div>`).join("");
-  const cells=Math.ceil((first.getDay()+new Date(calY,calM+1,0).getDate())/7)*7;
-  for(let k=0;k<cells;k++){const d=new Date(start);d.setDate(start.getDate()+k);
-    const ds=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    const items=dayItems(ds);
+  const weeks=Math.ceil((first.getDay()+new Date(calY,calM+1,0).getDate())/7),ord={i:0,m:1,a:2,x:3};
+  const wd=new Map(jobs.map(j=>[j.id,new Set(workDays(j))]));
+  for(let w=0;w<weeks;w++){
+    const dd=[...Array(7)].map((_,k)=>{const d=new Date(start);d.setDate(start.getDate()+w*7+k);return d;}),ds=dd.map(d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+    const items=[];
+    jobs.forEach(j=>{const set=wd.get(j.id);for(let k=0;k<7;k++){if(!set.has(ds[k]))continue;let e=k;while(e<6&&set.has(ds[e+1]))e++;
+      items.push({t:"i",j,s:k,e,cl:k===0&&set.has(addDays(ds[0],-1)),cr:e===6&&set.has(addDays(ds[6],1))});k=e;}});
+    ds.forEach((d,k)=>jobs.forEach(j=>{if(j.m.date===d)items.push({t:"m",j,s:k,e:k});
+      j.f.as.forEach(a=>{if(a.date===d)items.push({t:"a",j,a,s:k,e:k});});j.f.extra.forEach(x=>{if(x.date===d)items.push({t:"x",j,x,s:k,e:k});});}));
+    items.sort((a,b)=>(a.t==="i"?0:1)-(b.t==="i"?0:1)||a.s-b.s||(b.e-b.s)-(a.e-a.s)||ord[a.t]-ord[b.t]||(a.j.i.start||"").localeCompare(b.j.i.start||""));
+    const lanes=[];items.forEach(it=>{let L=0;while((lanes[L]||[]).some(o=>o.s<=it.e&&it.s<=o.e))L++;(lanes[L]=lanes[L]||[]).push(it);it.L=L;});
+    const pos=(s,e,L)=>`style="grid-column:${s+1}/${e+2};grid-row:${L+2}" data-ds="${ds.slice(s,e+1).join(" ")}"`;
     const ev=items.map(x=>{const j=x.j;
-      if(x.t==="m")return`<div class="ev m"><span class="evp">실측 </span>${short(j)}</div>`;
-      if(x.t==="i"){const cr=crewOn(j,ds),who=cr.length?cr.join("·"):"미배정";return`<div class="ev i ${kc(j)} ${cr.length?"":"none"}">${short(j)}<span class="evc"> · ${esc(who)}</span></div>`;}
-      if(x.t==="a")return`<div class="ev a ${x.a.done?"done":""}"><span class="evp">AS </span>${short(j)}<span class="evc">${x.a.crew?` · ${esc(x.a.crew)}`:""}</span></div>`;
-      return`<div class="ev x ${kc(j)}">+${+x.x.people}명 ${short(j)}</div>`;}).join("");
-    const we=d.getDay()===0||d.getDay()===6;
-    h+=`<div class="day ${d.getMonth()!==calM?"other":""} ${ds===TODAY?"today":""} ${we?"we":""} ${ds===selDay?"sel":""}" data-day="${ds}" role="button" tabindex="0" aria-label="${d.getMonth()+1}월 ${d.getDate()}일 일정 ${items.length}건"><span class="n">${d.getDate()}</span>${ev}</div>`;}
+      if(x.t==="i"){const subs=[];for(let k=x.s;k<=x.e;k++){const cr=crewOn(j,ds[k]),key=cr.join("·"),u=subs[subs.length-1];if(u&&u.key===key)u.e=k;else subs.push({s:k,e:k,key,cr});}
+        return subs.map((u,n)=>{const who=u.cr.length?u.cr.join("·"):"미배정",jl=n>0||x.cl,jr=n<subs.length-1||x.cr;
+          return`<div class="ev i ${kc(j)}${u.cr.length?"":" none"}${jl?" jl":""}${jr?" jr":""}${n>0?" sub":""}${u.e-u.s>=2?" w3":""}" ${pos(u.s,u.e,x.L)}>${n?`&#8203;<span class="evc">${esc(who)}</span>`:`${short(j)}<span class="evc"> · ${esc(who)}</span>`}</div>`;}).join("");}
+      if(x.t==="m")return`<div class="ev m" ${pos(x.s,x.e,x.L)}><span class="evp">실측 </span>${short(j)}</div>`;
+      if(x.t==="a")return`<div class="ev a ${x.a.done?"done":""}" ${pos(x.s,x.e,x.L)}><span class="evp">AS </span>${short(j)}<span class="evc">${x.a.crew?` · ${esc(x.a.crew)}`:""}</span></div>`;
+      return`<div class="ev x ${kc(j)}" ${pos(x.s,x.e,x.L)}>+${+x.x.people}명 ${short(j)}</div>`;}).join("");
+    h+=`<div class="wk" style="grid-template-rows:var(--nh)${lanes.length?` repeat(${lanes.length},auto)`:""} 1fr">`+dd.map((d,k)=>{const we=k===0||k===6,n=dayItems(ds[k]).length;
+      return`<div class="day ${d.getMonth()!==calM?"other":""} ${ds[k]===TODAY?"today":""} ${we?"we":""} ${ds[k]===selDay?"sel":""}" style="grid-column:${k+1}" data-day="${ds[k]}" role="button" tabindex="0" aria-label="${d.getMonth()+1}월 ${d.getDate()}일 일정 ${n}건"><span class="n">${d.getDate()}</span></div>`;}).join("")+ev+`</div>`;}
   $("cal").innerHTML=h;
 }
 function openDay(ds){selDay=ds;
