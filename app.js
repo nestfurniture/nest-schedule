@@ -2165,9 +2165,9 @@ function renderMine(){if(!crewAs||$("view-mine").hidden)return;
   if(h===mineLast)return;mineLast=h;
   /* 적던 일당·메모는 화면이 새로 그려져도 그대로 (같은 날짜일 때만, 저장·날짜 바꿈 뒤에는 새 값) */
   const kp={},box=$("mineBody"),foc=document.activeElement&&box.contains(document.activeElement)?document.activeElement.dataset.keep:"";
-  if(!cdFresh&&box.dataset.cd===cdD())box.querySelectorAll("[data-keep]").forEach(el=>{kp[el.dataset.keep]=el.value;});
+  if(!cdFresh&&box.dataset.cd===cdD())box.querySelectorAll("[data-keep][data-ed]").forEach(el=>{kp[el.dataset.keep]=el.value;});
   cdFresh=false;box.innerHTML=h;box.dataset.cd=cdD();
-  box.querySelectorAll("[data-keep]").forEach(el=>{if(kp[el.dataset.keep]!==undefined&&!el.disabled)el.value=kp[el.dataset.keep];});
+  box.querySelectorAll("[data-keep]").forEach(el=>{if(kp[el.dataset.keep]!==undefined&&!el.disabled){el.value=kp[el.dataset.keep];el.dataset.ed="1";}});
   if(foc){const el=box.querySelector(`[data-keep="${foc}"]`);if(el)el.focus({preventScroll:true});}
   $("mineBody").querySelectorAll(".mpick").forEach(i=>i.onchange=minePick);
   const imgs=[...$("mineBody").querySelectorAll("img[data-path]:not([src])")];if(imgs.length)signed(imgs.map(i=>i.dataset.path)).then(us=>imgs.forEach((i,k)=>{if(us[k])i.src=us[k]}));}
@@ -2176,6 +2176,8 @@ async function minePick(e){const t=e.target,jid=t.dataset.jid,k=t.dataset.mk,st=
   const list=[...t.files].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name));t.value="";if(!list.length)return;
   mineErr[k]="";for(const f of list)await uploadPhoto(jid,f,st,m=>{mineErr[k]=m;});}
 document.addEventListener("change",e=>{const s=e.target;if(s.matches&&s.matches("select[data-mst]"))mineSt[s.dataset.mst]=s.value;});
+/* 손으로 고친 칸만 다시 그릴 때 값을 지킴 (안 건드린 칸은 새 기본값을 받음) */
+["input","change"].forEach(t=>document.addEventListener(t,e=>{const el=e.target;if(el.dataset&&el.dataset.keep&&el.closest&&el.closest("#mineBody"))el.dataset.ed="1";}));
 document.addEventListener("click",async e=>{const b=e.target.closest("[data-mcl]");if(!b)return;const j=jobs.find(x=>x.id===b.dataset.mcl);if(!j)return;
   const c=clOf(j.id);if(c){window.open(clUrl(c.token),"_blank","noopener");return;}
   const w=window.open("","_blank");b.disabled=true;
@@ -2197,6 +2199,15 @@ async function loadCdays(){const {data,error}=await sb.from("crew_days").select(
 const cdD=()=>cdDay&&cdDay<=TODAY?cdDay:TODAY;
 /* 그날 내 일정(시공·AS) 현장 */
 const myJobsOn=(n,d)=>jobs.filter(j=>(workDays(j).includes(d)&&crewOn(j,d).includes(n))||j.f.as.some(a=>a.crew===n&&a.date===d));
+/* 일당 안 넣은 지난 작업일: 지난달 1일 ~ 어제 중 내 시공일·AS 날인데 등록이 없는 날 (지급 완료로 잠긴 달은 뺌). 최근 날짜 먼저 */
+function cdMissed(n){const from=addDays(TODAY.slice(0,8)+"01",-1).slice(0,8)+"01",to=addDays(TODAY,-1),by=new Map(),put=(d,j)=>{if(d>=from&&d<=to){if(!by.has(d))by.set(d,new Set());by.get(d).add(j);}};
+  jobs.forEach(j=>{myDays(j,n).forEach(d=>put(d,j));j.f.as.forEach(a=>{if(a.crew===n&&a.date)put(a.date,j);});});
+  const paidM=new Set(cdays.filter(r=>r.crew===n&&r.locked).map(r=>r.day.slice(0,7)));
+  return[...by.entries()].filter(([d])=>!cdGet(n,d)&&!paidM.has(d.slice(0,7))).sort((a,b)=>b[0].localeCompare(a[0])).map(([d,js])=>({d,js:[...js]}));}
+function mineMissed(n,pv,def){const miss=cdMissed(n);if(!miss.length)return"";
+  return`<div class="cd-miss"><h4>일당 안 넣은 날 <span class="tag late">${miss.length}일</span></h4>${pv?"":`<p class="hint">일한 날인데 아직 일당을 안 적었어요. 금액을 확인하고 <b>등록</b>을 눌러 주세요. 메모를 남기려면 날짜를 누르세요.</p>`}
+    <ul class="cd-mlist">${miss.map(x=>`<li><span class="cd-mwhen"><button type="button" class="linkish" data-cdday="${x.d}"><span class="d">${fmtW(x.d)}</span></button> <span class="hint">${x.js.map(j=>esc(j.name)).join(", ")}</span></span>${pv?"":`<span class="cd-mrow"><input class="won" inputmode="numeric" data-cdm="${x.d}" data-keep="cdm:${x.d}" value="${def}" placeholder="일당(원)" aria-label="${fmt(x.d)} 일당"><button class="btn sm" type="button" data-cdq="${x.d}">등록</button></span>`}</li>`).join("")}</ul>
+    ${!pv&&miss.length>1?`<button class="btn ghost sm" type="button" id="cd-all">${miss.length}일 모두 등록</button>`:""}</div>`;}
 function mineWage(){const n=crewAs,d=cdD(),pv=isAdmin;
   if(!day11)return pv?"":`<section class="mine-sec mine-pay"><h3>일당 등록</h3><p class="hint mine-empty">일당 등록은 사무실에서 앱 업데이트를 마치면 쓸 수 있어요.</p></section>`;
   const mine=cdays.filter(r=>r.crew===n),cur=mine.find(r=>r.day===d),last=[...mine].sort((a,b)=>b.day.localeCompare(a.day))[0],lock=!!(cur&&cur.locked),off=pv||lock;
@@ -2212,6 +2223,7 @@ function mineWage(){const n=crewAs,d=cdD(),pv=isAdmin;
       <div class="cd-btns">${pv?`<span class="hint">미리 보기에서는 등록하지 않아요.</span>`:lock?`<span class="hint">지급 완료된 날이라 고칠 수 없어요.</span>`
         :`<button class="btn sm" type="button" id="cd-save">${cur?"고쳐서 저장":"등록"}</button>${cur?`<button class="btn ghost sm" type="button" id="cd-del">지우기</button>`:""}`}</div></div>
     ${cdErr?`<p class="err">${esc(cdErr)}</p>`:""}${cdOk?`<p class="cd-ok">${cdOk}</p>`:""}
+    ${mineMissed(n,pv,last?comma(last.amount):"")}
     ${mon.length?`<details class="cd-mon"><summary>${+ym.slice(5)}월에 등록한 일당 ${mon.length}일 · 합계 ${won(sum)}</summary><ul class="cd-list">${mon.map(r=>`<li><button type="button" class="linkish" data-cdday="${r.day}"><span class="d">${fmtW(r.day)}</span></button> ${won(r.amount)}${r.note?` <span class="hint">${esc(r.note)}</span>`:""}${r.locked?` <span class="tag ok">지급 완료</span>`:""}</li>`).join("")}</ul></details>`
       :`<p class="hint mine-empty">${pv?"이 시공자가 등록한 일당이 아직 없어요.":"그날 일한 일당을 적어 두면 사무실 정산에 그대로 들어가요. 오늘까지의 날짜만 적을 수 있고, 지급 완료 전까지는 고칠 수 있어요."}</p>`}</section>`;}
 async function cdSave(btn){const n=crewAs,d=$("cd-day").value,amt=toNum($("cd-amt").value),note=$("cd-note").value.trim().slice(0,100),js=$("cd-job");
@@ -2227,8 +2239,21 @@ async function cdSave(btn){const n=crewAs,d=$("cd-day").value,amt=toNum($("cd-am
     cdErr=/23505|duplicate/i.test(t)?"이 날짜는 다른 계정으로 이미 등록돼 있어요. 사무실에 말씀해 주세요.":!res.error||/42501|row-level|policy/i.test(t)?"지급 완료된 날이라 고칠 수 없어요.":"저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";
     if(!res.error)loadCdays().then(render);mineLast="";renderMine();return;}
   cdPut(normCd(res.data[0]));cdDay=d;cdFresh=true;cdOk=`✓ ${fmtW(d)} 일당 ${won(amt)}을 ${cur?"고쳤어요":"등록했어요"}.`;mineLast="";render();}
+/* 일당 안 넣은 날: 줄마다 등록, 또는 모두 등록 (적던 다른 줄 금액은 그대로 둠) */
+async function cdQuick(days,btn){const n=crewAs;if(!n||isAdmin)return;cdOk="";cdErr="";
+  const items=days.map(d=>({d,amt:toNum((document.querySelector(`[data-cdm="${d}"]`)||{}).value||"")})),bad=items.filter(x=>!x.amt||x.amt>5000000);
+  if(bad.length){cdErr=`${bad.map(x=>fmt(x.d)).join(", ")} 일당을 원 단위로 적어 주세요. (예: 250,000)`;mineLast="";renderMine();return;}
+  if(btn)btn.disabled=true;let okN=0,sum=0;const fail=[];
+  for(const x of items){const res=await sb.from("crew_days").insert({crew:n,day:x.d,amount:x.amt,note:"",job_id:null,by_name:(userName||n).slice(0,40),updated_at:new Date().toISOString()}).select();
+    if(res.error||!res.data||!res.data[0])fail.push(x.d);else{cdPut(normCd(res.data[0]));okN++;sum+=x.amt;}}
+  if(btn&&btn.isConnected)btn.disabled=false;
+  if(fail.length){cdErr=`${fail.map(fmt).join(", ")} 일당은 저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.`;loadCdays().then(render);}
+  if(okN)cdOk=okN===1&&items.length===1?`✓ ${fmtW(items[0].d)} 일당 ${won(items[0].amt)}을 등록했어요.`:`✓ ${okN}일 일당 ${won(sum)}을 등록했어요.`;
+  mineLast="";render();}
 document.addEventListener("click",async e=>{
   if(e.target.id==="cd-save"){cdSave(e.target);return;}
+  const q=e.target.closest("[data-cdq]");if(q){cdQuick([q.dataset.cdq],q);return;}
+  if(e.target.id==="cd-all"){cdQuick([...document.querySelectorAll("#mineBody [data-cdm]")].map(i=>i.dataset.cdm),e.target);return;}
   const del=e.target.id==="cd-del"?e.target:null;
   if(del){const cur=cdGet(crewAs,cdD());if(!cur)return;
     if(del.dataset.armed!=="1"){del.dataset.armed="1";del.textContent="정말 지우기";setTimeout(()=>{if(del.isConnected){del.dataset.armed="";del.textContent="지우기";}},4000);return;}
