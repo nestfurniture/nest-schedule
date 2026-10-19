@@ -23,6 +23,9 @@ const telBtns=v=>{const n=telNum(v);return n?`<a class="btn ghost sm" href="tel:
 const WD="일월화수목금토";
 const dow=d=>new Date(d+"T12:00:00").getDay();
 const fmtW=d=>d?`${fmt(d)}<span class="wk">(${WD[dow(d)]})</span>`:"—";
+/* 실측 시간 (고객과 약속한 시각, "14:00"). 날짜 옆에 붙여 보여 줌 */
+const mT=j=>j.m.date&&j.m.time?` ${j.m.time}`:"",mAt=j=>j.m.date?fmtW(j.m.date)+mT(j):"—",byMT=(a,b)=>(a.m.time||"99").localeCompare(b.m.time||"99");
+const okTime=t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(t||"")?t:"";
 const short=j=>esc(j.name.replace(" 고객",""));
 /* 시공 작업일: 시작~종료 중 토·일은 따로 체크한 경우에만 포함, '쉬는 날'로 뺀 날은 제외 */
 function spanDays(i){const out=[];if(!i.start)return out;const end=i.end&&i.end>=i.start?i.end:i.start;
@@ -52,7 +55,7 @@ function flowStage(j){const fl=j.i.fl;
 const flowTag=j=>{const s=flowStage(j);return`<span class="tag fl-tag fl-${s}">${FLOW_NAME[s]}</span>`;};
 /* 지나온 표시: 실측 · 계약 · 도면 확정 · 생산 · 시공 · 마감 · 정산(관리자, 계약금액 있을 때) */
 function flowSteps(j){const fl=j.i.fl,lw=lastWork(j),started=!!(j.i.start&&j.i.start<=TODAY);
-  const s=[{l:"실측",ok:j.m.done,on:j.m.date,plan:j.m.date?`${fmt(j.m.date)} 예정`:"",due:j.m.date},
+  const s=[{l:"실측",ok:j.m.done,on:j.m.date,plan:j.m.date?`${fmt(j.m.date)}${mT(j)} 예정`:"",due:j.m.date},
     {l:"계약",ok:contracted(j),on:j.i.fl.ct},
     {l:"도면 확정",ok:!!fl.dw.ok,on:fl.dw.ok,plan:fl.dw.due?`${fmt(fl.dw.due)}까지`:"",due:fl.dw.due},
     {l:"생산",ok:!!fl.pr.ok,on:fl.pr.ok,plan:fl.pr.due?`납기 ${fmt(fl.pr.due)}`:"",due:fl.pr.due},
@@ -75,7 +78,7 @@ const extraSum=j=>j.f.extra.reduce((a,e)=>a+(+e.people||0),0);
 const noCrewSoon=j=>!ended(j)&&noCrewDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,7));
 const thisWeek=j=>workDays(j).some(d=>d>=TODAY&&d<=addDays(TODAY,6));
 function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.addr||"",
-  m:{date:d.m?.date||"",done:!!d.m?.done},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
+  m:{date:d.m?.date||"",done:!!d.m?.done,time:d.m?.date?okTime(d.m?.time):""},i:{start:d.i?.start||"",end:d.i?.end||"",crew:Array.isArray(d.i?.crew)?d.i.crew:[],sat:!!d.i?.sat,sun:!!d.i?.sun,color:COLORS.includes(d.i?.color)?d.i.color:"orange",
     gate:d.i?.gate||"",door:d.i?.door||"",tel:typeof d.i?.tel==="string"?d.i.tel:"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],days:normDays(d.i?.days),off:(Array.isArray(d.i?.off)?d.i.off:[]).filter(isDate),
     apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||"",...(typeof a.join==="boolean"?{join:a.join}:{})})),
     chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[],fl:normFl(d.i?.fl)},
@@ -165,7 +168,7 @@ let flowCat="";
 const flowKey=(j,k)=>(k==="msr"?j.m.date:k==="dwg"?j.i.fl.dw.due:k==="prd"?j.i.fl.pr.due:k==="rdy"||k==="ins"?j.i.start:"")||"9"+j.name;
 function flowNext(j,st){const fl=j.i.fl,lw=lastWork(j);let t="",late=false,tags="";
   if(st==="ask")t="실측일 잡기";
-  else if(st==="msr"){t=`실측 ${fmtW(j.m.date)}`;late=j.m.date<TODAY;}
+  else if(st==="msr"){t=`실측 ${mAt(j)}`;late=j.m.date<TODAY;}
   else if(st==="des"){const es=isAdmin&&est10?estOfJob(j.id):[],e=es[es.length-1];t=e?`견적 ${estTag(e)}`:"도면·견적 → 계약";}
   else if(st==="dwg"){t=`도면 확정 ${fl.dw.due?`${fmtW(fl.dw.due)}까지`:"목표일 없음"}`;late=!!fl.dw.due&&fl.dw.due<TODAY;}
   else if(st==="prd"){t=`납기 ${fl.pr.due?fmtW(fl.pr.due):"미정"}${fl.pr.how?` · ${PR_HOW[fl.pr.how]}`:""}${fl.pr.out?` ${esc(fl.pr.out)}`:""}`;late=!!fl.pr.due&&fl.pr.due<TODAY;}
@@ -209,7 +212,7 @@ function nextHtml(j){const lw=lastWork(j),wd=workDays(j);
   if(wd.includes(TODAY))return`<b class="cs-today">오늘 시공</b>${lw>TODAY?` <span class="d">~${fmtW(lw)}</span>`:""}`;
   if(j.i.start&&j.i.start<=TODAY)return lw&&lw<TODAY?`<span class="d">시공 끝 ${fmtW(lw)}</span>`:`<span class="d">시공 중 ~${fmtW(lw)}</span>`;
   if(j.i.start){const one=!j.i.end||j.i.end===j.i.start;return`<span class="d"><i class="dot k ${kc(j)}"></i> 시공 ${fmtW(j.i.start)}${one?"":`~${fmtW(j.i.end)}`}</span>`;}
-  if(j.m.date&&!j.m.done)return j.m.date===TODAY?`<b class="cs-today">오늘 실측</b>`:`<span class="d">실측 ${fmtW(j.m.date)}</span>`;
+  if(j.m.date&&!j.m.done)return j.m.date===TODAY?`<b class="cs-today">오늘 실측${mT(j)}</b>`:`<span class="d">실측 ${mAt(j)}</span>`;
   return`<span class="hint">${contracted(j)||j.m.done?"시공일 미정":"날짜 미정"}</span>`;}
 function probHtml(j,clash){const t=[];
   if(!ended(j)){
@@ -243,7 +246,7 @@ function renderBoard(){
   $("thead").innerHTML=`<tr><th>현장</th><th>실측일</th><th>시공 기간</th><th>시공자</th><th>마감</th><th>추가 투입</th><th>파일 · 사진</th>${isAdmin?"<th>수금</th>":""}</tr>`;
   $("tbody").innerHTML=sorted.map(j=>`<tr data-j="${esc(j.id)}" tabindex="0">
     <td class="job"><b>${esc(j.name)} ${stageTag(j)}</b><small>${sub(j)}</small></td>
-    <td><div class="cell"><span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}</div></td>
+    <td><div class="cell"><span class="d">${mAt(j)}</span>${measureTag(j)}</div></td>
     <td><span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span></td>
     <td><div class="cell">${crewHtml(j)}</div></td>
     <td><div class="cell">${finishTag(j)}${asTag(j)}${clTag(j)}</div></td>
@@ -257,7 +260,7 @@ document.addEventListener("click",e=>{if(e.target.id==="qClear"){$("q").value=""
 /* 월별 달력: 보기 전용. 날짜를 누르면 그날 일정만 보여줌 (수정은 현장 목록에서) */
 let selDay="",dayFrom=null;
 function dayItems(ds){const out=[];
-  jobs.forEach(j=>{if(j.m.date===ds)out.push({t:"m",j});});
+  jobs.filter(j=>j.m.date===ds).sort(byMT).forEach(j=>out.push({t:"m",j}));
   jobs.forEach(j=>{if(workDays(j).includes(ds))out.push({t:"i",j});});
   jobs.forEach(j=>j.f.as.forEach(a=>{if(a.date===ds)out.push({t:"a",j,a});}));
   jobs.forEach(j=>j.f.extra.forEach(x=>{if(x.date===ds)out.push({t:"x",j,x});}));
@@ -276,14 +279,14 @@ function renderCal(){
       items.push({t:"i",j,s:k,e,cl:k===0&&set.has(addDays(ds[0],-1)),cr:e===6&&set.has(addDays(ds[6],1))});k=e;}});
     ds.forEach((d,k)=>jobs.forEach(j=>{if(j.m.date===d)items.push({t:"m",j,s:k,e:k});
       j.f.as.forEach(a=>{if(a.date===d)items.push({t:"a",j,a,s:k,e:k});});j.f.extra.forEach(x=>{if(x.date===d)items.push({t:"x",j,x,s:k,e:k});});}));
-    items.sort((a,b)=>(a.t==="i"?0:1)-(b.t==="i"?0:1)||a.s-b.s||(b.e-b.s)-(a.e-a.s)||ord[a.t]-ord[b.t]||(a.j.i.start||"").localeCompare(b.j.i.start||""));
+    items.sort((a,b)=>(a.t==="i"?0:1)-(b.t==="i"?0:1)||a.s-b.s||(b.e-b.s)-(a.e-a.s)||ord[a.t]-ord[b.t]||(a.t==="m"&&b.t==="m"?byMT(a.j,b.j):0)||(a.j.i.start||"").localeCompare(b.j.i.start||""));
     const lanes=[];items.forEach(it=>{let L=0;while((lanes[L]||[]).some(o=>o.s<=it.e&&it.s<=o.e))L++;(lanes[L]=lanes[L]||[]).push(it);it.L=L;});
     const pos=(s,e,L)=>`style="grid-column:${s+1}/${e+2};grid-row:${L+2}" data-ds="${ds.slice(s,e+1).join(" ")}"`;
     const ev=items.map(x=>{const j=x.j;
       if(x.t==="i"){const subs=[];for(let k=x.s;k<=x.e;k++){const cr=crewOn(j,ds[k]),key=cr.join("·"),u=subs[subs.length-1];if(u&&u.key===key)u.e=k;else subs.push({s:k,e:k,key,cr});}
         return subs.map((u,n)=>{const who=u.cr.length?u.cr.join("·"):"미배정",jl=n>0||x.cl,jr=n<subs.length-1||x.cr;
           return`<div class="ev i ${kc(j)}${u.cr.length?"":" none"}${jl?" jl":""}${jr?" jr":""}${n>0?" sub":""}${u.e-u.s>=2?" w3":""}" ${pos(u.s,u.e,x.L)}>${n?`&#8203;<span class="evc">${esc(who)}</span>`:`${short(j)}<span class="evc"> · ${esc(who)}</span>`}</div>`;}).join("");}
-      if(x.t==="m")return`<div class="ev m" ${pos(x.s,x.e,x.L)}><span class="evp">실측 </span>${short(j)}</div>`;
+      if(x.t==="m")return`<div class="ev m" ${pos(x.s,x.e,x.L)}><span class="evp">실측 </span>${j.m.time?`<span class="evt">${j.m.time} </span>`:""}${short(j)}</div>`;
       if(x.t==="a")return`<div class="ev a ${x.a.done?"done":""}" ${pos(x.s,x.e,x.L)}><span class="evp">AS </span>${short(j)}<span class="evc">${x.a.crew?` · ${esc(x.a.crew)}`:""}</span></div>`;
       return`<div class="ev x ${kc(j)}" ${pos(x.s,x.e,x.L)}>+${+x.x.people}명 ${short(j)}</div>`;}).join("");
     h+=`<div class="wk" style="grid-template-rows:var(--nh)${lanes.length?` repeat(${lanes.length},auto)`:""} 1fr">`+dd.map((d,k)=>{const we=k===0||k===6,n=dayItems(ds[k]).length;
@@ -301,7 +304,7 @@ function openDay(ds){selDay=ds;
     sec("시공",by("i"),x=>{const wd=workDays(x.j),k=wd.indexOf(ds)+1;
       const cr=crewOn(x.j,ds);
       return`<li><i class="dot k ${kc(x.j)}"></i><div>${jvName(x.j)}${place(x.j)}<div class="dmeta">${cr.length?`시공자 ${cr.map(esc).join(", ")}`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`작업 ${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div><button class="btn ghost sm cp-msg" type="button" data-msg="${esc(x.j.id)}">시공자 문자 복사</button>${clOf(x.j.id)?` <button class="btn ghost sm cp-msg" type="button" data-clmsg="${esc(x.j.id)}">체크리스트 문자 복사</button>`:""}</div></li>`})+
-    sec("실측",by("m"),x=>`<li><i class="dot" style="background:var(--c-measure)"></i><div>${jvName(x.j)}${place(x.j)}<div class="dmeta">${x.j.m.done?`<span class="tag ok">실측 완료</span>`:`<span class="tag wait">실측 예정</span>`}</div></div></li>`)+
+    sec("실측",by("m"),x=>`<li><i class="dot" style="background:var(--c-measure)"></i><div>${jvName(x.j)}${place(x.j)}<div class="dmeta">${x.j.m.time?`<b class="d">${x.j.m.time}</b>`:`<span class="hint">시간 미정</span>`}${x.j.m.done?`<span class="tag ok">실측 완료</span>`:`<span class="tag wait">실측 예정</span>`}</div></div></li>`)+
     sec("AS",by("a"),x=>`<li><i class="dot" style="background:var(--c-as)"></i><div>${jvName(x.j)}${place(x.j)}<div class="dmeta">담당 ${esc(x.a.crew||"미정")}${x.a.note?` · ${esc(x.a.note)}`:""}${x.a.done?` <span class="tag ok">완료</span>`:""}</div></div></li>`)+
     sec("마감 추가 투입",by("x"),x=>`<li><i class="dot ring ${kc(x.j)}"></i><div>${jvName(x.j)}${place(x.j)}<div class="dmeta">추가 ${+x.x.people}명${x.x.note?` · ${esc(x.x.note)}`:""}</div></div></li>`)
   )||`<p class="sub" style="margin:0">이날은 잡힌 일정이 없어요.</p>`;
@@ -345,7 +348,7 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const fl=j.i.fl,flm=[fl.dw.by&&`설계 ${esc(fl.dw.by)}`,fl.pr.how&&`생산 ${PR_HOW[fl.pr.how]}${fl.pr.out?` (${esc(fl.pr.out)})`:""}`].filter(Boolean);
   h+=`<div class="dsec jv-flow"><h3>진행 단계 ${flowTag(j)}</h3>${flowStrip(j)}${flm.length?`<p class="sub" style="margin:0">${flm.join(" · ")}</p>`:""}${prLate(j)?`<p class="ms-warn">납기(${fmt(fl.pr.due)})가 시공 시작(${fmt(j.i.start)})보다 늦어요.</p>`:""}</div>`;
   h+=qcHtml(j);
-  h+=`<div class="dsec"><h3>일정</h3><dl class="kv">${kv("실측",`<span class="d">${fmtW(j.m.date)}</span>${measureTag(j)}`)}${kv("시공",`<span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span>`)}
+  h+=`<div class="dsec"><h3>일정</h3><dl class="kv">${kv("실측",`<span class="d">${mAt(j)}</span>${measureTag(j)}`)}${kv("시공",`<span class="d">${j.i.start?`<i class="dot k ${kc(j)}"></i> `:""}${range(j)||"—"}</span>`)}
     ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}
     ${qeOn("sch")?qeSchHtml(j):`<div class="jv-btns"><button class="btn ghost sm" type="button" data-qe="sch">일정 바꾸기</button></div>`}${qeDone("sch")}</div>`;
   if(j.f.extra.length)h+=`<div class="dsec"><h3>마감 추가 투입</h3>${li(j.f.extra.map(x=>`<span class="d">${fmtW(x.date)}</span> ${+x.people}명${x.note?` · ${esc(x.note)}`:""}`))}</div>`;
@@ -379,7 +382,7 @@ function clashFor(j,ni){const hits={},off=ni.off||[];
   return Object.values(hits);}
 async function jobWrite(j,patch){const {error}=await sb.from("jobs").update({...patch,updated_at:new Date().toISOString()}).eq("id",j.id);if(error)return false;Object.assign(j,patch);laborCache=null;return true;}
 function qeSchHtml(j){const names=[...new Set([...CREW,...j.i.crew])];
-  return`<div class="qe"><div class="qe-grid"><label>실측일<input type="date" id="qe-m" data-keep="m" value="${esc(j.m.date)}"></label><label>시공 시작<input type="date" id="qe-s" data-keep="s" value="${esc(j.i.start)}"></label><label>시공 끝<input type="date" id="qe-e" data-keep="e" value="${esc(j.i.end)}"></label></div>
+  return`<div class="qe"><div class="qe-grid sch"><label>실측일<input type="date" id="qe-m" data-keep="m" value="${esc(j.m.date)}"></label><label>실측 시간<input type="time" id="qe-mt" data-keep="mt" value="${esc(j.m.time)}"></label><label>시공 시작<input type="date" id="qe-s" data-keep="s" value="${esc(j.i.start)}"></label><label>시공 끝<input type="date" id="qe-e" data-keep="e" value="${esc(j.i.end)}"></label></div>
     <div class="qe-crew"><span class="lbl">시공자</span>${names.map(n=>`<label class="qe-chk"><input type="checkbox" value="${esc(n)}" data-keep="c:${esc(n)}"${j.i.crew.includes(n)?" checked":""}>${esc(n)}</label>`).join("")}<input id="qe-new" data-keep="new" placeholder="새 이름 추가" aria-label="새 시공자 이름"></div>
     ${dayCustom(j)?`<p class="hint" style="margin:0">날짜별로 따로 정한 시공자·쉬는 날은 새 기간 안에 있는 날만 남아요. 날짜별로 바꾸려면 <b>수정</b>에서 해요.</p>`:""}
     ${qe.warn?`<div class="ms-warn">같은 날 다른 현장에도 잡혀 있어요.<ul>${qe.warn}</ul>한 번 더 누르면 그대로 저장돼요.</div>`:""}${qe.err?`<p class="err">${qe.err}</p>`:""}
@@ -395,16 +398,16 @@ function jvPhotos(j){const all=photosOf(j.id),rec=[...all].sort((a,b)=>(b.create
     ${up?`<p class="hint" style="margin:0">사진 ${up}장 올리는 중…</p>`:""}${qe.jid===j.id&&qe.phErr?`<p class="err">${esc(qe.phErr)}</p>`:""}
     <div class="jv-btns jv-phbtns"><select id="qe-phs" data-keep="phs" aria-label="사진 단계">${STAGES.map(x=>`<option${x===guessStage(j)?" selected":""}>${x}</option>`).join("")}</select><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="jvpick"></label><label class="btn ghost sm">앨범에서<input type="file" accept="image/*" multiple class="jvpick"></label></div></div>`;}
 function qeSaveSch(btn){const j=jobs.find(x=>x.id===viewing);if(!j)return;
-  const md=$("qe-m").value,s=$("qe-s").value;let e=$("qe-e").value;if(!s)e="";else if(!e)e=s;
+  const md=$("qe-m").value,mt=md?okTime($("qe-mt").value):"",s=$("qe-s").value;let e=$("qe-e").value;if(!s)e="";else if(!e)e=s;
   if(s&&e<s){qe.err="시공 끝 날짜가 시작보다 빨라요.";qe.warn="";renderView();return;}
   const nn=$("qe-new").value.trim(),crew=[...new Set([...$("jvBody").querySelectorAll(".qe-crew input[type=checkbox]:checked")].map(x=>x.value).concat(nn?[nn]:[]))];
   const base={...j.i,start:s,end:e,crew},span=spanDays(base),days={};span.forEach(d=>{const x=(j.i.days||{})[d];if(Array.isArray(x))days[d]=x;});
-  const pat={start:s,end:e,crew,days,off:(j.i.off||[]).filter(d=>span.includes(d))},hits=clashFor(j,{...base,...pat}),key=JSON.stringify([md,pat]);
+  const pat={start:s,end:e,crew,days,off:(j.i.off||[]).filter(d=>span.includes(d))},hits=clashFor(j,{...base,...pat}),key=JSON.stringify([md,mt,pat]);
   if(hits.length&&qe.warnKey!==key){qe.warn=hits.map(h=>`<li><b>${esc(h.c)}</b> · ${h.ds.sort().map(fmtW).join(", ")} · ${esc(h.o.name)}</li>`).join("");qe.warnKey=key;qe.err="";renderView();return;}
-  btn.disabled=true;const prev={md:j.m.date,i:{start:j.i.start,end:j.i.end,crew:j.i.crew,days:j.i.days||{},off:j.i.off||[]}};
-  qcRun(j.id,async j=>{const ok=await jobWrite(j,{m:{...j.m,date:md},i:{...j.i,...pat}});
+  btn.disabled=true;const prev={md:j.m.date,mt:j.m.time,i:{start:j.i.start,end:j.i.end,crew:j.i.crew,days:j.i.days||{},off:j.i.off||[]}};
+  qcRun(j.id,async j=>{const ok=await jobWrite(j,{m:{...j.m,date:md,time:mt},i:{...j.i,...pat}});
     if(ok){if(nn&&!CREW.includes(nn)){CREW.push(nn);try{await sb.from("crew").upsert({name:nn})}catch(e){}}
-      qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:{k:"sch",l:"일정을 바꿨어요",fn:x=>({m:{...x.m,date:prev.md},i:{...x.i,...prev.i}})}};if(isAdmin)autoDue();}
+      qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:{k:"sch",l:"일정을 바꿨어요",fn:x=>({m:{...x.m,date:prev.md,time:prev.mt},i:{...x.i,...prev.i}})}};if(isAdmin)autoDue();}
     else{qe.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";}
     render();});}
 function qeSaveAs(btn){const j=jobs.find(x=>x.id===viewing);if(!j)return;const a={date:$("qe-ad").value,crew:$("qe-ac").value,note:$("qe-an").value.trim(),done:false};
@@ -428,7 +431,7 @@ document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classLis
    체크하면 바로 저장되고 그 체크칸은 사라짐. 잘못 눌렀을 때를 위해 이 화면을 닫기 전까지는 '되돌리기'가 남음 */
 let qc={jid:"",done:[],err:""},qcQ=Promise.resolve();
 function qcItems(j){const out=[];
-  if(!j.m.done)out.push({k:"m",l:"실측 완료",h:j.m.date?fmtW(j.m.date):"실측일이 없으면 오늘 날짜로 적혀요",late:j.m.date&&j.m.date<TODAY});
+  if(!j.m.done)out.push({k:"m",l:"실측 완료",h:j.m.date?mAt(j):"실측일이 없으면 오늘 날짜로 적혀요",late:j.m.date&&j.m.date<TODAY});
   const st=flowStage(j),fl=j.i.fl;
   if(st==="dwg")out.push({k:"dw",l:"도면 확정",h:fl.dw.due?`${fmt(fl.dw.due)}까지 · 고객이 최종 도면을 확인하면`:"고객이 최종 도면을 확인하면 체크",late:fl.dw.due&&fl.dw.due<TODAY});
   if(st==="prd")out.push({k:"pr",l:"생산 완료",h:fl.pr.due?`납기 ${fmt(fl.pr.due)}`:"납기 미정",late:fl.pr.due&&fl.pr.due<TODAY});
@@ -1269,7 +1272,7 @@ function openForm(j){editing=j||null;dayPick={days:JSON.parse(JSON.stringify((j&
   const v=j||norm("",{});
   $("f-name").value=v.name;$("f-tel").value=v.i.tel;$("f-item").value=v.item;$("f-addr").value=v.addr;
   $("f-gate").value=v.i.gate;$("f-door").value=v.i.door;$("f-newmgr").value="";renderMgrPick(v.i.mgr);
-  $("f-mdate").value=v.m.date;$("f-mdone").checked=v.m.done;
+  $("f-mdate").value=v.m.date;$("f-mtime").value=v.m.time||"";$("f-mdone").checked=v.m.done;
   const fl=v.i.fl;$("f-dwby").value=fl.dw.by;$("f-dwdue").value=fl.dw.due;$("f-dwok").value=fl.dw.ok;$("f-prhow").value=fl.pr.how;$("f-prout").value=fl.pr.out;$("f-prdue").value=fl.pr.due;$("f-prok").value=fl.pr.ok;
   $("dwByList").innerHTML=[...new Set(jobs.map(x=>x.i.fl.dw.by).filter(Boolean))].map(n=>`<option value="${esc(n)}">`).join("");$("f-istart").value=v.i.start;$("f-iend").value=v.i.end;$("f-sat").checked=v.i.sat;$("f-sun").checked=v.i.sun;
   setColor(v.i.color||"orange");colorTouched=!!(j&&j.i.start);
@@ -1294,7 +1297,7 @@ $("addAs").onclick=()=>asRow();
 $("addBtn").onclick=()=>openQuick();
 /* 빠른 등록: 새 문의는 고객명·전화·주소·실측일만 받아 바로 저장. 나머지는 '자세히 입력'(전체 입력 화면)이나 나중에 수정에서 */
 let quickFrom=null;
-function openQuick(){["qa-name","qa-tel","qa-addr","qa-mdate"].forEach(id=>$(id).value="");$("qa-err").hidden=true;$("qa-dup").hidden=true;
+function openQuick(){["qa-name","qa-tel","qa-addr","qa-mdate","qa-mtime"].forEach(id=>$(id).value="");$("qa-err").hidden=true;$("qa-dup").hidden=true;
   quickFrom=document.activeElement;$("quickSheet").hidden=false;document.body.style.overflow="hidden";$("qa-name").focus();}
 function closeQuick(){$("quickSheet").hidden=true;if($("jobSheet").hidden)document.body.style.overflow="";if(quickFrom&&quickFrom.isConnected&&quickFrom.focus)quickFrom.focus({preventScroll:true});quickFrom=null;}
 function quickDup(){const n=telNum($("qa-tel").value),same=n?jobs.filter(j=>telNum(j.i.tel)===n):[];
@@ -1304,11 +1307,11 @@ $("quickSheet").addEventListener("click",e=>{if(e.target===$("quickSheet"))close
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("quickSheet").hidden)closeQuick();});
 $("qa-tel").addEventListener("input",quickDup);
 ["qa-tel","f-tel"].forEach(id=>$(id).addEventListener("change",()=>{$(id).value=fmtTel($(id).value);if(id==="qa-tel")quickDup();}));
-$("qa-more").onclick=()=>{const v={name:$("qa-name").value.trim(),tel:fmtTel($("qa-tel").value),addr:$("qa-addr").value.trim(),mdate:$("qa-mdate").value};
-  closeQuick();tab("board");openForm(null);$("f-name").value=v.name;$("f-tel").value=v.tel;$("f-addr").value=v.addr;$("f-mdate").value=v.mdate;updateMsg();};
+$("qa-more").onclick=()=>{const v={name:$("qa-name").value.trim(),tel:fmtTel($("qa-tel").value),addr:$("qa-addr").value.trim(),mdate:$("qa-mdate").value,mtime:$("qa-mtime").value};
+  closeQuick();tab("board");openForm(null);$("f-name").value=v.name;$("f-tel").value=v.tel;$("f-addr").value=v.addr;$("f-mdate").value=v.mdate;$("f-mtime").value=v.mtime;updateMsg();};
 $("quickForm").addEventListener("submit",async e=>{e.preventDefault();const name=$("qa-name").value.trim();
   if(!name){$("qa-err").textContent="고객명을 넣어 주세요.";$("qa-err").hidden=false;$("qa-name").focus();return;}
-  const data={name,item:"",addr:$("qa-addr").value.trim(),m:{date:$("qa-mdate").value,done:false},i:{start:"",end:"",crew:[],tel:fmtTel($("qa-tel").value)},f:{done:false,extra:[],as:[]},updated_at:new Date().toISOString()};
+  const data={name,item:"",addr:$("qa-addr").value.trim(),m:{date:$("qa-mdate").value,time:$("qa-mdate").value?okTime($("qa-mtime").value):"",done:false},i:{start:"",end:"",crew:[],tel:fmtTel($("qa-tel").value)},f:{done:false,extra:[],as:[]},updated_at:new Date().toISOString()};
   $("qa-save").disabled=true;$("qa-err").hidden=true;
   const {data:rows,error}=await sb.from("jobs").insert(data).select();$("qa-save").disabled=false;
   if(error||!rows||!rows[0]){$("qa-err").textContent="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";$("qa-err").hidden=false;return;}
@@ -1339,7 +1342,7 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
   const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
-    m:{date:$("f-mdate").value,done:$("f-mdone").checked},i:{start:s,end:e||s,crew,days,off,sat,sun,color:getColor(),tel:fmtTel($("f-tel").value),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
+    m:{date:$("f-mdate").value,time:$("f-mdate").value?okTime($("f-mtime").value):"",done:$("f-mdone").checked},i:{start:s,end:e||s,crew,days,off,sat,sun,color:getColor(),tel:fmtTel($("f-tel").value),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
       apps:readApps(),chk:$("f-chk").value.split("\n").map(x=>x.trim()).filter(Boolean),
       fl:{ct:editing?editing.i.fl.ct:"",dw:{by:$("f-dwby").value.trim(),due:$("f-dwdue").value,ok:$("f-dwok").value},pr:{how:$("f-prhow").value,out:$("f-prout").value.trim(),due:$("f-prdue").value,ok:$("f-prok").value}}},
     f:{...(editing&&!(editing.f.done&&!$("f-fdone").checked)?{closed:editing.f.closed,closedBy:editing.f.closedBy}:{}),done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
@@ -1383,7 +1386,7 @@ const homeOrder={i:0,m:1,a:2,x:3};
 function homeItem(x,ds){const j=x.j;
   if(x.t==="i"){const wd=workDays(j),k=wd.indexOf(ds)+1,cr=crewOn(j,ds);
     return`<li><i class="dot k ${kc(j)}"></i><div><span class="hm-k">시공</span> ${jBtn(j)}<div class="dmeta">${cr.length?`<span>${esc(cr.join(", "))}</span>`:`<span class="tag late">시공자 미배정</span>`}<span class="hint">${wd.length>1?`${wd.length}일 중 ${k}일째`:"하루 작업"}</span></div></div></li>`;}
-  if(x.t==="m")return`<li><i class="dot" style="background:var(--c-measure)"></i><div><span class="hm-k">실측</span> ${jBtn(j)}<div class="dmeta">${sub(j)?`<span class="hint">${sub(j)}</span>`:""}${j.m.done?`<span class="tag ok">완료</span>`:""}</div></div></li>`;
+  if(x.t==="m")return`<li><i class="dot" style="background:var(--c-measure)"></i><div><span class="hm-k">실측${j.m.time?` <b class="d">${j.m.time}</b>`:""}</span> ${jBtn(j)}<div class="dmeta">${sub(j)?`<span class="hint">${sub(j)}</span>`:""}${j.m.done?`<span class="tag ok">완료</span>`:""}</div></div></li>`;
   if(x.t==="a")return`<li><i class="dot" style="background:var(--c-as)"></i><div><span class="hm-k">AS</span> ${jBtn(j)}<div class="dmeta"><span>담당 ${esc(x.a.crew||"미정")}</span>${x.a.note?`<span class="hint">${esc(x.a.note)}</span>`:""}${x.a.done?`<span class="tag ok">완료</span>`:""}</div></div></li>`;
   return`<li><i class="dot ring ${kc(j)}"></i><div><span class="hm-k">추가 투입</span> ${jBtn(j)}<div class="dmeta"><span>+${+x.x.people}명</span>${x.x.note?`<span class="hint">${esc(x.x.note)}</span>`:""}</div></div></li>`;}
 const homeDay=ds=>dayItems(ds).sort((a,b)=>homeOrder[a.t]-homeOrder[b.t]);
@@ -1431,7 +1434,7 @@ function renderHome(){if(!loaded)return;
   $("hmTmrH").innerHTML=`<button type="button" class="linkish" data-day="${tmr}">내일 일정</button> <span class="hint">${dayLabel(tmr)} · ${t1.length}건</span>`;
   $("hmTmr").innerHTML=t1.length?t1.map(x=>homeItem(x,tmr)).join(""):none("내일은 잡힌 일정이 없어요.");
   const week=[];for(let k=2;k<=7;k++){const ds=addDays(TODAY,k),its=homeDay(ds);if(!its.length)continue;
-    const by=(t,l)=>{const n=[...new Set(its.filter(x=>x.t===t).map(x=>short(x.j)))];return n.length?`<span class="hm-k">${l}</span> ${n.join(", ")}`:"";};
+    const by=(t,l)=>{const n=[...new Set(its.filter(x=>x.t===t).map(x=>short(x.j)+(t==="m"?mT(x.j):"")))];return n.length?`<span class="hm-k">${l}</span> ${n.join(", ")}`:"";};
     week.push(`<li data-day="${ds}" role="button" tabindex="0"><span class="d">${fmtW(ds)}</span><span>${[by("i","시공"),by("m","실측"),by("a","AS"),by("x","추가 투입")].filter(Boolean).join(" · ")}</span></li>`);}
   $("hmWeek").innerHTML=week.join("")||none("모레부터 7일 동안 잡힌 일정이 없어요.");
   const al=homeAlerts(),red=al.filter(a=>a.tone==="late").reduce((n,a)=>n+a.list.length,0);
@@ -1912,8 +1915,8 @@ const OX=b=>b?"O":"";
 function backupSheets(){
   const list=[...jobs].sort((a,b)=>(a.i.start||a.m.date||"9999").localeCompare(b.i.start||b.m.date||"9999")||a.name.localeCompare(b.name,"ko"));
   const sheets=[
-    {name:"현장",cols:[["현장",18,"s"],["상태",8,"s"],["품목",14,"s"],["주소",30,"s"],["고객 전화",15,"s"],["실측일",12,"d"],["실측 완료",9,"s"],["시공 시작",12,"d"],["시공 끝",12,"d"],["작업일",7,"n"],["시공자",16,"s"],["날짜별 시공자",30,"s"],["주말 작업",10,"s"],["공동현관 비밀번호",16,"s"],["세대현관 비밀번호",16,"s"],["현장 담당자",22,"s"],["마감 완료",9,"s"],["추가 투입",9,"n"],["AS",6,"n"],["사진·파일",9,"n"],["진행 단계",10,"s"],["계약일",12,"d"],["설계 담당",12,"s"],["도면 확정 목표",12,"d"],["도면 확정일",12,"d"],["생산",11,"s"],["외주처",14,"s"],["납기",12,"d"],["생산 완료일",12,"d"]],
-      rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.i.tel,j.m.date,OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||"",FLOW_NAME[flowStage(j)],j.i.fl.ct,j.i.fl.dw.by,j.i.fl.dw.due,j.i.fl.dw.ok,PR_HOW[j.i.fl.pr.how]||"",j.i.fl.pr.out,j.i.fl.pr.due,j.i.fl.pr.ok])},
+    {name:"현장",cols:[["현장",18,"s"],["상태",8,"s"],["품목",14,"s"],["주소",30,"s"],["고객 전화",15,"s"],["실측일",12,"d"],["실측 시간",8,"s"],["실측 완료",9,"s"],["시공 시작",12,"d"],["시공 끝",12,"d"],["작업일",7,"n"],["시공자",16,"s"],["날짜별 시공자",30,"s"],["주말 작업",10,"s"],["공동현관 비밀번호",16,"s"],["세대현관 비밀번호",16,"s"],["현장 담당자",22,"s"],["마감 완료",9,"s"],["추가 투입",9,"n"],["AS",6,"n"],["사진·파일",9,"n"],["진행 단계",10,"s"],["계약일",12,"d"],["설계 담당",12,"s"],["도면 확정 목표",12,"d"],["도면 확정일",12,"d"],["생산",11,"s"],["외주처",14,"s"],["납기",12,"d"],["생산 완료일",12,"d"]],
+      rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.i.tel,j.m.date,j.m.date?j.m.time:"",OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||"",FLOW_NAME[flowStage(j)],j.i.fl.ct,j.i.fl.dw.by,j.i.fl.dw.due,j.i.fl.dw.ok,PR_HOW[j.i.fl.pr.how]||"",j.i.fl.pr.out,j.i.fl.pr.due,j.i.fl.pr.ok])},
     {name:"마감 추가 투입",cols:[["현장",18,"s"],["날짜",12,"d"],["인원",7,"n"],["메모",36,"s"]],
       rows:list.flatMap(j=>j.f.extra.map(x=>[j.name,x.date||"",+x.people||"",x.note||""]))},
     {name:"AS",cols:[["현장",18,"s"],["날짜",12,"d"],["담당",12,"s"],["내용",40,"s"],["완료",7,"s"]],

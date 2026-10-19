@@ -59,8 +59,10 @@ function dayLines(jobs, d) {
   const lines = [];
   const ins = jobs.filter((j) => workDays(j).includes(d));
   if (ins.length) lines.push(`시공 ${ins.length}곳: ${ins.map((j) => `${short(j)}(${crewOn(j, d).join("·") || "미배정"})`).join(", ")}`);
-  const ms = jobs.filter((j) => j.m?.date === d);
-  if (ms.length) lines.push(`실측: ${ms.map(short).join(", ")}`);
+  // 실측은 고객과 약속한 시간이 있으면 같이 (빠른 시간 순)
+  const mt = (j) => /^\d{2}:\d{2}$/.test(j.m?.time || "") ? j.m.time : "";
+  const ms = jobs.filter((j) => j.m?.date === d).sort((a, b) => (mt(a) || "99").localeCompare(mt(b) || "99"));
+  if (ms.length) lines.push(`실측: ${ms.map((j) => mt(j) ? `${short(j)}(${mt(j)})` : short(j)).join(", ")}`);
   const as = jobs.flatMap((j) => (j.f?.as || []).filter((a) => a.date === d && !a.done).map((a) => `${short(j)}(${a.crew || "담당 미정"})`));
   if (as.length) lines.push(`AS: ${as.join(", ")}`);
   return lines;
