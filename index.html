@@ -656,10 +656,14 @@ th.num{font-family:var(--font);font-size:12px}
 .bk-conn p{margin:0}
 .bk-conn summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
 details.bk-conn[open] summary{margin-bottom:4px}
+details.bk-conn>summary~*{margin-top:8px}
 .bk-accts{list-style:none;margin:0;padding:0}
 .bk-accts li{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
 .bk-accts li:first-child{border-top:0}
 .bk-btns{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bk-corp{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.bk-corp-h{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.tag.biz{background:var(--bg);border:1px solid var(--line);color:var(--fg)}
 .ok-msg{color:var(--ok);font-size:13px;margin:6px 0 0}
 #bkConn>.err{margin:6px 0 0}
 .bk-filt{margin-top:4px}

@@ -1941,8 +1941,8 @@ function backupSheets(){
     if(pay08)sheets.push(...wageSheets());
     if(expenses.length)sheets.push({name:"지출",cols:[["날짜",12,"d"],["항목",14,"s"],["금액",14,"w"],["메모",30,"s"],["매달 반복",9,"s"],["반복 끝",9,"s"]],
       rows:[...expenses].sort((a,b)=>a.day.localeCompare(b.day)).map(x=>[x.day,x.cat,x.amount,x.note,OX(x.repeat),x.until])});
-    if(bankTx.length)sheets.push({name:"통장 내역",cols:[["날짜",12,"d"],["시각",7,"s"],["계좌",14,"s"],["입출금",7,"s"],["금액",14,"w"],["잔액",14,"w"],["내용",22,"s"],["내용 2",22,"s"],["처리",8,"s"],["어디로",34,"s"]],
-      rows:[...bankTx].sort((a,b)=>(a.day+a.at).localeCompare(b.day+b.at)).map(t=>[t.day,t.at,acctLbl(t.acct),t.dir==="in"?"입금":"출금",t.amount,t.balance??"",txWho(t),[t.r2,t.r3,t.r4,t.memo].filter(x=>x&&x!==txWho(t)).join(" · "),{new:"확인 전",done:"처리함",skip:"건너뜀"}[t.status],(t.link&&t.link.l)||t.note||""])});
+    if(bankTx.length){const mb=bankMulti(),BZ=bizMap();sheets.push({name:"통장 내역",cols:[["날짜",12,"d"],["시각",7,"s"],...(mb?[["사업자",10,"s"]]:[]),["계좌",14,"s"],["입출금",7,"s"],["금액",14,"w"],["잔액",14,"w"],["내용",22,"s"],["내용 2",22,"s"],["처리",8,"s"],["어디로",34,"s"]],
+      rows:[...bankTx].sort((a,b)=>(a.day+a.at).localeCompare(b.day+b.at)).map(t=>[t.day,t.at,...(mb?[BZ[txCorp(t)]||fmtCorp(txCorp(t))]:[]),acctLbl(t.acct),t.dir==="in"?"입금":"출금",t.amount,t.balance??"",txWho(t),[t.r2,t.r3,t.r4,t.memo].filter(x=>x&&x!==txWho(t)).join(" · "),{new:"확인 전",done:"처리함",skip:"건너뜀"}[t.status],(t.link&&t.link.l)||t.note||""])});}
     const ys=[...new Set([...jobs.map(j=>jobMonth(j).slice(0,4)),...expenses.map(x=>x.day.slice(0,4))].filter(Boolean))].sort(),fin=[];
     ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),b=js.reduce((a,j)=>a+jobBuy(j),0),l=js.reduce((a,j)=>a+jobLabor(j),0),e=expSum([ym]);
       const q=v=>r?pct(v,r):"";if(r||b||l||e)fin.push([ym,js.length||"",r,b,l,e,r-b-l-e,q(b),q(l),q(e),q(r-b-l-e)]);}));

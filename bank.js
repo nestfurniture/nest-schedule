@@ -5,9 +5,9 @@
    이름과 금액이 맞으면 제안을 띄우고, 회사 지출·건너뛰기로 정한 이름은 기억해서(bank_kv rules) 다음부터 같은 곳을 제안함.
    처리한 줄은 되돌리기로 원래대로(넣은 지출 지우기, 체크 풀기). app.js보다 먼저 읽고, 단추는 app.js가 bankInit()으로 연결 */
 let bankTx=[],bank12=true,bankChan=null,bankRules=[],bankState=null,bankSt=null,bankStAt=0,bankStBusy=false,
-  bankF="new",bankM="",bankA="",bankOpen="",bankKind="",bankMsg="",bankMsgOk=false,bankBusy=false,bankLater=false,bankRT=null;
+  bankF="new",bankM="",bankA="",bankJoinCorp=null,bankOpen="",bankKind="",bankMsg="",bankMsgOk=false,bankBusy=false,bankLater=false,bankRT=null;
 const BANK_URLS={acct:"계좌 등록·관리",rate:"정액제 신청·연장",point:"포인트 충전",login:"팝빌 열기"};
-const normTx=r=>({id:String(r.id),acct:r.acct||"",day:String(r.day||"").slice(0,10),at:r.at||"",dir:r.dir==="in"?"in":"out",amount:+r.amount||0,
+const normTx=r=>({id:String(r.id),acct:r.acct||"",corp:r.corp||"",day:String(r.day||"").slice(0,10),at:r.at||"",dir:r.dir==="in"?"in":"out",amount:+r.amount||0,
   balance:r.balance==null?null:+r.balance,r1:r.r1||"",r2:r.r2||"",r3:r.r3||"",r4:r.r4||"",memo:r.memo||"",
   status:["done","skip"].includes(r.status)?r.status:"new",link:r.link&&typeof r.link==="object"?r.link:null,note:r.note||"",done_by:r.done_by||""});
 const normRules=d=>(d&&Array.isArray(d.list)?d.list:[]).filter(r=>r&&typeof r.k==="string"&&r.k.length>=2&&(r.t==="skip"||(r.t==="exp"&&EXP_CATS.includes(r.cat))))
@@ -51,7 +51,7 @@ async function bankCollect(btn){if(bankBusy)return;bankBusy=true;btn.disabled=tr
   await loadBank();bankStatus(true);renderBank();renderHome();}
 /* 팝빌 화면(계좌 등록·정액제·포인트 충전)은 주소가 30초만 살아 있어서 누르는 순간 새 창을 먼저 열고 주소를 받아 넣음 */
 async function bankPopup(to,btn){let w=null;try{w=window.open("","_blank");if(w)w.opener=null;}catch(e){}
-  btn.disabled=true;const r=await bankCall({action:"url",to});btn.disabled=false;
+  btn.disabled=true;const r=await bankCall({action:"url",to,corp:btn.dataset.bkcorp||""});btn.disabled=false;
   const url=r.data&&r.data.url;
   if(url&&/^https:\/\//.test(url)){if(w&&!w.closed){w.location.href=url;bankMsg=`팝빌 ${BANK_URLS[to]} 화면을 새 창으로 열었어요. 마치고 돌아오면 여기 상태가 바뀌어요.`;bankMsgOk=true;}
     else{bankMsg=`<a href="${esc(url)}" target="_blank" rel="noopener">팝빌 ${BANK_URLS[to]} 열기</a> (30초 안에 눌러 주세요)`;bankMsgOk=true;}}
@@ -194,31 +194,57 @@ async function bankUnlinkExp(bankId,expId){const t=bankTx.find(x=>x.id===bankId)
   if(t){t.status="new";t.link=null;t.note="";}}
 
 /* ---------- 화면 ---------- */
-const acctLbl=k=>{const a=(bankState&&bankState.accts||{})[k]||(bankSt&&bankSt.accounts||[]).find(x=>x.key===k);return a?`${String(a.bank||"").replace(/은행$/,"")} ${a.tail}`:String(k).slice(-4);};
+const acctLbl=k=>{const a=(bankState&&bankState.accts||{})[k]||bkCorps(bankSt).flatMap(c=>c.accounts||[]).find(x=>x.key===k);return a?`${String(a.bank||"").replace(/은행$/,"")} ${a.tail}`:String(k).slice(-4);};
+/* 사업자 (리브젠·네스트처럼 여럿일 때): 서버가 알려 준 이름 → 없으면 마지막으로 가져온 상태의 이름 */
+const fmtCorp=n=>/^\d{10}$/.test(n)?`${n.slice(0,3)}-${n.slice(3,5)}-${n.slice(5)}`:String(n||"");
+const bkCorps=S=>S&&Array.isArray(S.corps)&&S.corps.length?S.corps:S&&S.configured?[{num:"",corp:S.corp||"",name:"",member:S.member,accounts:S.accounts,point:S.point,errors:S.errors||[]}]:[];
+function bizMap(){const m={};Object.entries((bankState&&bankState.corps)||{}).forEach(([k,v])=>{m[k]=(v&&v.name)||fmtCorp(k);});
+  bkCorps(bankSt).forEach(c=>{if(c.num)m[c.num]=c.name||fmtCorp(c.num);});return m;}
+const txCorp=t=>t.corp||((bankState&&bankState.accts||{})[t.acct]||{}).corp||"";
+const bankMulti=()=>Object.keys(bizMap()).length>1||new Set(bankTx.map(txCorp).filter(Boolean)).size>1;
+/* 계좌 고르기: "c:사업자번호"면 그 사업자 계좌 전부 */
+const bkIn=t=>!bankA||(bankA.startsWith("c:")?txCorp(t)===bankA.slice(2):t.acct===bankA);
 const bkBusy=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest(".bk-pick")&&a.matches("input:not([type=checkbox]):not([type=radio]),select,textarea"));};
 const kstTime=iso=>{const d=new Date(iso);return isNaN(d)?"":`${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
-function bankConnHtml(){const S=bankSt,st=bankState||{};
-  const btn=(to,extra="")=>`<button class="btn ghost sm" type="button" data-bkurl="${to}">${BANK_URLS[to]}${extra}</button>`;
-  if(!S)return`<div class="bk-conn"><p class="hint">팝빌 연결을 확인하는 중이에요…</p></div>`;
-  if(S.fail){const t=bankErrText(S.fail);return`<div class="bk-conn bad"><b>통장 연결 안 됨</b><p>${t}</p><p class="hint">처음이면 <a href="https://github.com/nestfurniture/nest-schedule#업데이트-12-통장-거래내역-자동-연결-적용" target="_blank" rel="noopener">README 업데이트 12</a> 순서대로 해 주세요.</p><div class="bk-btns"><button class="btn ghost sm" type="button" data-bkre>다시 확인</button></div></div>`;}
-  const test=S.test?` <span class="tag soon">팝빌 시험 환경</span>`:"";
-  if(!S.configured)return`<div class="bk-conn bad"><b>팝빌 열쇠가 아직 없어요</b>${test}<p>Supabase → Edge Functions → Secrets에 <code>POPBILL_LINK_ID</code> · <code>POPBILL_SECRET_KEY</code> · <code>POPBILL_CORP_NUM</code>(사업자번호 10자리)을 넣어 주세요. 팝빌 연동 신청을 하면 메일로 링크아이디와 비밀키가 와요.</p><div class="bk-btns"><button class="btn ghost sm" type="button" data-bkre>다시 확인</button></div></div>`;
-  const errs=(S.errors||[]).map(e=>`<p class="err">팝빌: ${esc(e.message)}${e.code?` (${esc(e.code)})`:""}</p>`).join("");
-  if(S.member===false)return`<div class="bk-conn bad"><b>팝빌 회원 가입이 필요해요</b>${test}<p>사업자번호 ${esc(S.corp)}는 아직 팝빌 회원이 아니에요. 아래에서 가입하면 바로 계좌를 등록할 수 있어요.</p>${errs}<div class="bk-btns"><button class="btn sm" type="button" data-bkjoin>팝빌 회원 가입</button><button class="btn ghost sm" type="button" data-bkre>다시 확인</button></div></div>`;
-  if(S.member==null)return`<div class="bk-conn bad"><b>팝빌에 연결하지 못했어요</b>${test}${errs||"<p>잠시 뒤 다시 확인해 주세요.</p>"}<div class="bk-btns"><button class="btn ghost sm" type="button" data-bkre>다시 확인</button></div></div>`;
-  const pt=[S.point,S.partnerPoint].filter(v=>v!=null),pts=pt.length?` (${pt.map(v=>`${comma(v)||0}P`).join(" · ")})`:"";
-  const acc=S.accounts||[];
-  if(!acc.length)return`<div class="bk-conn bad"><b>등록한 계좌가 없어요</b>${test}<p>계좌 등록·관리에서 통장을 등록해 주세요. 정액제 요금(계좌당 월 5,000원)은 계좌를 등록할 때 포인트에서 나가니 포인트를 먼저 충전해 두세요. 신한·아이엠뱅크·신협은 은행에서 빠른조회 아이디를, 국민은행은 인터넷뱅킹 아이디를 함께 넣어요.</p>${errs}<div class="bk-btns">${btn("acct")}${btn("point",pts)}<button class="btn ghost sm" type="button" data-bkre>다시 확인</button></div></div>`;
-  const aRows=acc.map(a=>{const tags=[a.state!==1?`<span class="tag late">정지</span>`:"",a.contract===2?`<span class="tag late">해지</span>`:"",a.unpaid?`<span class="tag late">미납</span>`:"",a.restrict?`<span class="tag late">사용 제한</span>`:"",a.closing?`<span class="tag soon">해지 예정</span>`:"",
+/* 사업자 하나의 연결 상태: 가입 → 계좌 등록 → 계좌 목록 */
+function corpConn(S,c,multi,st){
+  const btn=(to,extra="")=>`<button class="btn ghost sm" type="button" data-bkurl="${to}" data-bkcorp="${esc(c.num)}">${BANK_URLS[to]}${extra}</button>`;
+  const errs=(c.errors||[]).map(e=>`<p class="err">팝빌: ${esc(e.message)}${e.code?` (${esc(e.code)})`:""}</p>`).join("");
+  if(c.member===false)return{setup:true,title:"팝빌 회원 가입이 필요해요",body:`<p>사업자번호 ${esc(c.corp)}는 아직 팝빌 회원이 아니에요. 아래에서 가입하면 바로 계좌를 등록할 수 있어요.</p>${errs}`,
+    btns:`<button class="btn sm" type="button" data-bkjoin="${esc(c.num)}">${multi?`${esc(c.name)} `:""}팝빌 회원 가입</button>`};
+  if(c.member==null)return{setup:true,title:"팝빌에 연결하지 못했어요",body:errs||"<p>잠시 뒤 다시 확인해 주세요.</p>",btns:""};
+  const pt=[c.point,S.partnerPoint].filter(v=>v!=null),pts=pt.length?` (${pt.map(v=>`${comma(v)||0}P`).join(" · ")})`:"";
+  const acc=c.accounts||[];
+  if(!acc.length)return{setup:true,title:"등록한 계좌가 없어요",body:`<p>계좌 등록·관리에서 통장을 등록해 주세요. 정액제 요금(계좌당 월 5,000원)은 계좌를 등록할 때 포인트에서 나가니 포인트를 먼저 충전해 두세요. 신한·아이엠뱅크·신협은 은행에서 빠른조회 아이디를, 국민은행은 인터넷뱅킹 아이디를 함께 넣어요.</p>${errs}`,
+    btns:btn("acct")+btn("point",pts)};
+  const rows=acc.map(a=>{const tags=[a.state!==1?`<span class="tag late">정지</span>`:"",a.contract===2?`<span class="tag late">해지</span>`:"",a.unpaid?`<span class="tag late">미납</span>`:"",a.restrict?`<span class="tag late">사용 제한</span>`:"",a.closing?`<span class="tag soon">해지 예정</span>`:"",
       a.end&&a.end<addDays(TODAY,7)&&a.contract!==2?`<span class="tag soon">기한 곧 끝남</span>`:""].join("");
     const s=(st.accts||{})[a.key]||{};
     return`<li><span><b>${esc(a.bank)} ···${esc(a.tail)}</b>${a.name?` <span class="hint">${esc(a.name)}</span>`:""}</span><span class="hint">${a.end?`${fmt(a.end)}까지`:""}</span>${tags}${s.err?`<span class="err">${esc(s.err.message)}</span>`:""}</li>`;}).join("");
-  const bad=acc.some(a=>a.state!==1||a.contract===2||a.unpaid||a.restrict)||(S.errors||[]).length||(st.err&&st.err.message);
+  return{setup:false,bad:acc.some(a=>a.state!==1||a.contract===2||a.unpaid||a.restrict)||!!(c.errors||[]).length,
+    sum:acc.map(a=>`${esc(a.bank.replace(/은행$/,""))} ${esc(a.tail)}`).join(" · "),body:`<ul class="bk-accts">${rows}</ul>${errs}`,btns:btn("acct")+btn("rate")+btn("point",pts)+btn("login")};}
+function bankConnHtml(){const S=bankSt,st=bankState||{};
+  if(!S)return`<div class="bk-conn"><p class="hint">팝빌 연결을 확인하는 중이에요…</p></div>`;
+  if(S.fail){const t=bankErrText(S.fail);return`<div class="bk-conn bad"><b>통장 연결 안 됨</b><p>${t}</p><p class="hint">처음이면 <a href="https://github.com/nestfurniture/nest-schedule#업데이트-12-통장-거래내역-자동-연결-적용" target="_blank" rel="noopener">README 업데이트 12</a> 순서대로 해 주세요.</p><div class="bk-btns"><button class="btn ghost sm" type="button" data-bkre>다시 확인</button></div></div>`;}
+  const test=S.test?` <span class="tag soon">팝빌 시험 환경</span>`:"",re=`<button class="btn ghost sm" type="button" data-bkre>다시 확인</button>`;
+  const cfgBad=(S.bad||[]).length?`<p class="err">Secrets의 POPBILL_CORP_NUM에서 알아보지 못한 칸이 있어요: ${S.bad.map(esc).join(", ")} (사업자번호 10자리로 적어 주세요)</p>`:"";
+  if(!S.configured)return`<div class="bk-conn bad"><p><b>팝빌 열쇠가 아직 없어요</b>${test}</p><p>Supabase → Edge Functions → Secrets에 <code>POPBILL_LINK_ID</code> · <code>POPBILL_SECRET_KEY</code> · <code>POPBILL_CORP_NUM</code>을 넣어 주세요. 사업자번호는 <code>네스트:000-00-00000, 리브젠:000-00-00000</code>처럼 사업자마다 이름과 함께 적어요. 팝빌 연동 신청을 하면 메일로 링크아이디와 비밀키가 와요.</p>${cfgBad}<div class="bk-btns">${re}</div></div>`;
+  const C=bkCorps(S),multi=C.length>1,P=C.map(c=>corpConn(S,c,multi,st)),setup=P.some(p=>p.setup);
+  const lastErr=st.err&&st.err.message?`<p class="err">마지막 가져오기: ${esc(st.err.message)}</p>`:"";
+  const get=`<button class="btn sm" type="button" data-bkget>지금 가져오기</button>`;
   const last=st.lastEnd?`${kstTime(st.lastEnd)}에 가져옴${st.added?` · 새 거래 ${st.added}건`:""}`:"아직 안 가져옴";
-  return`<details class="bk-conn${bad?" bad":""}" ${bad||bankMsg?"open":""}><summary><b>통장 연결</b>${test} <span class="hint">${acc.map(a=>`${esc(a.bank.replace(/은행$/,""))} ${esc(a.tail)}`).join(" · ")} · ${last}</span><span class="bk-more">설정</span></summary>
-    <ul class="bk-accts">${aRows}</ul>${st.err&&st.err.message?`<p class="err">마지막 가져오기: ${esc(st.err.message)}</p>`:""}${errs}
-    <p class="hint">한국 시간 아침 6시~밤 11시에 매시간 저절로 가져와요. 정액제 기한이 끝나면 팝빌에서 자동 연장되고 포인트에서 나가요.</p>
-    <div class="bk-btns"><button class="btn sm" type="button" data-bkget>지금 가져오기</button>${btn("acct")}${btn("rate")}${btn("point",pts)}${btn("login")}</div></details>`;}
+  const hint=`<p class="hint">한국 시간 아침 6시~밤 11시에 매시간 저절로 가져와요. 정액제 기한이 끝나면 팝빌에서 자동 연장되고 포인트에서 나가요.</p>`;
+  if(!multi){const p=P[0];
+    if(p.setup)return`<div class="bk-conn bad"><p><b>${p.title}</b>${test}</p>${p.body}${cfgBad}<div class="bk-btns">${p.btns}${re}</div></div>`;
+    const bad=p.bad||!!lastErr||!!cfgBad;
+    return`<details class="bk-conn${bad?" bad":""}" ${bad||bankMsg?"open":""}><summary><b>통장 연결</b>${test} <span class="hint">${p.sum} · ${last}</span><span class="bk-more">설정</span></summary>
+    ${p.body}${lastErr}${cfgBad}${hint}<div class="bk-btns">${get}${p.btns}</div></details>`;}
+  /* 사업자가 여럿: 사업자마다 가입·계좌·포인트를 따로 보여 줌 */
+  const sec=P.map((p,i)=>`<div class="bk-corp${p.setup||p.bad?" bad":""}"><p class="bk-corp-h"><b>${esc(C[i].name)}</b> <span class="hint">${esc(C[i].corp)}</span>${p.setup?` <span class="tag late">${p.title}</span>`:""}</p>${p.body}${p.btns?`<div class="bk-btns">${p.btns}</div>`:""}</div>`).join("");
+  if(setup)return`<div class="bk-conn bad"><p><b>통장 연결 준비</b>${test}</p><p class="hint">사업자마다 팝빌 가입과 계좌 등록을 따로 해요.</p>${sec}${lastErr}${cfgBad}<div class="bk-btns">${P.some(p=>!p.setup)?get:""}${re}</div></div>`;
+  const bad=P.some(p=>p.bad)||!!lastErr||!!cfgBad;
+  return`<details class="bk-conn${bad?" bad":""}" ${bad||bankMsg?"open":""}><summary><b>통장 연결</b>${test} <span class="hint">${P.map((p,i)=>`${esc(C[i].name)} ${p.sum}`).join(" · ")} · ${last}</span><span class="bk-more">설정</span></summary>
+    ${sec}${lastErr}${cfgBad}${hint}<div class="bk-btns">${get}</div></details>`;}
 function bankPickHtml(t,s,C){
   const kinds=t.dir==="in"?[["pay","고객 입금"],["skip","건너뛰기"]]:[["exp","회사 지출"],["cost","거래처 지급"],["wage","시공자 정산 지급"],["newcost","현장 매입 새로"],["skip","건너뛰기"]];
   const has=v=>kinds.some(x=>x[0]===v),k=has(bankKind)?bankKind:s&&has(s.t)?s.t:kinds[0][0];
@@ -251,18 +277,24 @@ function renderBank(){if(!isAdmin||!$("view-bank")||$("view-bank").hidden)return
   if(bkBusy()){bankLater=true;return;}bankLater=false;
   $("bkConn").innerHTML=bankConnHtml()+(bankMsg?`<p class="${bankMsgOk?"ok-msg":"err"}">${bankMsg}</p>`:"");
   const months=[...new Set(bankTx.map(t=>t.day.slice(0,7)))].sort().reverse(),accts=[...new Set(bankTx.map(t=>t.acct))];
-  if(bankM&&!months.includes(bankM))bankM="";if(bankA&&!accts.includes(bankA))bankA="";
+  const multi=bankMulti(),BZ=bizMap(),aCorp={};bankTx.forEach(t=>{if(!(t.acct in aCorp))aCorp[t.acct]=txCorp(t);});
+  const aOpts=[["","모든 계좌"]];
+  if(multi){[...new Set(accts.map(a=>aCorp[a]))].sort((a,b)=>(!a)-(!b)||String(BZ[a]||a).localeCompare(String(BZ[b]||b),"ko")).forEach(c=>{const my=accts.filter(a=>aCorp[a]===c);
+      if(c)aOpts.push([`c:${c}`,`${BZ[c]||fmtCorp(c)} 전체`]);my.forEach(a=>aOpts.push([a,`${c?`${BZ[c]||fmtCorp(c)} · `:""}${acctLbl(a)}`]));});}
+  else accts.forEach(a=>aOpts.push([a,acctLbl(a)]));
+  if(bankM&&!months.includes(bankM))bankM="";if(bankA&&!aOpts.some(o=>o[0]===bankA))bankA="";
   $("bk-m").innerHTML=`<option value="">전체 기간</option>`+months.map(m=>`<option value="${m}" ${m===bankM?"selected":""}>${m.slice(0,4)}년 ${+m.slice(5)}월</option>`).join("");
-  $("bk-a").hidden=accts.length<2;$("bk-a").innerHTML=`<option value="">모든 계좌</option>`+accts.map(a=>`<option value="${esc(a)}" ${a===bankA?"selected":""}>${esc(acctLbl(a))}</option>`).join("");
-  const inScope=bankTx.filter(t=>(!bankM||t.day.startsWith(bankM))&&(!bankA||t.acct===bankA));
+  $("bk-a").hidden=aOpts.length<3;$("bk-a").innerHTML=aOpts.map(([v,l])=>`<option value="${esc(v)}" ${v===bankA?"selected":""}>${esc(l)}</option>`).join("");
+  const inScope=bankTx.filter(t=>(!bankM||t.day.startsWith(bankM))&&bkIn(t));
   const cnt=s=>inScope.filter(t=>!s||t.status===s).length;
   $("bkChips").innerHTML=[["new","확인할 것"],["done","처리함"],["skip","건너뜀"],["","전체"]].map(([k,l])=>`<button class="chip${k===bankF?" on":""}${k==="new"&&cnt("new")?" soon":""}" type="button" data-bkf-cat="${k}" aria-pressed="${k===bankF}">${l} <b>${cnt(k)}</b></button>`).join("");
-  const ym=bankM||TODAY.slice(0,7),inM=bankTx.filter(t=>t.day.startsWith(ym)&&(!bankA||t.acct===bankA)),sum=d=>inM.filter(t=>t.dir===d).reduce((a,t)=>a+t.amount,0);
-  const nw=bankTx.filter(t=>t.status==="new"&&(!bankA||t.acct===bankA));
-  const bal=accts.filter(a=>!bankA||a===bankA).map(a=>bankTx.find(t=>t.acct===a&&t.balance!=null)).filter(Boolean);
+  const ym=bankM||TODAY.slice(0,7),inM=bankTx.filter(t=>t.day.startsWith(ym)&&bkIn(t)),sum=d=>inM.filter(t=>t.dir===d).reduce((a,t)=>a+t.amount,0);
+  const nw=bankTx.filter(t=>t.status==="new"&&bkIn(t));
+  const aName=a=>multi&&aCorp[a]?`${BZ[aCorp[a]]||fmtCorp(aCorp[a])} ${acctLbl(a)}`:acctLbl(a);
+  const bal=accts.map(a=>bankTx.find(t=>t.acct===a&&t.balance!=null)).filter(t=>t&&bkIn(t));
   $("bkTiles").innerHTML=`<div class="tile ${nw.length?"warn":""}"><small>확인할 것</small><b>${nw.length}건</b><small>들어온 ${won(nw.filter(t=>t.dir==="in").reduce((a,t)=>a+t.amount,0))} · 나간 ${won(nw.filter(t=>t.dir==="out").reduce((a,t)=>a+t.amount,0))}</small></div>
     <div class="tile"><small>${+ym.slice(5)}월 들어온 돈</small><b>${won(sum("in"))}</b></div><div class="tile"><small>${+ym.slice(5)}월 나간 돈</small><b>${won(sum("out"))}</b></div>
-    ${bal.length?`<div class="tile"><small>통장 잔액 (마지막 거래 기준)</small><b>${won(bal.reduce((a,t)=>a+t.balance,0))}</b>${bal.length>1?`<small>${bal.map(t=>esc(acctLbl(t.acct))).join(" · ")}</small>`:""}</div>`:""}`;
+    ${bal.length?`<div class="tile"><small>통장 잔액 (마지막 거래 기준)</small><b>${won(bal.reduce((a,t)=>a+t.balance,0))}</b>${bal.length>1?`<small>${bal.map(t=>esc(aName(t.acct))).join(" · ")}</small>`:""}</div>`:""}`;
   const C=bankCtx(),list=inScope.filter(t=>!bankF||t.status===bankF);
   const sugs=new Map(list.filter(t=>t.status==="new").map(t=>[t.id,bankSuggest(t,C)]));
   const high=list.filter(t=>t.status==="new"&&sugReady(sugs.get(t.id)));
@@ -274,7 +306,7 @@ function renderBank(){if(!isAdmin||!$("view-bank")||$("view-bank").hidden)return
       <span class="bk-btns">${s&&(s.t!=="cost"||s.rows.length)?`<button class="btn sm" type="button" data-bkok="${esc(t.id)}">이걸로 처리</button>`:""}<button class="btn ghost sm" type="button" data-bkopen="${esc(t.id)}">${s?"다르게":"고르기"}</button>${s&&s.t==="skip"?"":`<button class="btn ghost sm" type="button" data-bkskip="${esc(t.id)}">건너뛰기</button>`}</span></div>`;
       if(open)act+=bankPickHtml(t,s,C);}
     else act=`<div class="bk-done"><span>${t.status==="skip"?"–":"✓"} ${esc((t.link&&t.link.l)||(t.status==="skip"?"건너뜀":"처리함"))}${t.done_by?` <span class="hint">${esc(t.done_by)}</span>`:""}</span><button class="linkish" type="button" data-bku="${esc(t.id)}">되돌리기</button></div>`;
-    return`<li class="bk-row ${t.dir} ${t.status}" data-bk="${esc(t.id)}"><div class="bk-top"><span class="d">${fmtW(t.day)}${t.at?` ${t.at}`:""}</span>${accts.length>1?`<span class="hint">${esc(acctLbl(t.acct))}</span>`:""}<b class="bk-amt">${sign}${won(t.amount)}</b></div>
+    return`<li class="bk-row ${t.dir} ${t.status}" data-bk="${esc(t.id)}"><div class="bk-top"><span class="d">${fmtW(t.day)}${t.at?` ${t.at}`:""}</span>${multi&&aCorp[t.acct]?`<span class="tag biz">${esc(BZ[aCorp[t.acct]]||fmtCorp(aCorp[t.acct]))}</span>`:""}${accts.length>1?`<span class="hint">${esc(acctLbl(t.acct))}</span>`:""}<b class="bk-amt">${sign}${won(t.amount)}</b></div>
       <div class="bk-who"><b>${esc(txWho(t))||"(내용 없음)"}</b>${more?` <span class="hint">${more}</span>`:""}</div>${act}</li>`;}).join("")+(list.length>300?`<li class="hint">위에서 300건만 보여요. 달이나 계좌를 골라 주세요.</li>`:"")
     :`<li class="none">${bankTx.length?bankF==="new"?"확인할 거래가 없어요. 다 정리됐어요.":"이 조건에 맞는 거래가 없어요.":"아직 가져온 거래가 없어요. 통장 연결을 마치면 매시간 저절로 들어와요."}</li>`;
   $("bkRuleN").textContent=bankRules.length?`${bankRules.length}개`:"없음";
@@ -297,10 +329,15 @@ async function bankRun(t,a,btn){if(btn)btn.disabled=true;const e=await bankApply
   if(/다른 기기/.test(e))await loadBank();
   laborCache=null;render();return!e;}
 /* ---------- 팝빌 회원 가입 ---------- */
-function openBankJoin(){const co=(typeof estConf!=="undefined"&&estConf.company)||{};
+function openBankJoin(num){const C=bkCorps(bankSt),c=C.find(x=>x.num===num)||C[0]||{num:"",corp:"",name:""},co=(typeof estConf!=="undefined"&&estConf.company)||{};
+  /* 다른 사업자로 바꿔 열면 칸을 비움. 회사 정보(견적서 설정)는 그 사업자와 같을 때만 미리 채움 */
+  if(bankJoinCorp!==c.num){["bj-id","bj-corp","bj-ceo","bj-addr","bj-type","bj-cls","bj-name","bj-email","bj-tel"].forEach(id=>{$(id).value="";});bankJoinCorp=c.num;}
+  const biz=String(co.bizNo||"").replace(/\D/g,""),cn=bnNorm(c.name),on=bnNorm(co.name);
+  const mine=C.length<2||(biz?biz===c.num:!!cn&&!!on&&(on.includes(cn)||cn.includes(on)));
   const set=(id,v)=>{const el=$(id);if(el&&!el.value)el.value=v||"";};
-  set("bj-corp",co.name);set("bj-ceo",co.ceo);set("bj-addr",co.addr);set("bj-email",co.email||userEmail);set("bj-name",userName||co.ceo);set("bj-tel",co.tel);
-  $("bj-corpnum").textContent=bankSt&&bankSt.corp||"";$("bj-err").hidden=true;$("bankJoin").hidden=false;document.body.style.overflow="hidden";}
+  if(mine){set("bj-corp",co.name);set("bj-ceo",co.ceo);set("bj-addr",co.addr);set("bj-tel",co.tel);}else set("bj-corp",c.name);
+  set("bj-email",mine&&co.email||userEmail);set("bj-name",userName||(mine?co.ceo:""));
+  $("bj-corpnum").textContent=`${C.length>1&&c.name?`${c.name} `:""}${c.corp||""}`;$("bj-err").hidden=true;$("bankJoin").hidden=false;document.body.style.overflow="hidden";}
 function closeBankJoin(){$("bankJoin").hidden=true;document.body.style.overflow="";$("bj-pw").value="";}
 /* 화면 단추 연결: app.js가 시작할 때 부름 (이 파일은 app.js보다 먼저 읽음) */
 function bankInit(){
@@ -310,7 +347,7 @@ $("view-bank").addEventListener("click",async e=>{const b=e.target.closest("butt
   if("bkre" in d){bankMsg="";bankSt=null;renderBank();bankStatus(true);return;}
   if("bkget" in d){bankCollect(b);return;}
   if(d.bkurl){bankPopup(d.bkurl,b);return;}
-  if("bkjoin" in d){openBankJoin();return;}
+  if("bkjoin" in d){openBankJoin(d.bkjoin);return;}
   if(d.bkopen){bankOpen=bankOpen===d.bkopen?"":d.bkopen;bankKind="";bankMsg="";renderBank();return;}
   if("bkclose" in d){bankOpen="";bankKind="";renderBank();return;}
   if(d.bkk){const box=b.closest(".bk-pick");bankKind=d.bkk;if(box)bankOpen=box.dataset.bkp;renderBank();return;}
@@ -320,7 +357,7 @@ $("view-bank").addEventListener("click",async e=>{const b=e.target.closest("butt
   if(d.bkdo){const box=b.closest(".bk-pick"),t=box&&T(box.dataset.bkp);if(!t)return;const a=bankPickRead(t,d.bkdo,box);
     if(a.err){bankMsg=a.err;bankMsgOk=false;renderBank();return;}bankRun(t,a,b);return;}
   if(d.bku){const t=T(d.bku);if(!t)return;b.disabled=true;const m=await bankUndo(t);b.disabled=false;bankMsg=m;bankMsgOk=false;laborCache=null;render();return;}
-  if("bkall" in d){const C=bankCtx(),todo=bankTx.filter(t=>t.status==="new"&&(!bankM||t.day.startsWith(bankM))&&(!bankA||t.acct===bankA)).map(t=>({t,s:bankSuggest(t,C)}))
+  if("bkall" in d){const C=bankCtx(),todo=bankTx.filter(t=>t.status==="new"&&(!bankM||t.day.startsWith(bankM))&&bkIn(t)).map(t=>({t,s:bankSuggest(t,C)}))
       .filter(o=>sugReady(o.s));
     if(!todo.length||!confirm(`제안대로 ${todo.length}건을 처리할까요? 처리한 뒤에도 줄마다 되돌리기를 누를 수 있어요.`))return;
     b.disabled=true;let okN=0,bad=0;
@@ -339,6 +376,7 @@ $("bj-save").onclick=async()=>{const g=id=>$(id).value.trim(),err=m=>{$("bj-err"
   if(Object.values(form).some(v=>!v))return err("빈 칸을 모두 채워 주세요.");
   if(form.id.length<6)return err("아이디는 6자 이상이에요.");
   if(!/^(?=.*[A-Za-z])(?=.*\d)(?=.*[~!@#$%^&*()_+]).{8,20}$/.test(form.pw))return err("비밀번호는 8~20자로 영문·숫자·특수문자(~!@#$%^&*()_+)를 모두 넣어 주세요.");
-  $("bj-save").disabled=true;const r=await bankCall({action:"join",form});$("bj-save").disabled=false;
+  $("bj-save").disabled=true;const r=await bankCall({action:"join",form,corp:bankJoinCorp||""});$("bj-save").disabled=false;
   if(r.error)return err(bankErrText(r));if(!r.data.ok)return err(r.data.message||"가입하지 못했어요.");
-  closeBankJoin();bankMsg="팝빌 회원 가입이 끝났어요. 이제 계좌 등록·관리에서 통장을 등록해 주세요. 팝빌 아이디·비밀번호는 따로 적어 두세요.";bankMsgOk=true;bankStatus(true);};}
+  const jn=(bkCorps(bankSt).length>1&&(bkCorps(bankSt).find(x=>x.num===bankJoinCorp)||{}).name)||"";
+  closeBankJoin();bankMsg=`${jn?`${esc(jn)} `:""}팝빌 회원 가입이 끝났어요. 이제 계좌 등록·관리에서 통장을 등록해 주세요. 팝빌 아이디·비밀번호는 따로 적어 두세요.`;bankMsgOk=true;bankStatus(true);};}

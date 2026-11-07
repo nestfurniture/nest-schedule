@@ -6,6 +6,7 @@
 create table if not exists public.bank_tx (
   id text primary key,                                         -- 팝빌 거래 번호 (같은 거래는 두 번 안 들어감)
   acct text not null,                                          -- 은행코드-계좌번호
+  corp text not null default '',                               -- 사업자번호 (리브젠·네스트처럼 사업자가 여럿일 때 구분)
   day date not null,                                           -- 거래한 날
   at text not null default '',                                 -- 거래 시각 (HH:MM)
   dir text not null check (dir in ('in', 'out')),              -- in = 들어온 돈, out = 나간 돈
@@ -24,6 +25,7 @@ create table if not exists public.bank_tx (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table public.bank_tx add column if not exists corp text not null default '';
 create index if not exists bank_tx_day on public.bank_tx (day desc);
 alter table public.bank_tx enable row level security;
 drop policy if exists "admins only" on public.bank_tx;

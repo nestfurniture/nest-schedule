@@ -50,8 +50,8 @@ jobs:
             -H "Content-Type: application/json" -d '{"action":"est_open","token":"probe_aaaaaaaaaaaaaaaa","staff":true}' | grep -E "^HTTP|error" | head -5
           echo; echo "== 15. 시공자 일당 등록 표(crew_days, 업데이트 11) — [] 이면 준비됨 (로그인한 계정만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-11.sql 실행 필요"
           curl -s -i -m 30 "$URL/rest/v1/crew_days?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
-          echo; echo "== 16. 통장 내역 표(bank_tx, 업데이트 12) — [] 이면 준비됨 (관리자만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-12.sql 실행 필요"
-          curl -s -i -m 30 "$URL/rest/v1/bank_tx?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
-          echo; echo "== 17. 통장 서버(bank ping) — \"configured\":true 면 팝빌 열쇠가 들어감, false 면 Secrets 확인, 404 면 bank 서버를 아직 안 만듦. \"test\":true 면 팝빌 시험 환경"
+          echo; echo "== 16. 통장 내역 표(bank_tx, 업데이트 12) — [] 이면 준비됨 (관리자만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-12.sql 실행 필요, 42703(corp) 이면 update-12.sql 한 번 더 실행"
+          curl -s -i -m 30 "$URL/rest/v1/bank_tx?select=id,corp&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|42703|\[" | head -5
+          echo; echo "== 17. 통장 서버(bank ping) — \"configured\":true 면 팝빌 열쇠가 들어감, false 면 Secrets 확인, 404 면 bank 서버를 아직 안 만듦. \"test\":true 면 팝빌 시험 환경, \"corps\":2 면 사업자 둘(리브젠·네스트)"
           curl -s -i -m 60 -X POST "$URL/functions/v1/bank" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"action":"ping"}' | grep -E "^HTTP|configured|error|NOT_FOUND" | head -5
