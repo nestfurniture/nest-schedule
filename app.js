@@ -199,7 +199,7 @@ function qHit(j){const q=boardQ.trim().toLowerCase();if(!q)return true;
   const d=q.replace(/[^\d]/g,"");return d.length>=3&&d.length===q.replace(/[\s-]/g,"").length&&[j.i.tel,...j.i.mgr].some(t=>String(t||"").replace(/\D/g,"").includes(d));}
 function render(){renderBoard();renderFlow();
   renderCal();renderCrew();
-  if(isAdmin){renderPay();renderVend();renderSales();renderWage();renderEst();}
+  if(isAdmin){renderPay();renderVend();renderSales();renderWage();renderEst();renderBank();}
   $("vendList").innerHTML=isAdmin?vendNames().map(n=>`<option value="${esc(n)}">`).join(""):"";
   renderHome();
   if(viewing)renderView();
@@ -778,6 +778,13 @@ function renderWage(){if(!isAdmin)return;
 async function saveWage(key,data){$("wgSaved").textContent="저장 중…";
   const {error}=await sb.from("crew_pay").upsert({key,data,updated_at:new Date().toISOString()});
   $("wgSaved").textContent=error?"저장 못 함 · 인터넷 확인 후 다시 고쳐 주세요":"저장됨";return!error;}
+/* 지급 완료 체크 (시공자 정산 화면 · 통장 내역): 그때 금액을 그대로 남김(snap). n = null 이면 마감 추가 투입. 지급일 day(없으면 오늘) */
+function wagePaySet(y,m,n,on,day){const key=ymKey(y,m),W=wageMonth(y,m),p=n===null?W.extra:W.people.find(x=>x.n===n);
+  const rec=normWm(JSON.parse(JSON.stringify(wmOf(key)))),o=n===null?rec.x:(rec.p[n]??={adj:0,note:"",paid:"",snap:null});
+  if(on&&p&&p.total!==null){o.paid=day||TODAY;o.snap={total:p.total,days:p.days,as:p.as,rate:p.rate,asRate:p.asRate,adj:p.adj,people:p.people,...(p.reg&&p.reg.length?{reg:p.regSum,regDays:p.reg.length}:{})};}else{o.paid="";o.snap=null;}
+  wage.months[key]=rec;const saved=saveWage(key,rec);
+  if(n!==null&&p&&p.reg)cdLock(p.reg,on&&p.total!==null);
+  return saved;}
 function wmEdit(n,fn){const key=ymKey(wgY,wgM),rec=normWm(JSON.parse(JSON.stringify(wmOf(key))));
   fn(n===null?rec.x:(rec.p[n]??={adj:0,note:"",paid:"",snap:null}));wage.months[key]=rec;saveWage(key,rec);renderWage();}
 $("view-wage").addEventListener("change",e=>{const t=e.target,d=t.dataset||{};
@@ -786,9 +793,7 @@ $("view-wage").addEventListener("change",e=>{const t=e.target,d=t.dataset||{};
     wage.rates=normRates({day,extra:box.querySelector("[data-ratex]").value,as:box.querySelector("[data-rateas]").value});laborCache=null;saveWage("rates",wage.rates);render();return;}
   if("wgadj" in d){const v=Math.round(sNum(t.value));wmEdit(d.wgadj,o=>{o.adj=v;});return;}
   if("wgnote" in d){const v=t.value.trim();wmEdit(d.wgnote,o=>{o.note=v;});return;}
-  if("wgpaid" in d||"wgxpaid" in d){const W=wageMonth(wgY,wgM),p="wgpaid" in d?W.people.find(x=>x.n===d.wgpaid):W.extra;
-    wmEdit("wgpaid" in d?d.wgpaid:null,o=>{if(t.checked&&p&&p.total!==null){o.paid=TODAY;o.snap={total:p.total,days:p.days,as:p.as,rate:p.rate,asRate:p.asRate,adj:p.adj,people:p.people,...(p.reg&&p.reg.length?{reg:p.regSum,regDays:p.reg.length}:{})};}else{o.paid="";o.snap=null;}});
-    if("wgpaid" in d&&p&&p.reg)cdLock(p.reg,t.checked&&p.total!==null);}});
+  if("wgpaid" in d||"wgxpaid" in d){wagePaySet(wgY,wgM,"wgpaid" in d?d.wgpaid:null,t.checked);renderWage();}});
 $("view-wage").addEventListener("focusout",()=>setTimeout(()=>{if(wgLater&&!wgBusy())renderWage();},0));
 $("view-wage").addEventListener("toggle",e=>{const d=e.target;if(d.dataset&&"wgd" in d.dataset)(d.open?wgOpen.add(d.dataset.wgd):wgOpen.delete(d.dataset.wgd));},true);
 document.addEventListener("click",async e=>{const b=e.target.closest("[data-wgmsg]");if(!b)return;
@@ -814,7 +819,7 @@ const curYM=()=>TODAY.slice(0,7);
 const expIn=(x,ym)=>x.repeat?x.day.slice(0,7)<=ym&&ym<=curYM()&&(!x.until||ym<=x.until):x.day.slice(0,7)===ym;
 const expSum=yms=>expenses.reduce((a,x)=>a+x.amount*yms.filter(m=>expIn(x,m)).length,0);
 const yearMonths=y=>[...Array(12)].map((_,k)=>`${y}-${pad(k+1)}`);
-const normExp=r=>({id:r.id,day:String(r.day||"").slice(0,10),cat:r.cat||EXP_CATS[EXP_CATS.length-1],amount:+r.amount||0,note:r.note||"",repeat:!!r.repeat,until:r.until||""});
+const normExp=r=>({id:r.id,day:String(r.day||"").slice(0,10),cat:r.cat||EXP_CATS[EXP_CATS.length-1],amount:+r.amount||0,note:r.note||"",repeat:!!r.repeat,until:r.until||"",...(r.bank_id?{bank_id:String(r.bank_id)}:{})});
 function renderSales(){
   const counted=jobs.filter(j=>moneyOf(j.id).contract.amount>0||jobCosts(j).length>0);
   const years=[...new Set([now.getFullYear(),...counted.map(j=>+jobMonth(j).slice(0,4)).filter(Boolean),...expenses.map(x=>+x.day.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
@@ -867,7 +872,7 @@ function renderExpenses(yms,E){
   $("exCats").innerHTML=cats.length?cats.map(o=>`<tr><td>${esc(o.c)}</td><td class="num">${won(o.v)}</td><td class="num">${pct(o.v,E)}</td><td class="barcell">${bar(o.v,E,"cost")}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">이 기간에 적은 지출이 없어요.</td></tr>`;
   $("exList").innerHTML=list.length?list.map(({x,n})=>`<tr data-ex="${esc(x.id)}" tabindex="0"><td><span class="d">${fmtW(x.day)}</span></td><td>${esc(x.cat)}</td><td class="num push">${won(x.amount*n)}${n>1?` <small class="hint">${won(x.amount)} × ${n}달</small>`:""}</td>
-    <td class="full">${x.repeat?`<span class="tag soon">매달${x.until?` · ~${+x.until.slice(5)}월`:""}</span> `:""}${esc(x.note)}</td></tr>`).join("")
+    <td class="full">${x.repeat?`<span class="tag soon">매달${x.until?` · ~${+x.until.slice(5)}월`:""}</span> `:""}${x.bank_id?`<span class="tag wait">통장</span> `:""}${esc(x.note)}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">이 기간에 적은 지출이 없어요. 아래에서 추가해 주세요.</td></tr>`;}
 function fillExpForm(x){expEdit=x?x.id:null;
   $("ex-day").value=x?x.day:TODAY;$("ex-cat").value=x?x.cat:EXP_CATS[0];$("ex-amt").value=x?comma(x.amount):"";$("ex-note").value=x?x.note:"";
@@ -882,9 +887,11 @@ async function saveExp(){const row={day:$("ex-day").value,cat:$("ex-cat").value,
   $("ex-save").disabled=false;if(error)return err("저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.");
   const r=data&&data[0]?normExp(data[0]):null;if(r){expenses=expenses.filter(x=>x.id!==r.id);expenses.push(r);}
   fillExpForm(null);renderSales();}
-async function delExp(){if(!expEdit)return;const {error}=await sb.from("expenses").delete().eq("id",expEdit);
+async function delExp(){if(!expEdit)return;const gone=expenses.find(x=>x.id===expEdit);const {error}=await sb.from("expenses").delete().eq("id",expEdit);
   if(error){$("ex-err").textContent="지우지 못했어요. 다시 눌러 주세요.";$("ex-err").hidden=false;return;}
-  expenses=expenses.filter(x=>x.id!==expEdit);fillExpForm(null);renderSales();}
+  expenses=expenses.filter(x=>x.id!==expEdit);fillExpForm(null);renderSales();
+  /* 통장 내역에서 넣은 지출이면 그 거래는 다시 '확인할 것'으로 */
+  if(gone&&gone.bank_id)bankUnlinkExp(gone.bank_id,gone.id).then(()=>{renderBank();renderHome();});}
 async function loadExpenses(){if(!isAdmin){expenses=[];return;}
   const {data,error}=await sb.from("expenses").select("*").order("day");
   pay09=!(error&&/expenses|42P01|PGRST20/i.test(`${error.code} ${error.message}`));
@@ -1416,6 +1423,8 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
     add("soon",`${m}월 시공자 정산 지급 전`,w.people.filter(p=>!p.paid&&(p.days||p.as)).map(p=>`<span>${esc(p.n)} <span class="hint">${p.total==null?"일당 미입력":won(p.total)}</span></span>`),"명",[`wage:${pm.slice(0,7)}`,"시공자 정산 보기"]);}
   if(isAdmin){const m1=TODAY.slice(0,8)+"01",by={};costList().filter(o=>isVend(o.x)&&!o.x.paid&&o.x.d&&o.x.d<m1).forEach(o=>{by[o.x.v]=(by[o.x.v]||0)+o.x.amount;});
     add("soon","지난달까지 거래처 매입 지급 전",Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<span>${esc(n)} <span class="hint">${won(v)}</span></span>`),"곳",["vend","거래처 정산 보기"]);}
+  if(isAdmin&&bank12){const nw=bankTx.filter(t=>t.status==="new");
+    add("soon","통장 거래 분류 안 함",nw.map(t=>`<span>${fmt(t.day)} ${esc(txWho(t)||"내용 없음")} <span class="hint">${t.dir==="in"?"+":"−"}${won(t.amount)}</span></span>`),"건",["bank","통장 내역 보기"]);}
   add("wait","실측일·시공일 없는 현장",live.filter(j=>!j.m.date&&!j.i.start).map(j=>it(j)),"곳");
   return A;}
 function renderHome(){if(!loaded)return;
@@ -1448,8 +1457,8 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!
   tab(v);if(v==="board")render();if(v==="wage")renderWage();window.scrollTo({top:0});});
 
 /* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
-const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage","vend"],fin:["sales","exp"]};
-const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출"};
+const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage","vend"],fin:["sales","exp","bank"]};
+const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출",bank:"통장 내역"};
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
@@ -1463,6 +1472,7 @@ function tab(which){if(crewAs){showMine();return;}$("view-mine").hidden=true;
   if(which==="crew")renderCrew();
   if(which==="flow")renderFlow();
   if(which==="est"&&isAdmin)renderEst();
+  if(which==="bank"&&isAdmin){renderBank();bankStatus();}
   if(which==="home")renderHome();
   try{localStorage.setItem("nest-sub",JSON.stringify(lastSub));sessionStorage.setItem("nest-cur",which)}catch(e){}}
 VIEWS.forEach(v=>$("tab-"+v).onclick=()=>tab(v));
@@ -1931,6 +1941,8 @@ function backupSheets(){
     if(pay08)sheets.push(...wageSheets());
     if(expenses.length)sheets.push({name:"지출",cols:[["날짜",12,"d"],["항목",14,"s"],["금액",14,"w"],["메모",30,"s"],["매달 반복",9,"s"],["반복 끝",9,"s"]],
       rows:[...expenses].sort((a,b)=>a.day.localeCompare(b.day)).map(x=>[x.day,x.cat,x.amount,x.note,OX(x.repeat),x.until])});
+    if(bankTx.length)sheets.push({name:"통장 내역",cols:[["날짜",12,"d"],["시각",7,"s"],["계좌",14,"s"],["입출금",7,"s"],["금액",14,"w"],["잔액",14,"w"],["내용",22,"s"],["내용 2",22,"s"],["처리",8,"s"],["어디로",34,"s"]],
+      rows:[...bankTx].sort((a,b)=>(a.day+a.at).localeCompare(b.day+b.at)).map(t=>[t.day,t.at,acctLbl(t.acct),t.dir==="in"?"입금":"출금",t.amount,t.balance??"",txWho(t),[t.r2,t.r3,t.r4,t.memo].filter(x=>x&&x!==txWho(t)).join(" · "),{new:"확인 전",done:"처리함",skip:"건너뜀"}[t.status],(t.link&&t.link.l)||t.note||""])});
     const ys=[...new Set([...jobs.map(j=>jobMonth(j).slice(0,4)),...expenses.map(x=>x.day.slice(0,4))].filter(Boolean))].sort(),fin=[];
     ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),b=js.reduce((a,j)=>a+jobBuy(j),0),l=js.reduce((a,j)=>a+jobLabor(j),0),e=expSum([ym]);
       const q=v=>r?pct(v,r):"";if(r||b||l||e)fin.push([ym,js.length||"",r,b,l,e,r-b-l-e,q(b),q(l),q(e),q(r-b-l-e)]);}));
@@ -2300,7 +2312,7 @@ async function checkAdmin(){
 }
 async function loadAll(){
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst(),loadCdays()]);
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst(),loadCdays(),loadBank()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
   jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];laborCache=null;
@@ -2326,7 +2338,7 @@ async function startApp(session){const id=session.user.id||"";
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
 }
-function showLogin(){startedFor="";userName="";userCrew="";crewAs="";adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";userName="";userCrew="";crewAs="";adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;bankReset();if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
@@ -2335,8 +2347,9 @@ $("logoutBtn").onclick=async()=>{$("logoutBtn").disabled=true;await forgetPush()
 /* 앱으로 돌아오면 새 내용을 불러옴. 날짜가 바뀌었으면(밤새 켜 둔 경우) 오늘 날짜만 바꾸고 보던 화면·입력하던 내용은 그대로 */
 const dayNow=()=>{const d=new Date();return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
 document.addEventListener("visibilitychange",()=>{if(document.hidden||$("app").hidden)return;
-  const d=dayNow();if(d!==TODAY){TODAY=d;laborCache=null;}loadAll();});
+  const d=dayNow();if(d!==TODAY){TODAY=d;laborCache=null;}loadAll();if(curTab==="bank")bankStatus();});
 
+bankInit();
 (function boot(){
   const cfg=window.NEST_CONFIG||{};
   if(!cfg.SUPABASE_URL||!cfg.SUPABASE_ANON_KEY||!window.supabase){$("setup").hidden=false;return;}

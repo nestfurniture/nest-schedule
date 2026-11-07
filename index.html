@@ -648,6 +648,60 @@ th.num{font-family:var(--font);font-size:12px}
 .wg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px;align-items:start}
 .wg-card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .wg-card.done{border-color:var(--ok)}
+/* 통장 내역 */
+.bk-conn a{color:var(--accent);font-weight:500}
+#view-bank code{font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.bk-conn{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:8px}
+.bk-conn.bad{border-color:var(--soon)}
+.bk-conn p{margin:0}
+.bk-conn summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+details.bk-conn[open] summary{margin-bottom:4px}
+.bk-accts{list-style:none;margin:0;padding:0}
+.bk-accts li{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.bk-accts li:first-child{border-top:0}
+.bk-btns{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ok-msg{color:var(--ok);font-size:13px;margin:6px 0 0}
+#bkConn>.err{margin:6px 0 0}
+.bk-filt{margin-top:4px}
+.bk-bulk:empty{display:none}
+.bk-bulk{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.bk-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--fg)}
+.bk-list>li.none,.bk-list>li.hint{padding:14px 2px;color:var(--muted)}
+.bk-row{border-bottom:1px solid var(--line);padding:10px 2px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.bk-top{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
+.bk-top .d{font-size:13px;color:var(--muted)}
+.bk-amt{margin-left:auto;font-family:var(--serif);font-size:17px;font-weight:500;white-space:nowrap}
+.bk-row.in .bk-amt{color:var(--accent)}
+.bk-row.done,.bk-row.skip{color:var(--muted)}
+.bk-row.done .bk-amt,.bk-row.skip .bk-amt{color:var(--muted)}
+.bk-who{font-size:14px;overflow-wrap:anywhere}
+.bk-who b{font-weight:500;color:var(--fg)}
+.bk-sug,.bk-done{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px}
+.bk-sug>span:first-child{flex:1 1 220px;min-width:0}
+.bk-done>span{flex:1;min-width:0}
+.bk-pick{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:10px;display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.bk-kinds{display:flex;flex-wrap:wrap;gap:6px}
+.bk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;align-items:end}
+.bk-grid .note{grid-column:1/-1}
+.bk-grid input,.bk-grid select{width:100%}
+.bk-opts{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto}
+.bk-opts label.check{align-items:flex-start;gap:8px;padding:4px 0;font-size:14px}
+.bk-opts label.check input{margin-top:2px;flex-shrink:0}
+.bk-vg{display:flex;flex-direction:column;gap:2px;padding:4px 0;border-top:1px solid var(--line)}
+.bk-vg:first-child{border-top:0}
+.bk-vg>div>b{font-size:13px;font-weight:500}
+.bk-more{margin-left:auto;font-size:13px;color:var(--accent);font-weight:500}
+.bk-more::after{content:" ›"}
+details[open]>summary .bk-more::after{content:" ⌃"}
+.bk-rules{margin-top:12px;font-size:14px}
+.bk-rules summary{cursor:pointer;color:var(--muted)}
+.bk-rules ul{list-style:none;margin:6px 0 0;padding:0}
+.bk-rules li{display:flex;gap:10px;align-items:center;padding:4px 0;border-top:1px solid var(--line)}
+.bk-rules li>span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+.bj-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bj-grid .wide{grid-column:1/-1}
+.bj-grid input{width:100%}
+@media (max-width:560px){.bj-grid{grid-template-columns:1fr}.bk-sug .bk-btns{width:100%}}
 .wg-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .wg-name{font-size:15px}
 .wg-sum{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:500}
@@ -851,6 +905,7 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="tabs" role="tablist" aria-label="결산">
       <button class="tab" role="tab" id="tab-sales" aria-selected="false">손익</button>
       <button class="tab" role="tab" id="tab-exp" aria-selected="false">회사 지출</button>
+      <button class="tab" role="tab" id="tab-bank" aria-selected="false">통장 내역</button>
     </div>
   </div>
 
@@ -1186,6 +1241,19 @@ th.num{font-family:var(--font);font-size:12px}
     </div>
   </section>
 
+  <section id="view-bank" class="view" hidden>
+    <div class="update" id="bkUpdate" hidden>통장 거래내역을 연결하려면 Supabase 업데이트 12가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-12-통장-거래내역-자동-연결-적용" target="_blank" rel="noopener">README 업데이트 12</a> 순서대로 해 주세요.</div>
+    <div class="view" id="bkBody">
+      <div id="bkConn"></div>
+      <div class="tiles" id="bkTiles"></div>
+      <div class="filters bk-filt"><div class="summary" id="bkChips"></div><select id="bk-m" aria-label="달"></select><select id="bk-a" aria-label="계좌" hidden></select></div>
+      <div class="bk-bulk" id="bkBulk"></div>
+      <ul class="bk-list" id="bkList"></ul>
+      <details class="bk-rules"><summary>기억한 이름 <b id="bkRuleN"></b></summary><ul id="bkRules"></ul></details>
+      <p class="sub">팝빌 계좌조회로 가져온 회사 통장 입출금이에요. 한 줄씩 어디에 넣을지 정하면 회사 지출, 거래처 정산(지급 완료), 시공자 정산(지급 완료), 고객 수금(입금 확인)에 바로 들어가요. 이름과 금액이 맞으면 제안이 뜨고, 회사 지출·건너뛰기로 정한 이름은 기억해서 다음에도 같은 곳을 제안해요. 처리한 줄은 <b>되돌리기</b>로 원래대로 돌릴 수 있어요(넣은 지출은 지워지고 체크는 풀려요).</p>
+    </div>
+  </section>
+
   <section id="view-wage" class="view" hidden>
     <div class="update" id="wgUpdate" hidden>시공자 정산을 쓰려면 Supabase 업데이트 10이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-10.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
     <div class="view" id="wgBody">
@@ -1290,6 +1358,26 @@ th.num{font-family:var(--font);font-size:12px}
     <div class="nm-out"><span class="hint">이 기기에서 나가기</span><button class="btn ghost sm" type="button" id="logoutBtn">로그아웃</button></div>
   </div>
 </div>
+<div class="sheet" id="bankJoin" hidden role="dialog" aria-modal="true" aria-labelledby="bjTitle">
+  <div class="sheet-card">
+    <div class="sheet-head"><h2 id="bjTitle">팝빌 회원 가입</h2><button class="btn ghost sm" type="button" id="bj-close">닫기</button></div>
+    <p class="hint" style="margin:0">사업자번호 <b id="bj-corpnum"></b>로 팝빌에 가입해요. 아이디·비밀번호는 팝빌 홈페이지에 로그인할 때 쓰니 따로 적어 두세요. 비밀번호는 팝빌로만 보내고 앱에는 저장하지 않아요.</p>
+    <div class="bj-grid">
+      <label>팝빌 아이디 <small class="hint">(6자 이상)</small><input id="bj-id" autocomplete="off" maxlength="50"></label>
+      <label>비밀번호 <small class="hint">(8~20자, 영문·숫자·특수문자)</small><input id="bj-pw" type="password" autocomplete="new-password" maxlength="20"></label>
+      <label>상호<input id="bj-corp" maxlength="200"></label>
+      <label>대표자<input id="bj-ceo" maxlength="100"></label>
+      <label class="wide">사업장 주소<input id="bj-addr" maxlength="300"></label>
+      <label>업태 <small class="hint">(사업자등록증)</small><input id="bj-type" maxlength="100" placeholder="예: 제조업"></label>
+      <label>종목<input id="bj-cls" maxlength="100" placeholder="예: 가구"></label>
+      <label>담당자 이름<input id="bj-name" maxlength="100"></label>
+      <label>담당자 이메일<input id="bj-email" type="email" maxlength="100"></label>
+      <label>담당자 휴대폰<input id="bj-tel" type="tel" maxlength="20" placeholder="010-0000-0000"></label>
+    </div>
+    <div class="err" id="bj-err" hidden></div>
+    <div><button class="btn" type="button" id="bj-save">가입하기</button></div>
+  </div>
+</div>
 <div class="sheet" id="pushSheet" hidden role="dialog" aria-modal="true" aria-labelledby="pushTitle">
   <div class="sheet-card">
     <div class="sheet-head"><h2 id="pushTitle">휴대폰 알림</h2><button class="btn ghost sm" type="button" id="pushClose">닫기</button></div>
@@ -1327,6 +1415,7 @@ th.num{font-family:var(--font);font-size:12px}
 <script src="config.js"></script>
 <script src="checklist.js"></script>
 <script src="estimate.js"></script>
+<script src="bank.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
