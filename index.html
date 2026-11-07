@@ -310,7 +310,7 @@ input[type="checkbox"]{width:18px;height:18px;padding:0}
 .fg-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .fg-btns{display:flex;gap:6px;flex-wrap:wrap}
 .fg-btns label{flex-direction:row;color:var(--fg);cursor:pointer}
-.fpick,.phpick,.specpick,.jvpick,.mpick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.fpick,.phpick,.specpick,.jvpick,.mpick,.espick{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .fg-btns label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .flist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .flist li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
@@ -776,6 +776,28 @@ details[open]>summary .bk-more::after{content:" ⌃"}
 .v-nav{background:rgba(255,255,255,.12);color:#F1E8DA;border:0;border-radius:50%;width:40px;height:40px;font-size:22px;flex:none}
 .v-nav:disabled{opacity:.25}
 @media (max-width:560px){.v-nav{display:none}.v-img img{max-width:100%}}
+/* 견적 › 현장별 견적서: 현장 카드마다 올린 견적서 파일 (최근 것 위) */
+.es-cats{margin:0 0 12px}
+.es-card .wg-head{gap:6px 8px}
+.es-card .wg-name{font-size:15px;font-weight:700;color:var(--fg)}
+.es-card .wg-name:hover{color:var(--accent)}
+.es-card .es-n{margin-left:auto;font-size:13px}
+.es-card .wg-line{font-size:13px;color:var(--muted);margin-top:-2px}
+.es-card.none{background:transparent;border-style:dashed}
+.es-list{grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr))}
+.es-files li{gap:8px;align-items:flex-start}
+.es-files .fname{white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+.es-files .fmeta,.es-files .fdel{line-height:1.35}
+.es-files .ftype{margin-top:1px}
+.es-files .fdel{color:var(--muted)}
+.es-files .fdel[data-armed="1"]{color:var(--late);font-weight:700}
+.ftype{flex:none;font-size:11px;font-weight:700;line-height:1;padding:4px 0;width:34px;text-align:center;border-radius:4px;border:1px solid var(--line);color:var(--muted);background:var(--bg)}
+.ftype.ft-pdf{color:var(--late);border-color:color-mix(in srgb,var(--late) 35%,var(--line))}
+.ftype.ft-xls{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,var(--line))}
+.ftype.ft-img{color:var(--soon);border-color:color-mix(in srgb,var(--soon) 40%,var(--line))}
+.es-up{display:flex;flex-wrap:wrap;gap:6px}
+.jv-est .flist{margin-top:2px}
+#view-est .es-box{margin-top:16px}
 /* 견적서 */
 .es-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
 .es-box{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:12px}
@@ -895,8 +917,8 @@ details[open]>summary .bk-more::after{content:" ⌃"}
     <button class="btn fab" id="addBtn" type="button">+ 현장 추가</button>
   </div>
   <div class="subbar" id="sub-est" hidden>
-    <div class="tabs one" role="tablist" aria-label="견적"><button class="tab" role="tab" id="tab-est" aria-selected="false">견적서</button></div>
-    <button class="btn fab" type="button" id="esNew">+ 새 견적서</button>
+    <div class="tabs one" role="tablist" aria-label="견적"><button class="tab" role="tab" id="tab-est" aria-selected="false">현장별 견적서</button></div>
+    <button class="btn fab" type="button" id="esNew" hidden>+ 새 견적서</button>
   </div>
   <div class="subbar" id="sub-money" hidden>
     <div class="tabs" role="tablist" aria-label="정산">
@@ -1047,7 +1069,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
       <div class="hint">계약금·중도금·잔금을 넣고, 들어오면 '입금됨'에 체크하세요. 받을 날을 비워 두면 계약금은 계약일, 중도금은 시공 시작일, 잔금은 시공 끝나는 날로 자동으로 들어가요(시공일이 바뀌면 따라 바뀜). 날짜를 직접 고치면 그 날짜 그대로 둬요.</div>
       <div class="rows" id="mo-pays"></div>
       <div><button class="btn ghost sm" type="button" id="addPay">+ 입금 일정 추가</button></div>
-      <h4>매입 (현장 원가)</h4>
+      <h4>현장 매입 <span class="hint">안 적어도 돼요 · 자재·외주비는 결산 › 회사 지출에 월별로 적어도 결산에 들어가요</span></h4>
       <div class="rows" id="mo-costs"></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="btn ghost sm" type="button" id="addCost">+ 매입 항목 추가</button><span class="hint" id="mo-extra-hint"></span></div>
       <div class="mo-sum" id="mo-sum"></div>
@@ -1129,11 +1151,24 @@ details[open]>summary .bk-more::after{content:" ⌃"}
   </section>
 
   <section id="view-est" class="view" hidden>
-    <div class="update" id="esUpdate" hidden>견적서를 쓰려면 Supabase 업데이트 10이 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-10.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요.</div>
-    <div class="view" id="esBody">
-      <div class="es-top"><div class="summary" id="esChips"></div></div>
-      <div class="tbl stack"><table><thead><tr><th>업체 · 프로젝트</th><th>견적일</th><th class="num">합계</th><th>상태</th><th>고객 확인</th></tr></thead><tbody id="esList"></tbody></table></div>
-      <p class="sub">견적서를 누르면 고치거나 고객에게 보낼 수 있어요. 고객에게는 문자·카톡으로 링크를 보내고, 고객이 열어 보면 '고객 확인'에 보여요. <b>계약으로 확정</b>을 누르면 계약금액과 입금 일정이 수금·결산에 들어가요.</p>
+    <!-- 현장별 견적서: 현장마다 올려 둔 견적서 파일을 모아 봄 -->
+    <div class="bd-search"><input type="search" id="esQ" enterkeyhint="search" autocomplete="off" placeholder="견적서 찾기 · 현장 이름, 주소, 전화번호, 파일 이름" aria-label="견적서 찾기"></div>
+    <div class="summary es-cats" id="esCats"></div>
+    <p class="sub cat-note" id="esNote" hidden></p>
+    <p class="err" id="esErr" hidden></p>
+    <div class="wg-list es-list" id="esFiles"></div>
+    <div class="empty" id="esEmpty" hidden></div>
+    <p class="sub">현장 이름을 누르면 현장 내용이 열려요. 현장 <b>수정</b> › 도면 · 견적서에서 올린 파일도 여기에 모여요. PDF와 사진은 누르면 바로 열리고, 엑셀 파일은 내려받아 열어요. 파일 하나당 50MB까지 올릴 수 있어요.</p>
+    <!-- 예전에 앱에서 만든 견적서 (앱에서 쓰는 기능은 2026-11부터 안 씀). 있을 때만 보임 -->
+    <details class="es-box" id="esOldBox" hidden>
+      <summary><b>예전에 앱에서 만든 견적서</b> <span class="hint" id="esOldSum"></span></summary>
+      <div class="es-boxin">
+        <div class="es-top"><div class="summary" id="esChips"></div></div>
+        <div class="tbl stack"><table><thead><tr><th>업체 · 프로젝트</th><th>견적일</th><th class="num">합계</th><th>상태</th><th>고객 확인</th></tr></thead><tbody id="esList"></tbody></table></div>
+        <p class="hint" style="margin:0">앱에서 견적서를 새로 쓰는 기능은 이제 안 써요. 예전에 만든 견적서는 눌러서 열어 보거나 인쇄할 수 있어요.</p>
+      </div>
+    </details>
+    <div id="esTools" hidden>
       <details class="es-box" id="esCoBox">
         <summary><b>회사 정보 · 도장</b> <span class="hint" id="esCoSum"></span></summary>
         <div class="es-boxin">
@@ -1181,7 +1216,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
     <div class="empty" id="payEmpty" hidden>아직 금액을 넣은 현장이 없어요. 현장을 눌러 아래쪽 <b>수금 · 매입</b>에 계약금액과 입금 일정을 넣어 보세요.</div>
     <h3>받을 돈 (입금 예정 · 지연)</h3>
     <div class="tbl stack"><table><thead><tr><th>받을 날</th><th>현장</th><th>구분</th><th class="num">금액</th><th>상태</th></tr></thead><tbody id="payTodo"></tbody></table></div>
-    <h3>현장별 수금 <span class="hint">받을 돈을 다 받고 매입을 입력하면 정산 종료로 넘어가요</span></h3>
+    <h3>현장별 수금 <span class="hint">받을 돈을 다 받으면 정산 종료로 넘어가요</span></h3>
     <div class="summary pay-cats" id="payCats"></div>
     <div class="tbl stack"><table><thead><tr><th>현장</th><th class="num">받을 돈</th><th class="num">받은 돈</th><th class="num">미수금</th><th>상태</th></tr></thead><tbody id="payJobs"></tbody></table></div>
     <h3>최근 30일 입금</h3>
@@ -1190,7 +1225,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
 
   <section id="view-vend" class="view" hidden>
     <div class="tiles" id="vdTiles"></div>
-    <div class="empty" id="vdEmpty" hidden>아직 거래처를 적은 매입이 없어요. 현장을 열어 <b>정산 보기</b> › <b>+ 매입 추가</b>에서 거래처를 적으면 여기에 거래처별로 모여요.</div>
+    <div class="empty" id="vdEmpty" hidden>아직 거래처를 적은 매입이 없어요. 현장을 열어 <b>정산 보기</b> › <b>+ 현장 매입 추가</b>에서 거래처를 적으면 여기에 거래처별로 모여요.</div>
     <p class="err" id="vdErr" hidden></p>
     <div id="vdWaitBox" hidden>
       <h3>입고 대기 <span class="hint">입고 예정일을 적은 자재·외주</span></h3>
@@ -1215,7 +1250,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
     </div>
     <h3>현장별</h3>
     <div class="tbl stack two"><table><thead><tr><th>현장</th><th class="d-only">기준 달</th><th class="num">매출</th><th class="num">매입</th><th class="num">시공비</th><th class="num">현장 이익</th></tr></thead><tbody id="saJobs"></tbody></table></div>
-    <h3>매입 · 시공비 구성 (현장 원가)</h3>
+    <h3>매입 · 시공비 구성</h3>
     <div class="tbl fit"><table><thead><tr><th>항목</th><th class="num">금액</th><th class="num">매출 대비</th><th></th></tr></thead><tbody id="saCosts"></tbody></table></div>
     <p class="sub" id="saNote"></p>
   </section>
@@ -1240,7 +1275,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
         <div class="ex-row2"><label class="check"><input type="checkbox" id="ex-rep">매달 나가는 돈 (임대료처럼)</label><label id="ex-untilBox" hidden>끝나는 달 <small class="hint">(비우면 계속)</small><input type="month" id="ex-until"></label></div>
         <div class="err" id="ex-err" hidden></div>
         <div class="ex-btns"><button class="btn sm" type="button" id="ex-save">지출 추가</button><button class="btn ghost sm" type="button" id="ex-cancel" hidden>취소</button><button class="btn del sm" type="button" id="ex-del" hidden>삭제</button></div>
-        <p class="hint" style="margin:0">현장에 들어간 돈(자재·인건비·외주)은 현장의 <b>수금 · 매입</b>에 적고, 여기에는 현장에 딸리지 않은 회사 비용만 적어요. 시공자 일당은 현장 매입에 자동으로 들어가니 여기 또 적지 않아요. 적은 줄을 누르면 고치거나 지울 수 있어요.</p>
+        <p class="hint" style="margin:0">자재·외주비는 현장마다 나누지 않고 여기에 <b>자재·외주 매입</b>으로 적으면 돼요. 결산에서는 지출이 아니라 매입으로 들어가요. 시공자 일당은 시공비로 자동 계산되니 여기 또 적지 않아요. 적은 줄을 누르면 고치거나 지울 수 있어요.</p>
       </div>
     </div>
   </section>

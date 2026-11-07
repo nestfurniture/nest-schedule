@@ -61,7 +61,7 @@ function flowSteps(j){const fl=j.i.fl,lw=lastWork(j),started=!!(j.i.start&&j.i.s
     {l:"생산",ok:!!fl.pr.ok,on:fl.pr.ok,plan:fl.pr.due?`납기 ${fmt(fl.pr.due)}`:"",due:fl.pr.due},
     {l:"시공",ok:started,on:j.i.start,plan:j.i.start?`${fmt(j.i.start)} 시작`:""},
     {l:"마감",ok:ended(j),plan:lw?`${fmt(lw)} 끝`:"",due:lw}];
-  if(isAdmin){const m=moneyOf(j.id);if(billTotal(m)>0){const u=unpaidOf(m);s.push({l:"정산",ok:settledM(m),plan:u?`미수 ${won(u)}`:costIn(m)?"":"매입 입력 전"});}}
+  if(isAdmin){const m=moneyOf(j.id);if(billTotal(m)>0){const u=unpaidOf(m);s.push({l:"정산",ok:settledM(m),plan:u?`미수 ${won(u)}`:""});}}
   const last=s.map(x=>x.ok).lastIndexOf(true);
   s.forEach((x,i)=>{x.c=x.ok?"ok":i<last?"gap":i===last+1?"cur":"todo";x.late=x.c==="cur"&&!!x.due&&x.due<TODAY;});
   return s;}
@@ -169,12 +169,13 @@ const flowKey=(j,k)=>(k==="msr"?j.m.date:k==="dwg"?j.i.fl.dw.due:k==="prd"?j.i.f
 function flowNext(j,st){const fl=j.i.fl,lw=lastWork(j);let t="",late=false,tags="";
   if(st==="ask")t="실측일 잡기";
   else if(st==="msr"){t=`실측 ${mAt(j)}`;late=j.m.date<TODAY;}
-  else if(st==="des"){const es=isAdmin&&est10?estOfJob(j.id):[],e=es[es.length-1];t=e?`견적 ${estTag(e)}`:"도면·견적 → 계약";}
+  else if(st==="des"){const ef=filesOf(j.id,"estimate").map(f=>f.created_at||"").sort(),es=isAdmin&&est10?estOfJob(j.id):[],e=es[es.length-1];
+    t=ef.length?`견적서 ${ef.length}개 · 최근 ${fmt(locDay(ef[ef.length-1])||ef[ef.length-1].slice(0,10))} → 계약`:e?`견적 ${estTag(e)}`:"도면·견적 → 계약";}
   else if(st==="dwg"){t=`도면 확정 ${fl.dw.due?`${fmtW(fl.dw.due)}까지`:"목표일 없음"}`;late=!!fl.dw.due&&fl.dw.due<TODAY;}
   else if(st==="prd"){t=`납기 ${fl.pr.due?fmtW(fl.pr.due):"미정"}${fl.pr.how?` · ${PR_HOW[fl.pr.how]}`:""}${fl.pr.out?` ${esc(fl.pr.out)}`:""}`;late=!!fl.pr.due&&fl.pr.due<TODAY;}
   else if(st==="rdy")t=j.i.start?`시공 ${fmtW(j.i.start)}`:"시공일 잡기";
   else if(st==="ins"){late=!!lw&&lw<TODAY;t=late?`시공 끝 ${fmt(lw)} · 마감 완료 체크 전`:`시공 중 · ${fmt(lw)}까지`;}
-  else if(st==="set"){const u=unpaidOf(moneyOf(j.id));t=u?`미수 ${won(u)}`:"매입 입력 전";}
+  else if(st==="set"){const u=unpaidOf(moneyOf(j.id));t=u?`미수 ${won(u)}`:"";}
   if((st==="dwg"||st==="prd")&&j.i.start&&j.i.start<=addDays(TODAY,7))tags+=`<span class="tag late">시공 ${fmt(j.i.start)}</span>`;
   if(prLate(j))tags+=`<span class="tag late">납기가 시공보다 늦음</span>`;
   if(fl.dw.by&&(st==="des"||st==="dwg"))tags+=`<span class="hint">설계 ${esc(fl.dw.by)}</span>`;
@@ -329,8 +330,9 @@ const jvName=j=>`<button type="button" class="linkish jv-name" data-jv="${esc(j.
 let viewMode="site",msAdd=false,msErr="";
 const MONEY_TABS=["pay","wage","vend","sales","exp"];
 const costIn=m=>m.costs.length>0;
-/* 정산 종료: 받을 돈을 다 받았고 매입을 입력함 (일당으로 자동 계산된 인건비는 매입 입력으로 안 침). 현장 종료와는 따로 */
-const settledM=m=>billTotal(m)>0&&!unpaidOf(m)&&costIn(m);
+/* 정산 종료: 받을 돈을 다 받음. 현장 종료와는 따로.
+   2026-11부터 현장별 매입은 적어도 되고 안 적어도 됨(자재·외주비는 회사 지출에 월별로 적어도 결산 매입에 들어감) */
+const settledM=m=>billTotal(m)>0&&!unpaidOf(m);
 const settleTag=j=>settledM(moneyOf(j.id))?`<span class="tag st-end">정산 종료</span>`:`<span class="tag st-run">정산 중</span>`;
 function openView(j,mode){viewing=j.id;qc={jid:j.id,done:[],err:""};msAdd=false;msErr="";if(qe.jid!==j.id)qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:null};
   viewMode=isAdmin&&(mode==="money"||(!mode&&MONEY_TABS.includes(curTab)))?"money":"site";renderView();
@@ -360,9 +362,9 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
   const more=[kv("가전",apps.map(a=>esc(`${NEST_CL.typeName(NEST_CL.appType(a))}${a.model?` ${a.model}`:""}`)).join(", ")),kv("체크리스트",c?(clTag(j)||(c.status==="submitted"?`<span class="tag ok">제출됨</span>`:`<span class="tag wait">링크 보냄</span>`)):""),kv("파일",fileCount(j))].join("");
   if(more)h+=`<div class="dsec"><h3>가전 · 체크리스트 · 파일</h3><dl class="kv">${more}</dl></div>`;
   if(isAdmin){const m=moneyOf(j.id),b=billTotal(m),cost=jobCost(j),labor=jobLabor(j),buy=cost-labor;
-    if(b||cost)h+=`<div class="dsec"><h3>수금 · 매입 ${b?settleTag(j):""}</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",costIn(m)?won(buy):`${buy?`${won(buy)} `:""}<span class="tag late">매입 입력 안 됨</span>`)}${kv("시공비",labor?won(labor):"")}${kv("거래처 미지급",vendDue(m)?won(vendDue(m)):"")}${kv("입고 대기",(n=>n?`${n}건${m.costs.some(x=>gotWait(x)&&x.due<TODAY)?` <span class="tag late">늦음</span>`:""}`:"")(m.costs.filter(gotWait).length))}${kv("이익",m.contract.amount?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl><div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="money">정산 보기</button></div></div>`;
-    if(est10){const es=estOfJob(j.id);h+=`<div class="dsec"><h3>견적서</h3>${li(es.map(e=>`<button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}`))}<div class="jv-btns"><button class="btn ghost sm" type="button" data-esnew="${esc(j.id)}">+ 견적서 작성</button></div></div>`;}}
-  const money=isAdmin&&billTotal(moneyOf(j.id))>0?` 수금·매입은 정산에서 따로 마무리해요 (${settledM(moneyOf(j.id))?"정산 종료":"정산 중"}).`:"";
+    if(b||cost)h+=`<div class="dsec"><h3>${buy?"수금 · 매입":"수금"} ${b?settleTag(j):""}</h3><dl class="kv">${kv("받을 돈",won(b))}${kv("받은 돈",won(received(m)))}${kv("미수금",b?payTag(j):"")}${kv("매입",buy?won(buy):"")}${kv("시공비",labor?won(labor):"")}${kv("거래처 미지급",vendDue(m)?won(vendDue(m)):"")}${kv("입고 대기",(n=>n?`${n}건${m.costs.some(x=>gotWait(x)&&x.due<TODAY)?` <span class="tag late">늦음</span>`:""}`:"")(m.costs.filter(gotWait).length))}${kv("이익",m.contract.amount&&cost?`${won(m.contract.amount-cost)} <span class="hint">${pct(m.contract.amount-cost,m.contract.amount)}</span>`:"")}</dl><div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="money">정산 보기</button></div></div>`;
+    h+=jvEst(j);}
+  const money=isAdmin&&billTotal(moneyOf(j.id))>0?` 수금은 정산에서 따로 마무리해요 (${settledM(moneyOf(j.id))?"정산 종료":"정산 중"}).`:"";
   h+=`<div class="dsec jv-stage">${ended(j)?`<p class="sub" style="margin:0">${j.f.closed?`${+j.f.closed.slice(5,7)}월 ${+j.f.closed.slice(8)}일 ${j.f.closedBy==="auto"?"종료 현장으로 옮겨졌어요":"종료 처리됐어요"}`:"시공 마감 완료라 종료 현장이에요"}.${money}</p><div><button class="btn ghost sm" type="button" id="jvOpen">다시 진행중으로</button></div>`
     :`<p class="sub" style="margin:0">시공 마감 완료를 체크하면 종료 현장으로 넘어가요.${money}</p><div><button class="btn ghost sm" type="button" id="jvEnd">지금 종료 처리</button></div>`}</div>`;
   const kp={},foc=document.activeElement&&document.activeElement.closest&&document.activeElement.closest("#jvBody")?document.activeElement.dataset.keep:"";
@@ -469,8 +471,8 @@ $("jvBody").addEventListener("click",e=>{const u=e.target.closest("[data-qu]");i
   qcRun(viewing,async j=>{const c=qcChange(j,x.k,false,x.prev);
     if(c&&await qcWrite(j,c)){qc.done=qc.done.filter(y=>y!==x);qc.err="";}
     else qc.err="되돌리지 못했어요. 다시 눌러 주세요.";render();});});
-/* 정산 보기 (관리자): 수금(입금 확인·수금 완료 체크) · 매입(바로 입력) · 이익 · 견적서 · 정산 종료 조건.
-   수금 완료가 돼도 매입이 없으면 정산 종료로 넘어가지 않음. 현장 종료(시공)와는 따로 */
+/* 정산 보기 (관리자): 수금(입금 확인·수금 완료 체크) · 현장 매입(적고 싶을 때만) · 이익 · 견적서 · 정산 종료.
+   받을 돈을 다 받으면 정산 종료. 현장 종료(시공)와는 따로 */
 function renderMoneyView(j){const m=moneyOf(j.id),b=billTotal(m),u=unpaidOf(m),net=m.contract.amount,auto=autoCosts(j,m),cost=jobCost(j),labor=jobLabor(j),buy=cost-labor;
   const kv=(k,v)=>`<dt>${k}</dt><dd>${v}</dd>`,done=pre=>qc.done.map((x,i)=>x.k.startsWith(pre)?`<div class="qc-done"><span>✓ ${x.l}했어요</span><button type="button" class="linkish" data-qu="${i}">되돌리기</button></div>`:"").join("");
   $("jvTitle").innerHTML=`${esc(j.name)} ${settleTag(j)}`;
@@ -486,27 +488,26 @@ function renderMoneyView(j){const m=moneyOf(j.id),b=billTotal(m),u=unpaidOf(m),n
     h+=`</div>${done("p")}`;
     if(!m.pays.length)h+=`<p class="ms-note">입금 일정이 없어요. <b>수정</b>에서 계약금·잔금 등을 넣어 주세요.</p>`;
     else if(gap>0)h+=`<p class="ms-note">입금 일정 합계가 받을 돈보다 ${won(gap)} 적어요. 다 받아도 수금 완료가 안 되니 <b>수정</b>에서 맞춰 주세요.</p>`;
-    if(!u&&!costIn(m))h+=`<p class="ms-warn">수금은 끝났는데 매입이 입력되지 않아서 정산 종료로 넘어가지 않았어요. 아래에서 매입을 입력해 주세요.</p>`;}
+}
   if(qc.err)h+=`<p class="err">${qc.err}</p>`;
   h+=`</div>`;
   // 매입
-  h+=`<div class="dsec ms-sec ms-cost"><h3>매입 ${costIn(m)?`<span class="hint">${won(buy)}${labor?` · 시공비 ${won(labor)}`:""}</span>`:`<span class="tag late">매입 입력 안 됨</span>`}</h3><div class="ms-list">`;
+  h+=`<div class="dsec ms-sec ms-cost"><h3>현장 매입 ${costIn(m)||labor?`<span class="hint">${costIn(m)?won(buy):""}${costIn(m)&&labor?" · ":""}${labor?`시공비 ${won(labor)}`:""}</span>`:`<span class="hint">선택</span>`}</h3><div class="ms-list">`;
   h+=m.costs.map((x,i)=>{const sig=esc(costSig(x)),vd=isVend(x),gw=!isLabor(x)&&x.due;
     return`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span>${x.v?`<b class="ms-v">${esc(x.v)}</b>`:""}${x.note?`<span class="hint">${esc(x.note)}</span>`:""}<b class="num">${won(x.amount)}</b>${gw||vd?`<div class="ms-st">${gw?`<label class="check"><input type="checkbox" data-cgot="${i}" data-sig="${sig}"${x.got?" checked":""}>${x.got?`입고 ${fmt(x.got)}`:`입고 확인 <span class="hint">예정 ${fmt(x.due)}</span>`}</label>${!x.got&&x.due<TODAY?`<span class="tag late">입고 늦음</span>`:""}`:""}${vd?`<label class="check"><input type="checkbox" data-cpaid="${i}" data-sig="${sig}"${x.paid?" checked":""}>${x.paid?`지급 ${x.paidOn?fmt(x.paidOn):"완료"}`:"거래처 지급"}</label>${x.paid?"":`<span class="tag wait">미지급</span>`}`:""}</div>`:""}</div>`;}).join("")
     +auto.map(x=>`<div class="ms-row"><span class="ms-l">${esc(x.cat)}</span><span class="hint">${esc(x.note)}</span><b class="num">${won(x.amount)}</b></div>`).join("");
   h+=`</div>${done("c")}`;
-  if(!costIn(m))h+=`<p class="ms-note">자재비·외주 같은 매입을 입력해야 수금이 끝났을 때 정산 종료로 넘어가요.${auto.length?" 일당으로 자동 계산된 인건비는 매입 입력으로 치지 않아요.":""}</p>`;
+  if(!costIn(m))h+=`<p class="hint" style="margin:0">자재·외주비는 현장마다 안 적어도 돼요. <b>결산 › 회사 지출</b>에 '${BUY_EXP}'으로 적으면 결산 매입에 월별로 들어가요.</p>`;
   h+=msAdd?`<div class="ms-add"><label>항목<select id="ms-cat">${COST_CATS.map(c=>`<option>${esc(c)}</option>`).join("")}</select></label><label>금액(원)<input class="won" inputmode="numeric" id="ms-amt" placeholder="0"></label><label>거래처<input id="ms-v" list="vendList" placeholder="예: OO목재"></label><label>입고 예정일<input type="date" id="ms-due"></label><label class="note">메모<input id="ms-note" placeholder="예: 도장 외주, 하드웨어"></label><p class="hint ms-add-h">거래처를 적으면 정산 › 거래처 정산에서 줄 돈으로 모여요. 입고 예정일을 적으면 들어올 때까지 확인할 일에 떠요.</p><div class="ms-add-btns"><button class="btn sm" type="button" id="ms-save">추가</button><button class="btn ghost sm" type="button" id="ms-cancel">취소</button></div></div>${msErr?`<p class="err">${msErr}</p>`:""}`
-    :`<div class="jv-btns"><button type="button" class="btn sm ${costIn(m)?"ghost":"ms-red"}" data-msadd>${costIn(m)?"+ 매입 추가":"매입 입력"}</button></div>`;
+    :`<div class="jv-btns"><button type="button" class="btn ghost sm" data-msadd>+ 현장 매입 추가</button></div>`;
   h+=`</div>`;
   // 이익
-  if(net)h+=`<div class="dsec"><h3>이익</h3><dl class="kv">${kv("매출",won(net))}${kv("매입",won(buy))}${kv("시공비",won(labor))}${kv("이익",`<b class="${net-cost<0?"neg":""}">${won(net-cost)}</b> <span class="hint">${pct(net-cost,net)}</span>`)}</dl></div>`;
+  if(net&&cost)h+=`<div class="dsec"><h3>이익</h3><dl class="kv">${kv("매출",won(net))}${costIn(m)?kv("매입",won(buy)):""}${kv("시공비",won(labor))}${kv("이익",`<b class="${net-cost<0?"neg":""}">${won(net-cost)}</b> <span class="hint">${pct(net-cost,net)}</span>`)}</dl>${costIn(m)?"":`<p class="hint" style="margin:4px 0 0">현장 매입을 안 적어서 매출에서 시공비만 뺀 금액이에요. 자재비까지 뺀 이익은 결산에서 월별로 봐요.</p>`}</div>`;
   // 견적서
-  if(est10){const es=estOfJob(j.id);h+=`<div class="dsec"><h3>견적서</h3>${es.length?`<ul class="jv-list">${es.map(e=>`<li><button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}</li>`).join("")}</ul>`:""}<div class="jv-btns"><button class="btn ghost sm" type="button" data-esnew="${esc(j.id)}">+ 견적서 작성</button></div></div>`;}
+  h+=jvEst(j);
   // 정산 종료
-  if(settledM(m))h+=`<div class="dsec jv-stage"><h3>정산 종료</h3><p class="sub" style="margin:0">받을 돈을 다 받았고 매입도 입력돼서 정산이 끝났어요.</p></div>`;
-  else{const cs=[[b>0&&!u,"받을 돈 다 받음",!b?"계약금액 없음":u?`미수 ${won(u)}`:""],[costIn(m),"매입 입력",costIn(m)?"":"아직 안 함"]];
-    h+=`<div class="dsec jv-stage"><h3>정산 종료로 넘어가려면</h3><ul class="ms-conds">${cs.map(([ok,l,more])=>`<li class="${ok?"ok":"no"}">${ok?"✓":"○"} ${l}${more?` <span class="hint">${more}</span>`:""}</li>`).join("")}</ul><p class="sub" style="margin:0">두 가지가 되면 정산 종료로 넘어가요. 현장 종료(시공 마감)와는 따로예요.</p></div>`;}
+  if(settledM(m))h+=`<div class="dsec jv-stage"><h3>정산 종료</h3><p class="sub" style="margin:0">받을 돈을 다 받아서 정산이 끝났어요.</p></div>`;
+  else h+=`<div class="dsec jv-stage"><h3>정산 종료로 넘어가려면</h3><ul class="ms-conds"><li class="no">○ 받을 돈 다 받음 <span class="hint">${!b?"계약금액 없음":`미수 ${won(u)}`}</span></li></ul><p class="sub" style="margin:0">받을 돈을 다 받으면 정산 종료로 넘어가요. 현장 종료(시공 마감)와는 따로예요.</p></div>`;
   h+=`<div class="jv-btns"><button class="btn ghost sm" type="button" data-vmode="site">현장 내용 보기</button></div>`;
   // 매입 입력 중에 화면이 다시 그려져도 적던 값은 그대로
   const MSF=["ms-cat","ms-amt","ms-v","ms-due","ms-note"],keep=MSF.map(id=>$(id)?$(id).value:null),foc=document.activeElement&&document.activeElement.id;
@@ -601,14 +602,14 @@ function renderPay(){
   const done=withM.flatMap(x=>x.m.pays.filter(p=>p.paid&&p.paidOn&&p.paidOn>=addDays(TODAY,-30)).map(p=>({...x,p}))).sort((a,b)=>b.p.paidOn.localeCompare(a.p.paidOn));
   $("payDone").innerHTML=done.length?done.map(x=>`<tr data-j="${esc(x.j.id)}" tabindex="0"><td><span class="d">${fmtW(x.p.paidOn)}</span></td><td class="job"><b>${esc(x.j.name)}</b></td><td>${esc(x.p.label)}</td><td class="num push">${won(x.p.amount)}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">최근 30일 동안 들어온 입금이 없어요.</td></tr>`;
-  // 현장별 수금: 정산 중 / 정산 종료(받을 돈 다 받고 매입 입력)로 나눔
+  // 현장별 수금: 정산 중 / 정산 종료(받을 돈 다 받음)로 나눔
   const perAll=withM.filter(x=>billTotal(x.m)>0),doneN=perAll.filter(x=>settledM(x.m)).length,lastIn=m=>m.pays.map(p=>p.paidOn||"").sort().pop()||"";
   $("payCats").innerHTML=perAll.length?[["open","정산 중",perAll.length-doneN],["done","정산 종료",doneN]].map(([k,l,n])=>`<button class="chip${k===payCat?" on":""}" type="button" data-paycat="${k}" aria-pressed="${k===payCat}">${l} <b>${n}</b></button>`).join(""):"";
   const perJob=perAll.filter(x=>settledM(x.m)===(payCat==="done")).sort((a,b)=>payCat==="done"?lastIn(b.m).localeCompare(lastIn(a.m)):unpaidOf(b.m)-unpaidOf(a.m)||a.j.name.localeCompare(b.j.name));
   $("payJobs").innerHTML=perJob.length?perJob.map(({j,m})=>{const u=unpaidOf(m),next=m.pays.filter(p=>!p.paid&&p.due).map(p=>p.due).sort()[0];
     const gap=billTotal(m)-m.pays.reduce((a,p)=>a+p.amount,0);
     return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small></td><td class="num" data-l="받을 돈">${won(billTotal(m))}</td><td class="num" data-l="받은 돈">${won(received(m))}</td><td class="num" data-l="미수금">${u?`<b>${won(u)}</b>`:"0원"}</td>
-      <td class="full"><div class="cell">${settledM(m)?`<span class="tag st-end">정산 종료</span>`:payTag(j)}${!u&&!costIn(m)?`<span class="tag late">매입 입력</span>`:""}${next?`<span class="hint">다음 ${fmt(next)}</span>`:""}${gap>0&&u?`<span class="hint">일정 없는 금액 ${won(gap)}</span>`:""}</div></td></tr>`}).join("")
+      <td class="full"><div class="cell">${settledM(m)?`<span class="tag st-end">정산 종료</span>`:payTag(j)}${next?`<span class="hint">다음 ${fmt(next)}</span>`:""}${gap>0&&u?`<span class="hint">일정 없는 금액 ${won(gap)}</span>`:""}</div></td></tr>`}).join("")
     :`<tr><td colspan="5" class="hint">${!perAll.length?"계약금액을 넣은 현장이 없어요.":payCat==="done"?"정산이 끝난 현장이 아직 없어요.":"정산 중인 현장이 없어요."}</td></tr>`;
 }
 document.addEventListener("click",e=>{const c=e.target.closest("[data-paycat]");if(!c)return;payCat=c.dataset.paycat;renderPay();});
@@ -809,15 +810,19 @@ async function loadWage(){if(!isAdmin)return;
   laborCache=null;
   if(pay08&&!error&&!wageChan)wageChan=sb.channel("nest-pay").on("postgres_changes",{event:"*",schema:"public",table:"crew_pay"},()=>loadWage().then(render)).subscribe();}
 
-/* 결산 (관리자). 매출 = 계약금액(부가세 별도 계약은 부가세 뺀 금액), 매입 = 현장 원가(자재·인건비·외주 등), 지출 = 현장에 딸리지 않은 회사 비용.
+/* 결산 (관리자). 매출 = 계약금액(부가세 별도 계약은 부가세 뺀 금액), 매입 = 현장 원가(자재·외주 등) + 회사 지출에 '자재·외주 매입'으로 적은 돈,
+   시공비 = 인건비, 지출 = 그 밖의 회사 비용.
    현장 매출·매입의 기준 달 = 시공 시작한 달(없으면 계약일), 지출은 쓴 날의 달. 매달 반복 지출은 시작한 달부터 이번 달까지(끝나는 달이 있으면 거기까지) */
 let salesY=now.getFullYear(),salesM=0,expenses=[],pay09=true,expChan=null,expEdit=null;
-const EXP_CATS=["임대료","차량·유류","공구·장비","소모품","식대·복리후생","광고·홍보","급여·4대보험","세금·공과금","통신·사무","수수료·기타"];
+/* 자재·외주 매입: 현장마다 안 나누고 회사 지출에 월별로 적는 매입. 결산에서는 지출이 아니라 매입으로 셈 */
+const BUY_EXP="자재·외주 매입";
+const EXP_CATS=[BUY_EXP,"임대료","차량·유류","공구·장비","소모품","식대·복리후생","광고·홍보","급여·4대보험","세금·공과금","통신·사무","수수료·기타"];
 const jobMonth=j=>(j.i.start||moneyOf(j.id).contract.date||"").slice(0,7);
 const bar=(v,max,cls="")=>!v?"":`<span class="bar ${cls}"><i style="width:${max>0?Math.max(0,Math.min(100,v/max*100)):0}%"></i></span>`;
 const curYM=()=>TODAY.slice(0,7);
 const expIn=(x,ym)=>x.repeat?x.day.slice(0,7)<=ym&&ym<=curYM()&&(!x.until||ym<=x.until):x.day.slice(0,7)===ym;
-const expSum=yms=>expenses.reduce((a,x)=>a+x.amount*yms.filter(m=>expIn(x,m)).length,0);
+/* only: "buy" = 자재·외주 매입만, "etc" = 그 밖의 지출만, 없으면 전부 */
+const expSum=(yms,only)=>expenses.reduce((a,x)=>only&&(x.cat===BUY_EXP)!==(only==="buy")?a:a+x.amount*yms.filter(m=>expIn(x,m)).length,0);
 const yearMonths=y=>[...Array(12)].map((_,k)=>`${y}-${pad(k+1)}`);
 const normExp=r=>({id:r.id,day:String(r.day||"").slice(0,10),cat:r.cat||EXP_CATS[EXP_CATS.length-1],amount:+r.amount||0,note:r.note||"",repeat:!!r.repeat,until:r.until||"",...(r.bank_id?{bank_id:String(r.bank_id)}:{})});
 function renderSales(){
@@ -829,9 +834,9 @@ function renderSales(){
   const sel=counted.filter(inPer),undated=counted.filter(j=>!jobMonth(j)).length;
   const rev=a=>a.reduce((s,j)=>s+moneyOf(j.id).contract.amount,0),buy=a=>a.reduce((s,j)=>s+jobBuy(j),0),lab=a=>a.reduce((s,j)=>s+jobLabor(j),0);
   const cashIn=list=>jobs.reduce((s,j)=>s+moneyOf(j.id).pays.filter(p=>p.paid&&list.includes((p.paidOn||"").slice(0,7))).reduce((a,p)=>a+p.amount,0),0);
-  const R=rev(sel),B=buy(sel),L=lab(sel),C=B+L,E=expSum(yms),P=R-C-E;
+  const EB=expSum(yms,"buy"),R=rev(sel),B=buy(sel)+EB,L=lab(sel),C=B+L,E=expSum(yms,"etc"),P=R-C-E;
   const ofR=(v,t="")=>R?`<small class="ofr">매출의 <em>${pct(v,R)}</em>${t}</small>`:"";
-  $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳 · 부가세 뺀 금액</small></div><div class="tile"><small>매입</small><b>${won(B)}</b>${ofR(B)}<small>자재·외주·운반</small></div>
+  $("saTiles").innerHTML=`<div class="tile"><small>매출</small><b>${won(R)}</b><small>현장 ${sel.length}곳 · 부가세 뺀 금액</small></div><div class="tile"><small>매입</small><b>${won(B)}</b>${ofR(B)}<small>${EB?`회사 지출로 적은 ${won(EB)} 포함`:"자재·외주·운반"}</small></div>
     <div class="tile"><small>시공비</small><b>${won(L)}</b>${ofR(L)}<small>시공·추가 투입 인건비</small></div>
     <div class="tile"><small>지출 (회사 비용)</small><b>${won(E)}</b>${ofR(E)}<small><button class="linkish" type="button" data-tab="exp">지출 내역 보기</button></small></div><div class="tile ${P<0?"bad":""}"><small>순이익</small><b>${won(P)}</b>${ofR(P," (이익률)")}</div>
     <div class="tile"><small>실제 들어온 돈 (입금)</small><b>${won(cashIn(yms))}</b></div>`;
@@ -846,28 +851,29 @@ function renderSales(){
   const row=(label,attr,n,r,b,l,e,max)=>{const c=b+l,p=r-c-e,any=r||c||e;
     return`<tr ${attr} tabindex="0" class="${any?"":"zero"}"><td class="job"><b>${label}</b>${n?`<small class="m-only">${n}곳</small>`:""}</td><td class="num d-only">${n||""}</td><td class="num" data-l="매출">${r?won(r):"—"}</td><td class="num" data-l="매입">${b?won(b):"—"}${pc(b,r)}</td><td class="num" data-l="시공비">${l?won(l):"—"}${pc(l,r)}</td><td class="num" data-l="지출">${e?won(e):"—"}${pc(e,r)}</td><td class="num ${p<0?"neg":""}" data-l="순이익">${any?won(p):"—"}${pc(p,r)}</td><td class="barcell">${bar(r,max)}${bar(c+e,max,"cost")}</td></tr>`;};
   if(!salesM){
-    const ys=[...years].sort((a,b)=>a-b).map(y=>{const ym=yearMonths(y),js=counted.filter(j=>ym.includes(jobMonth(j)));return{y,n:js.length,r:rev(js),b:buy(js),l:lab(js),e:expSum(ym)};});
+    const ys=[...years].sort((a,b)=>a-b).map(y=>{const ym=yearMonths(y),js=counted.filter(j=>ym.includes(jobMonth(j)));return{y,n:js.length,r:rev(js),b:buy(js)+expSum(ym,"buy"),l:lab(js),e:expSum(ym,"etc")};});
     const ymax=Math.max(1,...ys.map(x=>Math.max(x.r,x.b+x.l+x.e)));
     $("saYears").innerHTML=ys.map(x=>row(`${x.y}년`,`data-year="${x.y}"`,x.n,x.r,x.b,x.l,x.e,ymax)).join("");
-    const months=yearMonths(salesY).map((ym,k)=>{const js=counted.filter(j=>jobMonth(j)===ym);return{k:k+1,n:js.length,r:rev(js),b:buy(js),l:lab(js),e:expSum([ym])};});
+    const months=yearMonths(salesY).map((ym,k)=>{const js=counted.filter(j=>jobMonth(j)===ym);return{k:k+1,n:js.length,r:rev(js),b:buy(js)+expSum([ym],"buy"),l:lab(js),e:expSum([ym],"etc")};});
     const max=Math.max(1,...months.map(x=>Math.max(x.r,x.b+x.l+x.e)));
     $("saMonths").innerHTML=months.map(x=>row(`${x.k}월`,`data-month="${x.k}"`,x.n,x.r,x.b,x.l,x.e,max)).join("");}
   $("saJobs").innerHTML=sel.length?[...sel].sort((a,b)=>jobMonth(a).localeCompare(jobMonth(b))).map(j=>{const m=moneyOf(j.id),r=m.contract.amount,b=jobBuy(j),l=jobLabor(j),c=b+l,auto=autoCosts(j,m).length;
-    return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small><small class="m-only">${sub(j)?" · ":""}${+jobMonth(j).slice(5)}월 기준</small></td><td class="d-only"><span class="d">${+jobMonth(j).slice(5)}월</span></td><td class="num" data-l="매출">${won(r)}</td><td class="num" data-l="매입">${won(b)}${!m.costs.some(x=>!isLabor(x))?` <span class="tag wait">미입력</span>`:""}${pc(b,r)}</td><td class="num" data-l="시공비">${won(l)}${auto?` <span class="tag wait" title="시공 인건비를 일정 × 일당으로 자동 계산">자동</span>`:!l?` <span class="tag wait">미입력</span>`:""}${pc(l,r)}</td><td class="num ${r-c<0?"neg":""}" data-l="현장 이익">${won(r-c)}${pc(r-c,r)}</td></tr>`}).join("")
+    return`<tr data-j="${esc(j.id)}" tabindex="0"><td class="job"><b>${esc(j.name)}</b><small>${sub(j)}</small><small class="m-only">${sub(j)?" · ":""}${+jobMonth(j).slice(5)}월 기준</small></td><td class="d-only"><span class="d">${+jobMonth(j).slice(5)}월</span></td><td class="num" data-l="매출">${won(r)}</td><td class="num" data-l="매입">${b?won(b):"—"}${pc(b,r)}</td><td class="num" data-l="시공비">${won(l)}${auto?` <span class="tag wait" title="시공 인건비를 일정 × 일당으로 자동 계산">자동</span>`:!l?` <span class="tag wait">미입력</span>`:""}${pc(l,r)}</td><td class="num ${r-c<0?"neg":""}" data-l="현장 이익">${won(r-c)}${pc(r-c,r)}</td></tr>`}).join("")
     :`<tr><td colspan="6" class="hint">이 기간에 계약금액이나 매입·시공비를 넣은 현장이 없어요.</td></tr>`;
-  const cats=COST_CATS.map(c=>({c,v:sel.reduce((s,j)=>s+jobCosts(j).filter(x=>x.cat===c).reduce((a,x)=>a+x.amount,0),0)})).filter(x=>x.v);
+  const cats=COST_CATS.map(c=>({c,v:sel.reduce((s,j)=>s+jobCosts(j).filter(x=>x.cat===c).reduce((a,x)=>a+x.amount,0),0)})).concat([{c:`${BUY_EXP} (회사 지출)`,v:EB}]).filter(x=>x.v);
   const catRows=(list,tot,head)=>list.length?`<tr class="grp"><td><b>${head}</b></td><td class="num"><b>${won(tot)}</b></td><td class="num">${pct(tot,R)}</td><td class="barcell">${bar(tot,R)}</td></tr>`+list.map(x=>`<tr><td>${esc(x.c)}</td><td class="num">${won(x.v)}</td><td class="num">${pct(x.v,R)}</td><td class="barcell">${bar(x.v,R,"cost")}</td></tr>`).join(""):"";
   $("saCosts").innerHTML=cats.length?catRows(cats.filter(x=>!LABOR_CATS.includes(x.c)),B,"매입")+catRows(cats.filter(x=>LABOR_CATS.includes(x.c)),L,"시공비")
     :`<tr><td colspan="4" class="hint">매입·시공비 기록이 없어요.</td></tr>`;
-  renderExpenses(yms,E);
-  $("saNote").textContent=`매입·시공비·지출·순이익 밑의 %는 그 기간 매출에 대한 비율이에요(매출 100원 중 몇 원인지). 매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 매입은 자재비·외주·가공·운반 등이고, 시공비는 시공 인건비와 추가 투입 인건비예요. 현장 매출·매입·시공비의 기준 달은 시공을 시작한 달이고(10월 30일 시작이면 10월), 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
+  renderExpenses(yms,expSum(yms),EB);
+  $("saNote").textContent=`매입·시공비·지출·순이익 밑의 %는 그 기간 매출에 대한 비율이에요(매출 100원 중 몇 원인지). 매출은 계약금액이에요(부가세 별도 계약은 부가세를 뺀 금액). 매입은 자재비·외주·가공·운반 등이고(현장 매입 + 회사 지출에 '${BUY_EXP}'으로 적은 돈), 시공비는 시공 인건비와 추가 투입 인건비예요. 현장 매입을 안 적은 현장은 현장별 표의 현장 이익에 자재비가 빠져 있어요. 현장 매출·매입·시공비의 기준 달은 시공을 시작한 달이고(10월 30일 시작이면 10월), 시공일이 없으면 계약일 기준이에요. 지출은 쓴 날의 달에 들어가고, 매달 반복 지출은 이번 달까지만 셉니다.${pay08&&Object.keys(wage.rates.day).length?" 시공 인건비를 직접 적지 않은 현장은 정산 › 시공자 정산의 일당 × 시공일로 자동 계산해요.":""}${undated?` 시공일·계약일이 모두 없는 현장 ${undated}곳은 빠져 있어요.`:""}`;
 }
-function renderExpenses(yms,E){
+function renderExpenses(yms,E,EB){
   $("exUpdate").hidden=pay09;$("exBody").hidden=!pay09;$("exFilt").hidden=!pay09;if(!pay09)return;
   const list=expenses.map(x=>({x,n:yms.filter(m=>expIn(x,m)).length})).filter(o=>o.n).sort((a,b)=>b.x.day.localeCompare(a.x.day));
   const monthly=expenses.filter(x=>x.repeat&&expIn(x,curYM())).reduce((a,x)=>a+x.amount,0);
   $("exTiles").innerHTML=`<div class="tile"><small>지출 합계 (${salesM?`${salesY}년 ${salesM}월`:`${salesY}년`})</small><b>${won(E)}</b><small>${list.length}건</small></div>
-    <div class="tile"><small>매달 나가는 돈 (이번 달 기준)</small><b>${won(monthly)}</b><small>임대료처럼 매달 체크한 지출</small></div>`;
+    <div class="tile"><small>매달 나가는 돈 (이번 달 기준)</small><b>${won(monthly)}</b><small>임대료처럼 매달 체크한 지출</small></div>${EB?`
+    <div class="tile"><small>이 중 ${BUY_EXP}</small><b>${won(EB)}</b><small>결산에서는 매입으로 들어가요</small></div>`:""}`;
   const cats=EXP_CATS.map(c=>({c,v:list.filter(o=>o.x.cat===c).reduce((a,o)=>a+o.x.amount*o.n,0)})).filter(o=>o.v);
   $("exCats").innerHTML=cats.length?cats.map(o=>`<tr><td>${esc(o.c)}</td><td class="num">${won(o.v)}</td><td class="num">${pct(o.v,E)}</td><td class="barcell">${bar(o.v,E,"cost")}</td></tr>`).join("")
     :`<tr><td colspan="4" class="hint">이 기간에 적은 지출이 없어요.</td></tr>`;
@@ -927,8 +933,59 @@ async function loadEst(){if(!isAdmin){ests=[];return;}
   if(!coFilled||!$("esCoBox").open)fillCompany();
   if(est10&&!a.error&&!estChan)estChan=sb.channel("nest-est").on("postgres_changes",{event:"*",schema:"public",table:"estimates"},estRefresh).on("postgres_changes",{event:"*",schema:"public",table:"est_conf"},estRefresh).subscribe();}
 function estRefresh(){loadEst().then(()=>{if(!isAdmin)return;renderEst();renderHome();if(viewing)renderView();if(esCur){const r=ests.find(x=>x.id===esCur.id);if(r){esCur={...esCur,status:r.status,views:r.views,seen:r.seen,first:r.first,job_id:esCur.job_id};renderEsMeta();}}});}
-function renderEst(){
-  $("esUpdate").hidden=est10;$("esBody").hidden=!est10;$("esNew").hidden=!est10;if(!est10)return;
+/* 견적 › 현장별 견적서 (관리자): 현장마다 올려 둔 견적서 파일(files.kind "estimate")을 현장별로 모아 봄.
+   찾기(현장·주소·전화·파일 이름) · 분류(대기중·진행중·종료 · 견적서 없음) · 눌러서 열기 · 그 자리에서 올리기·지우기.
+   2026-11부터 앱에서 견적서를 쓰는 기능은 안 씀(견적서는 엑셀로 만들어 현장에 올림). 예전에 앱에서 만든 견적서는 아래 접힌 칸에서 그대로 열림 */
+let esQ="",esFcat="",efErr="";
+const estFiles=j=>filesOf(j.id,"estimate").sort((a,b)=>(b.created_at||"").localeCompare(a.created_at||""));
+const fileDay=f=>locDay(f.created_at)||(f.created_at||"").slice(0,10);
+const fDate=d=>!d?"—":d.slice(0,4)===TODAY.slice(0,4)?fmt(d):d.slice(2).replace(/-/g,".");
+function fType(f){const n=(f.name||"").toLowerCase(),m=(f.mime||"").toLowerCase();
+  if(/\.pdf$/.test(n)||m.includes("pdf"))return["pdf","PDF"];
+  if(/\.(xlsx?|xlsm|csv|numbers)$/.test(n)||/sheet|excel/.test(m))return["xls","엑셀"];
+  if(/^image\//.test(m)||/\.(jpe?g|png|gif|webp|heic|heif)$/.test(n))return["img","사진"];
+  if(/\.(hwpx?|docx?|pages)$/.test(n))return["doc","문서"];
+  return["etc","파일"];}
+/* 견적서 파일 한 줄 (del: 지우기 단추까지) */
+const estFileLi=(f,del)=>{const [k,l]=fType(f);return`<li><span class="ftype ft-${k}">${l}</span><button type="button" class="fname" data-fid="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><span class="fmeta">${fDate(fileDay(f))} · ${fsize(+f.size||0)}</span>${del?`<button type="button" class="fdel" data-fdel="${esc(f.id)}" aria-label="${esc(f.name)} 삭제">삭제</button>`:""}</li>`;};
+const estWaitLi=j=>pending.filter(p=>p.kind==="estimate"&&p.jid===j.id).map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">올리는 중…</span></li>`).join("");
+const estPick=(j,label)=>`<label class="btn ghost sm">${label}<input type="file" multiple class="espick" data-jid="${esc(j.id)}"></label><label class="btn ghost sm">사진 찍기<input type="file" accept="image/*" capture="environment" class="espick" data-jid="${esc(j.id)}"></label>`;
+function esHit(j,q){if(!q)return true;
+  if([j.name,j.item,j.addr,j.i.tel].join(" ").toLowerCase().includes(q))return true;
+  if(estFiles(j).some(f=>(f.name||"").toLowerCase().includes(q)))return true;
+  const d=q.replace(/[^\d]/g,"");return d.length>=3&&d.length===q.replace(/[\s-]/g,"").length&&String(j.i.tel||"").replace(/\D/g,"").includes(d);}
+function esCard(j){const fs=estFiles(j),w=estWaitLi(j);
+  return`<div class="wg-card es-card${fs.length?"":" none"}"><div class="wg-head"><button type="button" class="wg-job wg-name" data-j="${esc(j.id)}">${esc(j.name)}</button>${stageTag(j)}${fs.length?`<span class="hint es-n">견적서 ${fs.length}개</span>`:""}</div>
+    ${sub(j)?`<div class="wg-line">${sub(j)}</div>`:""}
+    <ul class="flist es-files">${fs.map(f=>estFileLi(f,true)).join("")}${w}${!fs.length&&!w?`<li class="none">아직 올린 견적서가 없어요.</li>`:""}</ul>
+    <div class="es-up">${estPick(j,"파일 올리기")}</div></div>`;}
+function renderEst(){if(!isAdmin)return;
+  const q=esQ.trim().toLowerCase(),has=j=>estFiles(j).length>0,stOf=k=>j=>jobStage(j)===k;
+  const cats=[["","전체",has],...["wait","run","end"].map(k=>[k,JOB_STAGE[k],j=>has(j)&&stOf(k)(j)]),["none","견적서 없음",j=>!ended(j)&&!has(j)]];
+  if(!cats.some(c=>c[0]===esFcat))esFcat="";
+  const cur=cats.find(c=>c[0]===esFcat);
+  $("esCats").innerHTML=cats.map(([k,l,fn])=>`<button class="chip${k===esFcat?" on":""}" type="button" data-esf="${k}" aria-pressed="${k===esFcat}">${l} <b>${jobs.filter(fn).length}</b></button>`).join("");
+  /* 찾을 때는 견적서를 안 올린 현장도 같이 보여 줌 (바로 올릴 수 있게). 분류를 골랐으면 그 안에서 */
+  const inCat=!q?cur[2]:esFcat===""?()=>true:esFcat==="none"?cur[2]:stOf(esFcat),last=j=>(estFiles(j)[0]||{}).created_at||"";
+  const list=jobs.filter(j=>inCat(j)&&esHit(j,q)).sort((a,b)=>last(b).localeCompare(last(a))||["run","wait","end"].indexOf(jobStage(a))-["run","wait","end"].indexOf(jobStage(b))||a.name.localeCompare(b.name,"ko"));
+  $("esFiles").innerHTML=list.map(esCard).join("");
+  $("esNote").innerHTML=q?`‘${esc(esQ.trim())}’ 찾은 현장 ${list.length}곳${esFcat?` (<b>${cur[1]}</b> 안에서)`:""}. <button class="linkish" type="button" id="esQClear">검색 지우기</button>`
+    :esFcat==="none"&&list.length?"아직 견적서를 안 올린 현장이에요 (종료 현장 빼고). <b>파일 올리기</b>를 누르면 그 현장에 바로 들어가요.":"";
+  $("esNote").hidden=!$("esNote").innerHTML;
+  $("esErr").textContent=efErr;$("esErr").hidden=!efErr;
+  $("esEmpty").innerHTML=q?"찾는 현장이 없어요. 이름이나 주소를 다르게 넣어 보세요.":!jobs.length?"아직 등록된 현장이 없어요.":esFcat==="none"?"종료 전인 현장에는 모두 견적서가 있어요."
+    :esFcat?`${cur[1]} 현장 중에 견적서를 올린 곳이 없어요.`:`아직 올린 견적서가 없어요. 위의 <b>견적서 없음</b>을 누르면 현장마다 바로 올릴 수 있어요.`;
+  $("esEmpty").hidden=list.length>0;
+  renderOldEst();}
+/* 현장 보기 · 정산 보기의 견적서: 올린 파일(최근 것 위) + 바로 올리기. 예전에 앱에서 만든 견적서가 있으면 그 아래에 */
+function jvEst(j){const fs=estFiles(j),w=estWaitLi(j),old=est10?estOfJob(j.id):[],err=qe.jid===j.id&&qe.esErr;
+  return`<div class="dsec jv-est"><h3>견적서${fs.length?` <span class="hint">${fs.length}개</span>`:""}</h3>
+    ${fs.length||w?`<ul class="flist es-files">${fs.map(f=>estFileLi(f,false)).join("")}${w}</ul>`:`<p class="hint" style="margin:0">아직 올린 견적서가 없어요.</p>`}
+    ${old.length?`<p class="hint" style="margin:8px 0 2px">예전에 앱에서 만든 견적서</p><ul class="jv-list">${old.map(e=>`<li><button type="button" class="linkish" data-es="${esc(e.id)}"><span class="d">${fmtW(e.d.date)}</span>${e.d.ver>1?` ${e.d.ver}차`:""} · ${won(E.calc(e.d).total)}</button> ${estTag(e)}</li>`).join("")}</ul>`:""}
+    ${err?`<p class="err">${esc(err)}</p>`:""}<div class="jv-btns">${estPick(j,"견적서 올리기")}</div></div>`;}
+/* 예전에 앱에서 만든 견적서 목록 (있을 때만 접힌 칸으로) */
+function renderOldEst(){$("esOldBox").hidden=!(est10&&ests.length);if(!est10)return;
+  $("esOldSum").textContent=ests.length?`${ests.length}개`:"";
   const cats=[["","전체",()=>true],...Object.keys(EST_ST).map(k=>[k,EST_ST[k],e=>e.status===k])];
   if(!cats.some(c=>c[0]===estCat))estCat="";
   $("esChips").innerHTML=cats.map(([k,l,fn])=>`<button class="chip${k===estCat?" on":""}" type="button" data-escat="${k}" aria-pressed="${k===estCat}">${l} <b>${ests.filter(fn).length}</b></button>`).join("");
@@ -937,7 +994,7 @@ function renderEst(){
     return`<tr data-es="${esc(e.id)}" tabindex="0"><td class="job"><b>${esc(e.d.cust.name||e.d.title||"(업체명 없음)")}</b>${e.d.ver>1?` <span class="tag soon">${e.d.ver}차</span>`:""}<small>${[e.d.cust.name?esc(e.d.title):"",j?`현장 ${esc(j.name)}`:""].filter(Boolean).join(" · ")}</small></td>
       <td data-l="견적일"><span class="d">${fmtW(e.d.date)}</span></td><td class="num" data-l="합계">${won(t.total)}</td><td data-l="상태">${estTag(e)}</td>
       <td data-l="고객 확인">${e.views?`${e.views}번 열어 봄 <small class="hint">${seenTxt(e.seen)}</small>`:e.status==="sent"?`<span class="hint">아직 안 열어 봄</span>`:"—"}</td></tr>`;}).join("")
-    :`<tr><td colspan="5" class="hint">${ests.length?"이 분류에 해당하는 견적서가 없어요.":"아직 견적서가 없어요. 위의 <b>+ 새 견적서</b>를 눌러 시작해 보세요."}</td></tr>`;
+    :`<tr><td colspan="5" class="hint">${ests.length?"이 분류에 해당하는 견적서가 없어요.":"예전에 만든 견적서가 없어요."}</td></tr>`;
   const co=estConf.company;
   $("esCoSum").textContent=co.name||co.tel||co.bizNo?`${co.name||"상호 없음"} · ${co.stamp?"도장 있음":"도장 없음"}`:"아직 안 넣었어요. 견적서에 들어갈 회사 정보를 넣어 주세요.";
   $("esLibSum").textContent=estConf.items.length?`${estConf.items.length}개`:"아직 없어요";
@@ -1120,6 +1177,17 @@ $("es-rows").addEventListener("change",e=>{const el=e.target;if(!el.classList.co
 $("es-job").onchange=()=>{const j=jobs.find(x=>x.id===$("es-job").value);if(!j)return;
   if(!$("es-cname").value.trim())$("es-cname").value=j.name;if(!$("es-cphone").value.trim())$("es-cphone").value=j.i.tel;if(!$("es-caddr").value.trim())$("es-caddr").value=j.addr;if(!$("es-title").value.trim())$("es-title").value=j.item;};
 $("esEdit").addEventListener("input",esSum);$("esEdit").addEventListener("change",esSum);
+/* 현장별 견적서: 찾기 · 분류 · 올리기 */
+$("esQ").addEventListener("input",()=>{esQ=$("esQ").value;renderEst();});
+$("esQ").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("esQ").blur();}if(e.key==="Escape"&&$("esQ").value){$("esQ").value="";esQ="";renderEst();}});
+document.addEventListener("click",e=>{if(e.target.id==="esQClear"){$("esQ").value="";esQ="";renderEst();return;}
+  const c=e.target.closest("[data-esf]");if(c){esFcat=esFcat===c.dataset.esf?"":c.dataset.esf;renderEst();}});
+document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("espick"))return;
+  const jid=inp.dataset.jid,list=[...inp.files];inp.value="";efErr="";if(!jobs.some(j=>j.id===jid))return;
+  const err=m=>{efErr=m;if(viewing===jid)qe={...qe,jid,esErr:m};};if(viewing===jid)qe={...qe,jid,esErr:""};
+  for(const file of list){if(file.size>MAX_BYTES){err(`"${file.name}"은(는) 50MB가 넘어서 올릴 수 없어요.`);render();continue;}
+    await uploadOne(jid,"estimate",file,"",err);}
+  render();});
 document.addEventListener("click",e=>{const c=e.target.closest("[data-escat]");if(c){estCat=estCat===c.dataset.escat?"":c.dataset.escat;renderEst();return;}
   const n=e.target.closest("[data-esnew]");if(n){const j=jobs.find(x=>x.id===n.dataset.esnew);if(!$("jobSheet").hidden)closeView();openEst(null,{d:newEstData(j),job_id:j?j.id:""});return;}
   const r=e.target.closest("[data-es]");if(r){const x=ests.find(o=>o.id===r.dataset.es);if(!x)return;if(!$("jobSheet").hidden)closeView();openEst(x);}});
@@ -1410,15 +1478,12 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
   if(isAdmin){const cw=costList().filter(o=>gotWait(o.x)),lbl=o=>`${o.x.v?esc(o.x.v):esc(o.x.cat)}${o.x.note?` ${esc(o.x.note)}`:""}`;
     add("late","입고 예정일 지남 (입고 확인 안 함)",cw.filter(o=>o.x.due<TODAY).sort((a,b)=>a.x.due.localeCompare(b.x.due)).map(o=>it(o.j,`${lbl(o)} · 예정 ${fmt(o.x.due)}`,"money")),"건",["vend","거래처 정산 보기"]);
     add("late","입고 예정이 시공 시작보다 늦음",cw.filter(o=>o.x.due>=TODAY&&o.j.i.start&&o.j.i.start>=TODAY&&o.x.due>o.j.i.start).map(o=>it(o.j,`${lbl(o)} · 입고 ${fmt(o.x.due)} · 시공 ${fmt(o.j.i.start)}`,"money")),"건",["vend","거래처 정산 보기"]);}
-  if(isAdmin)add("late","수금 끝, 매입 입력 안 함 (정산 종료 안 됨)",jobs.filter(j=>{const m=moneyOf(j.id);return billTotal(m)>0&&!unpaidOf(m)&&!costIn(m);}).map(j=>it(j,"","money")),"곳",["pay","고객 수금 보기"]);
   add("late","체크리스트 문제 (조치 전)",jobs.filter(j=>clNeeds(j)==="bad").map(j=>it(j,`문제 ${clSum(j).bad.length}개`)),"곳");
   add("late","AS 날짜 지남 (완료 체크 안 함)",jobs.flatMap(j=>asOpen(j).filter(a=>a.date&&a.date<TODAY).map(a=>it(j,`${fmt(a.date)}${a.crew?` · ${esc(a.crew)}`:""}`))),"건");
   add("soon","도면 확정 목표일 지남",live.filter(j=>fs(j)==="dwg"&&j.i.fl.dw.due&&j.i.fl.dw.due<TODAY).map(j=>it(j,`${fmt(j.i.fl.dw.due)}${j.i.fl.dw.by?` · ${esc(j.i.fl.dw.by)}`:""}`)),"곳",["flow","진행 흐름 보기"]);
   add("soon","체크리스트 미제출",jobs.filter(j=>clNeeds(j)==="late").map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
   add("soon","실측 완료 체크 안 함",live.filter(j=>j.m.date&&j.m.date<TODAY&&!j.m.done).map(j=>it(j,fmt(j.m.date))),"곳");
   add("soon","시공 끝, 마감 완료 체크 안 함",live.filter(j=>!j.f.done&&lastWork(j)&&lastWork(j)<TODAY).map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
-  if(isAdmin&&est10)add("soon","보낸 견적서를 고객이 안 열어 봄 (2일 넘음)",ests.filter(e=>e.status==="sent"&&!e.views&&e.d.sentAt&&locDay(e.d.sentAt)&&locDay(e.d.sentAt)<=addDays(TODAY,-2))
-    .map(e=>`<span><button type="button" class="linkish" data-es="${esc(e.id)}">${esc([e.d.cust.name,e.d.title].filter(Boolean).join(" · ")||"견적서")}</button> <span class="hint">${fmt(locDay(e.d.sentAt))} 보냄</span></span>`),"건",["est","견적서 보기"]);
   if(isAdmin&&pay08&&Object.keys(wage.rates.day).length){const pm=addDays(TODAY.slice(0,8)+"01",-1),m=+pm.slice(5,7),w=wageMonth(+pm.slice(0,4),m);
     add("soon",`${m}월 시공자 정산 지급 전`,w.people.filter(p=>!p.paid&&(p.days||p.as)).map(p=>`<span>${esc(p.n)} <span class="hint">${p.total==null?"일당 미입력":won(p.total)}</span></span>`),"명",[`wage:${pm.slice(0,7)}`,"시공자 정산 보기"]);}
   if(isAdmin){const m1=TODAY.slice(0,8)+"01",by={};costList().filter(o=>isVend(o.x)&&!o.x.paid&&o.x.d&&o.x.d<m1).forEach(o=>{by[o.x.v]=(by[o.x.v]||0)+o.x.amount;});
@@ -1458,7 +1523,7 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!
 
 /* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
 const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage","vend"],fin:["sales","exp","bank"]};
-const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출",bank:"통장 내역"};
+const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"현장별 견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출",bank:"통장 내역"};
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
@@ -1496,7 +1561,7 @@ let userEmail="",userName="";
 function renderFiles(){
   for(const kind of Object.keys(KINDS)){
     const saved=editing?filesOf(editing.id,kind):[];
-    const wait=pending.filter(p=>p.kind===kind);
+    const wait=pending.filter(p=>p.kind===kind&&(!p.jid||(editing&&p.jid===editing.id)));
     let h=saved.map(f=>`<li><button type="button" class="fname" data-fid="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</button><span class="fmeta">${fsize(+f.size||0)} · ${fmt((f.created_at||"").slice(0,10))}</span><button type="button" class="fdel" data-fdel="${esc(f.id)}">삭제</button></li>`).join("");
     h+=wait.map(p=>`<li><span class="fname" style="color:var(--muted)">${esc(p.file.name)}</span><span class="fmeta">${p.busy?"올리는 중…":"저장하면 올라가요"}</span>${p.busy?"":`<button type="button" class="fdel" data-pdel="${pending.indexOf(p)}">빼기</button>`}</li>`).join("");
     if(!h)h=`<li class="none">${kind==="drawing"?"아직 올린 도면이 없어요.":"아직 올린 견적서가 없어요."}</li>`;
@@ -1505,8 +1570,8 @@ function renderFiles(){
 }
 function safeExt(name){const m=/\.([A-Za-z0-9]{1,8})$/.exec(name||"");return m?m[1].toLowerCase():"bin";}
 const rid=()=>`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-async function uploadOne(jobId,kind,file,stage=""){
-  const tmp={kind,file,stage,busy:true};pending.push(tmp);renderFiles();
+async function uploadOne(jobId,kind,file,stage="",onErr=showErr){
+  const tmp={kind,file,stage,busy:true,jid:jobId};pending.push(tmp);renderFiles();if(kind==="estimate"){if(isAdmin)renderEst();if(viewing===jobId)renderView();}
   try{
     const path=`${jobId}/${kind}/${rid()}.${safeExt(file.name)}`;
     const {error:ue}=await sb.storage.from(BUCKET).upload(path,file,{contentType:file.type||"application/octet-stream",upsert:false});
@@ -1514,7 +1579,7 @@ async function uploadOne(jobId,kind,file,stage=""){
     const {data,error}=await sb.from("files").insert({job_id:jobId,kind,...(stage?{stage}:{}),name:file.name||"이름 없는 파일",path,size:file.size||0,mime:file.type||"",uploaded_by:userEmail}).select();
     if(error){await sb.storage.from(BUCKET).remove([path]);throw error;}
     if(data&&data[0]&&!files.find(f=>f.id===data[0].id))files.push(data[0]);
-  }catch(e){showErr(kind==="spec"&&!cl04?"시방서를 올리려면 Supabase 업데이트 4가 먼저 필요해요. 시공 체크리스트 칸의 안내를 봐 주세요.":`"${file.name}" 파일을 올리지 못했어요. 인터넷 연결을 확인하고 다시 올려 주세요.`);}
+  }catch(e){onErr(kind==="spec"&&!cl04?"시방서를 올리려면 Supabase 업데이트 4가 먼저 필요해요. 시공 체크리스트 칸의 안내를 봐 주세요.":`"${file.name}" 파일을 올리지 못했어요. 인터넷 연결을 확인하고 다시 올려 주세요.`);}
   finally{pending=pending.filter(p=>p!==tmp);renderFiles();render();}
 }
 document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("fpick"))return;
@@ -1944,7 +2009,7 @@ function backupSheets(){
     if(bankTx.length){const mb=bankMulti(),BZ=bizMap();sheets.push({name:"통장 내역",cols:[["날짜",12,"d"],["시각",7,"s"],...(mb?[["사업자",10,"s"]]:[]),["계좌",14,"s"],["입출금",7,"s"],["금액",14,"w"],["잔액",14,"w"],["내용",22,"s"],["내용 2",22,"s"],["처리",8,"s"],["어디로",34,"s"]],
       rows:[...bankTx].sort((a,b)=>(a.day+a.at).localeCompare(b.day+b.at)).map(t=>[t.day,t.at,...(mb?[BZ[txCorp(t)]||fmtCorp(txCorp(t))]:[]),acctLbl(t.acct),t.dir==="in"?"입금":"출금",t.amount,t.balance??"",txWho(t),[t.r2,t.r3,t.r4,t.memo].filter(x=>x&&x!==txWho(t)).join(" · "),{new:"확인 전",done:"처리함",skip:"건너뜀"}[t.status],(t.link&&t.link.l)||t.note||""])});}
     const ys=[...new Set([...jobs.map(j=>jobMonth(j).slice(0,4)),...expenses.map(x=>x.day.slice(0,4))].filter(Boolean))].sort(),fin=[];
-    ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),b=js.reduce((a,j)=>a+jobBuy(j),0),l=js.reduce((a,j)=>a+jobLabor(j),0),e=expSum([ym]);
+    ys.forEach(y=>yearMonths(y).forEach(ym=>{const js=jobs.filter(j=>jobMonth(j)===ym),r=js.reduce((a,j)=>a+moneyOf(j.id).contract.amount,0),b=js.reduce((a,j)=>a+jobBuy(j),0)+expSum([ym],"buy"),l=js.reduce((a,j)=>a+jobLabor(j),0),e=expSum([ym],"etc");
       const q=v=>r?pct(v,r):"";if(r||b||l||e)fin.push([ym,js.length||"",r,b,l,e,r-b-l-e,q(b),q(l),q(e),q(r-b-l-e)]);}));
     if(ests.length){const list2=[...ests].sort((x,y)=>(x.d.date||"").localeCompare(y.d.date||"")||x.d.ver-y.d.ver),jn=id=>(jobs.find(j=>j.id===id)||{}).name||"";
       sheets.push({name:"견적",cols:[["견적번호",14,"s"],["차수",6,"n"],["견적일",12,"d"],["업체",16,"s"],["연락처",14,"s"],["담당",10,"s"],["프로젝트",24,"s"],["현장",20,"s"],["연결된 현장",16,"s"],["부가세",10,"s"],["공급가 합계",14,"w"],["특별 할인",12,"w"],["단수 조정",12,"w"],["부가세 금액",12,"w"],["총 견적금액",14,"w"],["상태",8,"s"],["고객이 연 횟수",8,"n"]],

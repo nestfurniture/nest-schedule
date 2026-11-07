@@ -73,6 +73,8 @@ const BANK_CAT=[["차량·유류",/주유|오일|에너지|칼텍스|s-?oil|충�
   ["세금·공과금",/국세|지방세|부가세|세무서|구청|시청|한전|한국전력|전기요금|수도|가스|관리비|과태료|자동차세/],
   ["급여·4대보험",/국민연금|건강보험|고용보험|산재|근로복지|4대보험|급여|월급|상여/],
   ["임대료",/월세|임대|임차/],["광고·홍보",/네이버|광고|오늘의집|숨고|인스타|페이스북|구글|당근|블로그/i],
+  /* 자재·외주 매입 (app.js BUY_EXP): 현장마다 안 나누고 회사 지출로 적는 매입. 결산에서는 매입으로 셈 */
+  ["자재·외주 매입",/목재|합판|보드|자재|도장|하드웨어|블룸|blum|헤펠레|hafele|유리|상판|필름|몰딩|엣지|건재|가구|인테리어|용달|화물/i],
   ["소모품",/다이소|쿠팡|철물|오피스|문구/],["공구·장비",/공구|장비|렌탈|리스/],
   ["식대·복리후생",/식당|식사|편의점|커피|카페|스타벅스|배달|요기요|김밥|마트/],["수수료·기타",/수수료|보험/]];
 const guessCat=t=>{const s=[t.r1,t.r2,t.r3,t.r4,t.memo].join(" ");const c=BANK_CAT.find(([,re])=>re.test(s));return c?c[0]:"";};
@@ -262,7 +264,7 @@ function bankPickHtml(t,s,C){
     const pre=new Set(s&&s.t==="cost"?s.rows.map(o=>`${o.j.id}|${o.i}`):[]);
     body=all.length?`<div class="bk-opts">${all.map(([v,rows])=>`<div class="bk-vg"><div><b>${esc(v)}</b>${nameHit(t,v)?` <span class="tag ok">이름 맞음</span>`:""}</div>${rows.map(o=>`<label class="check"><input type="checkbox" data-bkf="cost" value="${esc(o.j.id)}|${o.i}" data-amt="${o.x.amount}" ${pre.has(`${o.j.id}|${o.i}`)?"checked":""}><span>${esc(o.j.name)} · ${esc(o.x.cat)}${o.x.note?` ${esc(o.x.note)}`:""} <b>${won(o.x.amount)}</b></span></label>`).join("")}</div>`).join("")}</div>
       <p class="hint" data-bksum>고른 합계 ${won([...pre].length?s.rows.reduce((a,o)=>a+o.x.amount,0):0)} / 통장 ${won(t.amount)}</p>`
-      :`<p class="hint">거래처를 적은 미지급 매입이 없어요. 현장 매입에 없던 돈이면 <b>현장 매입 새로</b>를 고르세요.</p>`;}
+      :`<p class="hint">거래처를 적은 미지급 현장 매입이 없어요. 자재·외주비라면 <b>회사 지출</b>에서 '자재·외주 매입'을 고르면 결산 매입에 들어가요.</p>`;}
   else if(k==="wage"){const pre=s&&s.t==="wage"?s.w:null,list=[...C.wages].sort((a,b)=>(nameHit(t,b.n)-nameHit(t,a.n))||((b.total===t.amount)-(a.total===t.amount)));
     body=list.length?`<div class="bk-opts">${list.map(w=>`<label class="check"><input type="radio" name="bkw-${esc(t.id)}" data-bkf="wage" value="${w.y}|${w.m}|${esc(w.n)}" ${pre&&pre.n===w.n&&pre.m===w.m&&pre.y===w.y?"checked":""}><span>${esc(w.n)} · ${w.m}월 <b>${won(w.total)}</b>${w.total===t.amount?` <span class="tag ok">금액 맞음</span>`:""}</span></label>`).join("")}</div>`
       :`<p class="hint">지급 전 시공자 정산이 없어요 (이번 달 포함 3달).</p>`;}
