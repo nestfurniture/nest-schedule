@@ -204,7 +204,7 @@ function render(){renderBoard();renderFlow();
   $("vendList").innerHTML=isAdmin?vendNames().map(n=>`<option value="${esc(n)}">`).join(""):"";
   renderHome();
   if(viewing)renderView();
-  if(crewAs)renderMine();
+  if(crewAs||acctWait())renderMine();
 }
 /* 휴대폰 현장 목록은 한 현장에 한두 줄: 윗줄 = 이름·상태·다음 날짜, 아랫줄 = 품목·주소 + 확인할 것만.
    자세한 내용(시공자·파일·수금 등)은 현장을 누르면 보임. PC 표는 그대로 */
@@ -1491,6 +1491,7 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
   if(isAdmin&&bank12){const nw=bankTx.filter(t=>t.status==="new");
     add("soon","통장 거래 분류 안 함",nw.map(t=>`<span>${fmt(t.day)} ${esc(txWho(t)||"내용 없음")} <span class="hint">${t.dir==="in"?"+":"−"}${won(t.amount)}</span></span>`),"건",["bank","통장 내역 보기"]);}
   add("wait","실측일·시공일 없는 현장",live.filter(j=>!j.m.date&&!j.i.start).map(j=>it(j)),"곳");
+  if(isAdmin&&upd13)add("soon","새 로그인 계정 · 쓰임 정하기 (정하기 전엔 못 들어옴)",acctNew().map(a=>`<span><button type="button" class="linkish" data-acopen>${esc(a.name||a.email)}</button></span>`),"개");
   return A;}
 function renderHome(){if(!loaded)return;
   const tmr=addDays(TODAY,1),none=t=>`<li class="none">${t}</li>`;
@@ -1527,7 +1528,7 @@ const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
-function tab(which){if(crewAs){showMine();return;}$("view-mine").hidden=true;
+function tab(which){if(crewAs||acctWait()){showMine();return;}$("view-mine").hidden=true;
   if(!VIEWS.includes(which)||(!isAdmin&&ADMIN_VIEWS.includes(which)))which="board";curTab=which;
   const g=groupOf(which);lastSub[g]=which;
   VIEWS.forEach(v=>{$("tab-"+v).setAttribute("aria-selected",v===which);$("view-"+v).hidden=v!==which;});
@@ -2151,8 +2152,8 @@ function showWho(){const b=$("who");b.textContent=userName?`${userName}님`:"이
   b.setAttribute("aria-label",userName?`${userName}님, 이름 바꾸기`:"내 이름 넣기");}
 let nameFrom=null;
 function openName(){$("nm-in").value=userName;$("nm-err").hidden=true;
-  $("nmAcct").textContent=`로그인 계정: ${userEmail} · ${isAdmin?"관리자 계정이라 돈 관련 내용(수금·매입·결산)이 보여요.":"직원 계정이라 돈 관련 내용은 안 보여요."}`;
-  $("nmCrew").innerHTML=nmCrewHtml();
+  $("nmAcct").textContent=`로그인 계정: ${userEmail} · ${isAdmin?"관리자 계정이라 돈 관련 내용(수금·매입·결산)이 보여요.":crewLocked()?`시공자 계정(${myCrewName})이라 내 일정만 보여요.`:acctWait()?"아직 사장님이 쓰임을 정하지 않은 계정이에요.":"직원 계정이라 돈 관련 내용은 안 보여요."}`;
+  $("nmCrew").innerHTML=nmCrewHtml();if(isAdmin)loadAccts();
   nameFrom=document.activeElement;$("nameSheet").hidden=false;document.body.style.overflow="hidden";$("nm-in").focus();}
 function closeName(){$("nameSheet").hidden=true;document.body.style.overflow="";if(nameFrom&&nameFrom.focus)nameFrom.focus({preventScroll:true});nameFrom=null;}
 $("who").onclick=openName;$("nameClose").onclick=closeName;
@@ -2175,7 +2176,7 @@ document.querySelectorAll("#pushPrefs [data-pref]").forEach(c=>c.onchange=savePr
 /* 알림을 눌러 열었을 때: ?day=날짜 → 달력에서 그날, ?tab=pay → 정산 › 고객 수금 */
 let pendingLink=location.search;
 function applyLink(q){
-  if(crewAs){if(location.search)history.replaceState(null,"",location.pathname+location.hash);return;}
+  if(crewAs||acctWait()){if(location.search)history.replaceState(null,"",location.pathname+location.hash);return;}
   const p=new URLSearchParams(q.includes("?")?q.slice(q.indexOf("?")):q),day=p.get("day"),t=p.get("tab"),jid=p.get("job");
   const jj=jid&&jobs.find(x=>x.id===jid);
   if(jj){if(!$("pushSheet").hidden)closePush();if(!$("daySheet").hidden)closeDay();tab("board");openForm(jj);setTimeout(()=>$("sec-cl").scrollIntoView({block:"start"}),400);}
@@ -2190,12 +2191,28 @@ if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("messag
    관리자는 같은 곳에서 미리 보기만 함(이 창에서만). 화면만 나누는 것이고 자료를 읽는 권한은 직원 계정과 같음(돈은 안 보임) */
 let userCrew="",crewAs="",mineLast="";const mineSt={},mineErr={};
 const metaCrew=u=>String((u&&u.user_metadata&&u.user_metadata.crew)||"").trim();
+/* 업데이트 13 (staff_roles): 계정마다 사장님이 '사무실 직원' 또는 '시공자(이름)'를 정함. 시공자 계정은 이 화면에 고정되고
+   서버에서도 자기 현장의 시공 정보만 읽음(crew_jobs). 아직 안 정한 새 계정은 아무것도 못 봄. 업데이트 전에는 예전처럼 내 정보에서 고름 */
+let upd13=false,myRole="",myCrewName="",acctList=null,acctErr="",acctOk="",crewPoll=null;
+const acctWait=()=>upd13&&!isAdmin&&myRole!=="crew"&&myRole!=="office";
+const crewLocked=()=>upd13&&!isAdmin&&myRole==="crew";
+const missing13=e=>/staff_roles|list_accounts|PGRST20|42P01|42883|schema cache/i.test(`${e.code} ${e.message}`);
+async function loadRole(){if(isAdmin){myRole="admin";return;}
+  const {data,error}=await sb.from("staff_roles").select("role,crew").eq("user_id",uid);
+  if(error){if(missing13(error))upd13=false;return;}
+  const r=data&&data[0];upd13=true;myRole=r&&(r.role==="crew"||r.role==="office")?r.role:"none";myCrewName=r&&r.role==="crew"?String(r.crew||""):"";}
+async function loadAccts(){if(!isAdmin)return;
+  const {data,error}=await sb.rpc("list_accounts");
+  if(error){if(missing13(error)){upd13=false;acctList=null;}}else{upd13=true;acctList=(data||[]).filter(a=>a&&a.id);}
+  if(loaded&&curTab==="home"&&!crewAs)renderHome();
+  if(!$("nameSheet").hidden)$("nmCrew").innerHTML=nmCrewHtml();}
 function setCrewMode(){let pv="";try{pv=sessionStorage.getItem("nest-pv")||""}catch(e){}
-  crewAs=isAdmin?pv:userCrew;document.body.classList.toggle("crew-on",!!crewAs);}
+  crewAs=isAdmin?pv:upd13?(myRole==="crew"?myCrewName:""):userCrew;
+  document.body.classList.toggle("crew-on",!!crewAs||acctWait());document.body.classList.toggle("acct-wait",acctWait());}
 function showMine(){
   VIEWS.forEach(v=>{$("view-"+v).hidden=true;});Object.keys(GROUPS).forEach(k=>{$("sub-"+k).hidden=true;$("nav-"+k).removeAttribute("aria-current");});
   $("gnav").hidden=true;document.body.classList.remove("gnav-on");$("app").dataset.g="";$("app").dataset.v="mine";
-  $("view-mine").hidden=false;$("pgTitle").textContent="내 일정";mineLast="";renderMine();}
+  $("view-mine").hidden=false;$("pgTitle").textContent=acctWait()?"계정 확인":"내 일정";mineLast="";renderMine();}
 const dayWord=d=>d===TODAY?"오늘":d===addDays(TODAY,1)?"내일":"";
 const myDays=(j,n)=>workDays(j).filter(d=>crewOn(j,d).includes(n));
 function mineItems(n){const out=[],from=addDays(TODAY,-14),to=addDays(TODAY,60);
@@ -2228,7 +2245,9 @@ function mineAs(x){const j=x.j,a=x.a,late=a.date&&a.date<TODAY,w=a.date?dayWord(
   return`<article class="mc"><h3>${esc(j.name)} <span class="tag soon">AS</span>${late?` <span class="tag late">날짜 지남</span>`:""}</h3>
     <div class="mc-when">${a.date?`${w?`<b class="cs-today">${w}</b> `:""}<span class="d">${fmtW(a.date)}</span>`:`<span class="hint">날짜 미정</span>`}${a.note?` · ${esc(a.note)}`:""}</div>
     <dl class="kv">${mineInfo(j)}</dl>${minePhotos(j,x.k,"AS")}</article>`;}
-function renderMine(){if(!crewAs||$("view-mine").hidden)return;
+function renderMine(){if((!crewAs&&!acctWait())||$("view-mine").hidden)return;
+  if(acctWait()){const w=`<section class="mine-sec acct-wait-box"><h3>아직 쓸 수 없는 계정이에요</h3><p class="hint">사장님이 이 계정을 사무실 직원으로 쓸지, 시공자 계정으로 쓸지 아직 정하지 않았어요. 사장님께 이 계정(<b>${esc(userEmail)}</b>)을 말씀해 주세요. 정해지면 바로 열려요.</p><div><button class="btn ghost sm" type="button" id="acctRe">다시 확인</button></div></section>`;
+    if(w!==mineLast){mineLast=w;$("mineBody").innerHTML=w;}return;}
   let h=isAdmin?`<div class="mine-pv"><span><b>${esc(crewAs)}</b> 화면 미리 보기예요. 이 계정의 자료는 그대로예요.</span><button class="btn ghost sm" type="button" id="pvEnd">미리 보기 끝내기</button></div>`:"";
   h+=`<p class="sub mine-sub">${esc(crewAs)} · 오늘 ${fmtW(TODAY)}. 일정은 사무실에서 정하고, 여기서는 현장 정보를 보고 사진·체크리스트를 올려요.</p>`;
   if(!loaded){$("mineBody").innerHTML=h+`<p class="hint">불러오는 중…</p>`;return;}
@@ -2353,15 +2372,39 @@ function cdLock(list,on){const ids=list.filter(r=>r.locked!==on).map(r=>r.id);if
 
 /* 내 정보: 직원 계정은 시공자 화면 켜기/끄기(계정에 저장), 관리자는 미리 보기 */
 function nmCrewHtml(){const opts=n=>[...new Set([...CREW,...(n?[n]:[])])].map(c=>`<option${c===n?" selected":""}>${esc(c)}</option>`).join("");
-  if(isAdmin)return`<h3>시공자 화면 미리 보기</h3><p class="hint">시공팀장·현장 소장 계정이 보는 화면이에요. 그 사람의 직원 계정으로 로그인한 뒤 여기 <b>내 정보</b>에서 이름을 고르면, 그 계정은 앱이 이 화면으로 열려요.</p>
-    <div class="nm-crow"><select id="nmCrewSel" aria-label="시공자"><option value="">시공자 고르기</option>${opts(crewAs)}</select><button class="btn sm" type="button" id="nmCrewGo">미리 보기</button>${crewAs?`<button class="btn ghost sm" type="button" id="nmCrewOff">미리 보기 끝내기</button>`:""}</div><div class="err" id="nmCrewErr" hidden></div>`;
+  if(isAdmin)return`<h3>시공자 화면 미리 보기</h3><p class="hint">시공팀장·현장 소장 계정이 보는 화면이에요. ${upd13?`아래 <b>직원 계정</b>에서 시공자로 정한 계정은 앱이 이 화면으로만 열려요.`:`그 사람의 직원 계정으로 로그인한 뒤 여기 <b>내 정보</b>에서 이름을 고르면, 그 계정은 앱이 이 화면으로 열려요.`}</p>
+    <div class="nm-crow"><select id="nmCrewSel" aria-label="시공자"><option value="">시공자 고르기</option>${opts(crewAs)}</select><button class="btn sm" type="button" id="nmCrewGo">미리 보기</button>${crewAs?`<button class="btn ghost sm" type="button" id="nmCrewOff">미리 보기 끝내기</button>`:""}</div><div class="err" id="nmCrewErr" hidden></div>${acctHtml()}`;
+  if(upd13)return crewLocked()?`<h3>시공자 화면</h3><p class="hint">이 계정은 <b>${esc(myCrewName)}</b> 시공자 계정이에요. 이름과 화면은 사장님이 정해요. 바뀌어야 하면 사장님께 말씀해 주세요.</p>`:"";
   return`<h3>시공자 화면</h3><p class="hint">시공팀장·현장 소장 계정이면 자기 이름을 골라 두세요. 앱이 자기 일정·주소·출입번호·도면을 보고 사진·체크리스트를 올리는 화면으로 열려요. 이 계정으로 로그인한 모든 기기에 같이 적용돼요.</p>
     <div class="nm-crow"><select id="nmCrewSel" aria-label="시공자 이름"><option value="">안 씀 (사무실 화면)</option>${opts(userCrew)}</select><button class="btn sm" type="button" id="nmCrewGo">저장</button></div><div class="err" id="nmCrewErr" hidden></div>`;}
+/* 관리자: 로그인 계정마다 쓰임 정하기 (업데이트 13). 계정 자체는 Supabase → Authentication → Users에서 만듦 */
+const ymdOf=t=>{const d=new Date(t);return isNaN(d)?"":`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+const acctNew=()=>(acctList||[]).filter(a=>!a.admin&&!a.role);
+function acctHtml(){
+  if(!upd13)return`<h3>직원 계정</h3><p class="hint">시공자 계정을 내 일정 화면에만 묶어 두려면 Supabase 업데이트 13을 한 번 해야 해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-13.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 Supabase → SQL Editor에 붙여넣고 Run 하세요.</p>`;
+  if(!acctList)return`<h3>직원 계정</h3><p class="hint">불러오는 중…</p>`;
+  const opts=a=>{const cur=a.role==="crew"?"c:"+a.crew:a.role||"",names=[...new Set([...CREW,...(a.crew?[a.crew]:[])])];
+    return`<option value=""${cur?"":" selected"}>정하지 않음 (못 들어옴)</option><option value="office"${cur==="office"?" selected":""}>사무실 직원</option>${names.map(n=>`<option value="c:${esc(n)}"${cur==="c:"+n?" selected":""}>시공자 · ${esc(n)}</option>`).join("")}`;};
+  const row=a=>`<li class="ac-row" data-uid="${esc(a.id)}"><div class="ac-who"><b>${esc(a.name||a.email)}</b>${a.name?`<span class="hint">${esc(a.email)}</span>`:""}<span class="hint">${a.last_in?`마지막 로그인 ${fmt(ymdOf(a.last_in))}`:"아직 로그인 안 함"}</span></div>
+    ${a.admin?`<span class="tag ok">관리자</span>`:`<div class="ac-set">${a.role?"":`<span class="tag late">새 계정</span>`}<select data-acsel aria-label="${esc(a.email)} 쓰임">${opts(a)}</select><button class="btn sm" type="button" data-acsave>저장</button></div>`}
+    ${acctOk===a.id?`<p class="cd-ok ac-msg">✓ 저장했어요.</p>`:""}</li>`;
+  return`<h3>직원 계정</h3><p class="hint">로그인 계정마다 쓰임을 정해요. <b>사무실 직원</b>은 돈을 뺀 사무실 화면, <b>시공자</b>는 그 이름의 내 일정 화면만 열려요(다른 화면으로 못 넘어가요). 정하지 않은 새 계정은 로그인해도 아무것도 못 봐요. 계정은 Supabase → Authentication → Users에서 만들어요.</p>
+    <ul class="ac-list">${acctList.map(row).join("")}</ul>${acctErr?`<p class="err">${esc(acctErr)}</p>`:""}`;}
+document.addEventListener("click",async e=>{
+  const sv=e.target.closest("[data-acsave]");
+  if(sv){const li=sv.closest("[data-uid]"),v=li.querySelector("[data-acsel]").value,role=v.startsWith("c:")?"crew":v||"none",crew=v.startsWith("c:")?v.slice(2):"";
+    sv.disabled=true;acctErr="";acctOk="";
+    const {data,error}=await sb.rpc("set_account",{p_user:li.dataset.uid,p_role:role,p_crew:crew});sv.disabled=false;
+    if(error||!data||!data.ok)acctErr=data&&data.why==="admin"?"관리자 계정은 바꿀 수 없어요.":data&&data.why==="crew"?"시공자 이름을 확인해 주세요.":"저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";
+    else acctOk=li.dataset.uid;
+    await loadAccts();return;}
+  if(e.target.closest("[data-acopen]")){openName();setTimeout(()=>{const l=document.querySelector("#nmCrew .ac-list");if(l)l.scrollIntoView({block:"center"});},300);return;}
+  if(e.target.id==="acctRe"){e.target.disabled=true;await loadAll();}});
 function crewErr(t){$("nmCrewErr").textContent=t;$("nmCrewErr").hidden=false;}
 document.addEventListener("click",async e=>{const id=e.target.id;
   if(id==="nmCrewGo"){const n=$("nmCrewSel").value;$("nmCrewErr").hidden=true;
     if(isAdmin){if(!n){crewErr("미리 볼 시공자를 골라 주세요.");return;}try{sessionStorage.setItem("nest-pv",n)}catch(er){}setCrewMode();closeName();tab("home");window.scrollTo(0,0);return;}
-    const b=e.target;b.disabled=true;const {error}=await sb.auth.updateUser({data:{crew:n}});b.disabled=false;
+    if(upd13)return;const b=e.target;b.disabled=true;const {error}=await sb.auth.updateUser({data:{crew:n}});b.disabled=false;
     if(error){crewErr("저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.");return;}
     userCrew=n;setCrewMode();closeName();tab("home");window.scrollTo(0,0);return;}
   if(id==="nmCrewOff"||id==="pvEnd"){try{sessionStorage.removeItem("nest-pv")}catch(er){}setCrewMode();if(!$("nameSheet").hidden)closeName();tab("crew");window.scrollTo(0,0);}});
@@ -2376,6 +2419,11 @@ async function checkAdmin(){
   showWho();
 }
 async function loadAll(){
+  if(!isAdmin&&adminChecked&&loaded){const was=`${upd13}|${myRole}|${myCrewName}`;await loadRole();
+    if(`${upd13}|${myRole}|${myCrewName}`!==was){setCrewMode();tab(curTab||"home");}}
+  if(acctWait()){jobs=[];files=[];checks={};cdays=[];cdIdx=null;CREW=[];loaded=true;$("status").hidden=true;render();return;}
+  if(crewLocked())return loadCrew();
+  if(isAdmin)loadAccts();
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
     isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst(),loadCdays(),loadBank()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
@@ -2388,6 +2436,16 @@ async function loadAll(){
   if(!$("form").hidden&&editing){renderFiles();renderPhotos();renderCl();}
   if(pendingLink){const q=pendingLink;pendingLink="";applyLink(q);}
 }
+/* 시공자 계정 (업데이트 13): 현장은 crew_jobs()로 자기 현장의 시공 칸만, 파일·체크리스트는 서버가 자기 현장 것만 줌.
+   돈·명단·시방서·알림·자동 계산은 안 부름. 현장 변경은 실시간으로 안 오니 3분마다, 그리고 앱으로 돌아올 때 다시 불러옴 */
+async function loadCrew(){
+  const [{data:j,error:e1},{data:fl},ck]=await Promise.all([sb.rpc("crew_jobs"),sb.from("files").select("*").order("created_at"),sb.from("checklists").select("*"),loadCdays()]);
+  if(e1){$("status").textContent="일정을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
+  $("status").hidden=true;
+  jobs=(j||[]).filter(r=>r&&r.id).map(r=>norm(r.id,r));CREW=[];files=fl||[];money={};laborCache=null;
+  cl04=!(ck.error&&/checklists|42P01|PGRST20/i.test(`${ck.error.code} ${ck.error.message}`));
+  checks={};if(!ck.error)(ck.data||[]).forEach(r=>{checks[r.job_id]=r});
+  loaded=true;render();}
 let channel=null;
 /* 앱을 처음 켰을 때만 '오늘'부터. 로그인 확인은 앱으로 돌아올 때마다 다시 오므로(SIGNED_IN) 이미 켜져 있으면 화면을 그대로 둠.
    휴대폰이 앱을 잠깐 내렸다가 다시 띄우는(새로 읽는) 경우에도 같은 실행 중이면(sessionStorage) 보던 화면으로 돌아감 */
@@ -2397,13 +2455,14 @@ async function startApp(session){const id=session.user.id||"";
   $("login").hidden=true;$("app").hidden=false;userEmail=session.user.email||"";uid=id;userName=metaName(session.user);showWho();userCrew=metaCrew(session.user);
   sb.auth.getUser().then(({data})=>{if(data&&data.user&&uid===data.user.id){userName=metaName(data.user);showWho();
     const c=metaCrew(data.user);if(c!==userCrew&&adminChecked){userCrew=c;const was=crewAs;setCrewMode();if(was!==crewAs)tab(curTab);}else userCrew=c;}}).catch(()=>{});
-  await checkAdmin();adminChecked=true;setCrewMode();
+  await checkAdmin();await loadRole();adminChecked=true;setCrewMode();
   let cur="";try{cur=sessionStorage.getItem("nest-cur")||""}catch(e){}
   tab(VIEWS.includes(cur)?cur:"home");
   loadAll();
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
+  if(!crewPoll)crewPoll=setInterval(()=>{if(!document.hidden&&!$("app").hidden&&(crewLocked()||acctWait()))loadAll();},180e3);
 }
-function showLogin(){startedFor="";userName="";userCrew="";crewAs="";adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;bankReset();if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";userName="";userCrew="";crewAs="";upd13=false;myRole="";myCrewName="";acctList=null;acctErr="";acctOk="";clearInterval(crewPoll);crewPoll=null;document.body.classList.remove("acct-wait");adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;bankReset();if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;

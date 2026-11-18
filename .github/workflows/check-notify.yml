@@ -55,3 +55,5 @@ jobs:
           echo; echo "== 17. 통장 서버(bank ping) — \"configured\":true 면 팝빌 열쇠가 들어감, false 면 Secrets 확인, 404 면 bank 서버를 아직 안 만듦. \"test\":true 면 팝빌 시험 환경, \"corps\":2 면 사업자 둘(리브젠·네스트)"
           curl -s -i -m 60 -X POST "$URL/functions/v1/bank" -H "Origin: $ORIGIN" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"action":"ping"}' | grep -E "^HTTP|configured|error|NOT_FOUND" | head -5
+          echo; echo "== 18. 직원 계정 표(staff_roles, 업데이트 13) — [] 이면 준비됨 (자기 줄만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-13.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/staff_roles?select=user_id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
