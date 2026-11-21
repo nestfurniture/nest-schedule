@@ -57,3 +57,12 @@ jobs:
             -H "Content-Type: application/json" -d '{"action":"ping"}' | grep -E "^HTTP|configured|error|NOT_FOUND" | head -5
           echo; echo "== 18. 직원 계정 표(staff_roles, 업데이트 13) — [] 이면 준비됨 (자기 줄만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-13.sql 실행 필요"
           curl -s -i -m 30 "$URL/rest/v1/staff_roles?select=user_id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 19. AS 접수함 표(as_inbox, 업데이트 14) — [] 이면 준비됨 (사무실 직원만 읽을 수 있어서 내용은 안 보임), PGRST205 면 update-14.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/as_inbox?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 20. AS 설정 표(as_kv, 업데이트 14) — [] 이면 준비됨, PGRST205 면 update-14.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/as_kv?select=key&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|\[" | head -5
+          echo; echo "== 21. AS 열쇠(as_key, 업데이트 14) — 42501(permission denied) 이면 있고 잘 막힘, PGRST202 면 update-14.sql 실행 필요"
+          curl -s -i -m 30 -X POST "$URL/rest/v1/rpc/as_key" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}' | grep -E "^HTTP|PGRST|42501|admin" | head -5
+          echo; echo "== 22. AS 자동 접수 서버(as_in, 틀린 열쇠) — 403 bad key 면 새 코드 + SQL 됨, 503 update 14 needed 면 SQL 실행 필요, 400 unknown action 이면 notify 붙여넣기 필요"
+          curl -s -i -m 60 -X POST "$URL/functions/v1/notify?action=as_in&kind=kakao" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+            -H "Content-Type: application/json" -d '{"key":"probeprobeprobeprobeprobeprobeprobe1234"}' | grep -E "^HTTP|error" | head -5

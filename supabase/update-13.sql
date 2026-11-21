@@ -208,6 +208,18 @@ grant execute on function public.save_push_sub(text, text, text, jsonb, text) to
 delete from public.push_subs p where not exists (select 1 from public.admins a where a.user_id = p.user_id)
   and not exists (select 1 from public.staff_roles r where r.user_id = p.user_id and r.role = 'office');
 
+-- 업데이트 14(AS 접수함)를 먼저 했으면, AS 표도 사무실 직원·관리자만 보게 (시공자 계정은 못 봄)
+do $$ begin
+  if to_regclass('public.as_inbox') is not null then
+    drop policy if exists "office all" on public.as_inbox;
+    create policy "office all" on public.as_inbox for all to authenticated using (public.is_office()) with check (public.is_office());
+  end if;
+  if to_regclass('public.as_kv') is not null then
+    drop policy if exists "office all" on public.as_kv;
+    create policy "office all" on public.as_kv for all to authenticated using (public.is_office()) with check (public.is_office());
+  end if;
+end $$;
+
 -- 확인용: 계정마다 정해진 역할
 select coalesce(u.email, '') as "계정",
   case when exists (select 1 from public.admins a where a.user_id = u.id) then '관리자'

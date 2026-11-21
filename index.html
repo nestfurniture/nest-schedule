@@ -377,7 +377,7 @@ button.chip{color:var(--fg);cursor:pointer;font-family:inherit}
 .pg-title{margin:-4px 0 0;font-family:var(--serif);font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
 #app[data-g="home"]>#pgTitle{display:none}
 #app:not([data-g="site"]) :is(#summary,#form){display:none!important}
-#app[data-v="flow"] #summary{display:none!important}
+#app[data-v="flow"] #summary,#app[data-v="as"] #summary{display:none!important}
 /* 오늘 할 일 (홈) */
 .hm-head{display:flex;flex-direction:column;gap:2px}
 .hm-head .pg-title{margin:0}
@@ -877,6 +877,53 @@ details[open]>summary .bk-more::after{content:" ⌃"}
   body.printing>*:not(#printArea){display:none!important}
   body.printing #printArea{display:block!important}
 }
+/* AS 관리 (현장 › AS) */
+#app[data-v="as"] #addBtn,#app:not([data-v="as"]) #asAdd{display:none}
+.as-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.as-h h3{margin:0;font-family:var(--serif);font-size:18px;font-weight:700;color:var(--fg)}
+.as-h .n{font-size:13px;font-weight:700;color:var(--late)}
+.as-cases{display:flex;flex-direction:column;gap:8px}
+.as-case{cursor:pointer}
+.as-case:hover{background:color-mix(in srgb,var(--bg) 70%,var(--surface))}
+.as-case.done{color:var(--muted)}
+.as-sym{font-weight:500;font-size:15px;overflow-wrap:anywhere;flex:1 1 auto;min-width:0}
+.as-case .bk-top .tag{margin-left:auto}
+.as-meta{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:13px;color:var(--muted)}
+.as-meta .linkish{font-weight:500}
+.as-in .as-who{font-weight:500;font-size:15px;overflow-wrap:anywhere}
+.as-in .as-at{margin-left:auto}
+.as-raw summary,.as-old summary,.as-paste summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.as-raw p{margin:6px 0 0;font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;overflow-wrap:anywhere}
+.as-injob{font-size:13px}
+.as-inbtns{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.as-inbtns .as-ign{margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)}
+.as-setup label{color:var(--muted)}
+.as-keys{display:flex;flex-direction:column;gap:8px}
+.as-copy span{display:flex;gap:6px}.as-copy input{flex:1;font-size:12px;font-family:var(--mono)}
+.as-form{display:flex;flex-direction:column;gap:12px}
+.as-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.as-grid .wide{grid-column:1/-1}
+.as-grid input,.as-grid select,.as-form textarea,#asFrom textarea{width:100%;box-sizing:border-box;font-size:16px}
+.as-fs{border:1px solid var(--line);border-radius:8px;padding:8px 10px 10px;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.as-fs legend{font-size:13px;font-weight:700;color:var(--muted);padding:0 4px}
+.as-vrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto auto;gap:8px;align-items:end}
+.as-vrow input:not([type=checkbox]),.as-vrow select{width:100%;box-sizing:border-box;font-size:16px}
+.as-vrow label.check{padding-bottom:8px;white-space:nowrap}
+.as-jobsel{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.as-jobsel .lbl{font-size:13px;color:var(--muted)}
+.as-jobsel b{font-weight:500;font-size:15px}
+.as-jobsel .btn{margin-left:auto}
+#asJob input{font-size:16px;width:100%;box-sizing:border-box}
+.as-hits{display:flex;flex-direction:column;margin-top:4px;max-height:240px;overflow:auto}
+.as-hit{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:7px 2px;font:inherit;color:var(--fg);cursor:pointer}
+.as-hit:hover{background:var(--bg)}
+.as-hit b{font-weight:500}
+.as-quote{border-left:3px solid var(--accent);background:var(--bg);border-radius:0 6px 6px 0;padding:8px 10px;font-size:14px}
+.as-quote p{margin:4px 0 0;overflow-wrap:anywhere;max-height:160px;overflow:auto}
+.as-attach{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:8px}
+.as-paste textarea{margin:6px 0}
+.as-vrow+.as-vrow{border-top:1px dashed var(--line);padding-top:8px}
+@media (max-width:560px){.as-vrow{grid-template-columns:1fr 1fr}.as-vrow label.check{padding-bottom:0}.as-vrow .btn{justify-self:end}}
 </style>
 <style>[hidden]{display:none!important} body{margin:0;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(48px,env(safe-area-inset-bottom))}</style>
 </head>
@@ -924,8 +971,10 @@ details[open]>summary .bk-more::after{content:" ⌃"}
       <button class="tab" role="tab" id="tab-flow" aria-selected="false">진행 흐름</button>
       <button class="tab" role="tab" id="tab-cal" aria-selected="false">달력</button>
       <button class="tab" role="tab" id="tab-crew" aria-selected="false">시공자별</button>
+      <button class="tab" role="tab" id="tab-as" aria-selected="false">AS</button>
     </div>
     <button class="btn fab" id="addBtn" type="button">+ 현장 추가</button>
+    <button class="btn fab" id="asAdd" type="button">+ AS 접수</button>
   </div>
   <div class="subbar" id="sub-est" hidden>
     <div class="tabs one" role="tablist" aria-label="견적"><button class="tab" role="tab" id="tab-est" aria-selected="false">현장별 견적서</button></div>
@@ -1161,6 +1210,19 @@ details[open]>summary .bk-more::after{content:" ⌃"}
     <p class="sub">한 줄이 시공자 한 명이에요. 시공(현장 색)과 AS(토마토색)가 함께 보이고, 같은 날 두 현장에 잡히면 빨간 칸으로 표시돼요. 칸을 누르면 그날 일정이 보이고, 수정은 현장 목록에서 해요.</p>
   </section>
 
+  <section id="view-as" class="view" hidden>
+    <!-- AS 관리: 접수함(갤럭시 카톡·통화 자동 접수, 업데이트 14) + AS 건 -->
+    <div class="update" id="asUpdate" hidden>고객 카톡·통화로 온 AS를 자동으로 받으려면 Supabase 업데이트 14가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-14-as-자동-접수-적용" target="_blank" rel="noopener">README 업데이트 14</a> 순서대로 해 주세요. 그 전에도 아래 AS 접수·관리는 쓸 수 있어요.</div>
+    <div id="asSetup"></div>
+    <div class="as-inbox" id="asInbox"></div>
+    <div class="as-cases">
+      <div class="as-h"><h3>AS 건</h3></div>
+      <div class="summary" id="asChips"></div>
+      <ul class="bk-list as-list" id="asList"></ul>
+    </div>
+    <p class="sub">접수함에는 고객 카톡 중 AS 요청과, 시공한 고객과의 통화가 자동으로 들어와요. <b>AS로 등록</b>하면 AS 건이 되고, 방문 날짜를 넣으면 달력·시공자별·시공자 정산·내일 일정 알림에 AS로 나와요. 방문일을 안 잡은 AS와 확인 안 한 접수는 <b>오늘 할 일</b>과 아침 알림에 날마다 다시 나와요.</p>
+  </section>
+
   <section id="view-est" class="view" hidden>
     <!-- 현장별 견적서: 현장마다 올려 둔 견적서 파일을 모아 봄 -->
     <div class="bd-search"><input type="search" id="esQ" enterkeyhint="search" autocomplete="off" placeholder="견적서 찾기 · 현장 이름, 주소, 전화번호, 파일 이름" aria-label="견적서 찾기"></div>
@@ -1380,6 +1442,31 @@ details[open]>summary .bk-more::after{content:" ⌃"}
 <datalist id="es-spaces"></datalist>
 <datalist id="es-units"><option value="자"><option value="EA"><option value="개"><option value="짝"><option value="세트"><option value="식"><option value="m"><option value="㎡"><option value="대"></datalist>
 <div id="printArea"></div>
+<div class="sheet" id="asSheet" hidden role="dialog" aria-modal="true" aria-labelledby="asTitle">
+  <div class="sheet-card">
+    <div class="sheet-head"><h2 id="asTitle">AS 접수</h2><button class="btn ghost sm" type="button" id="asClose">닫기</button></div>
+    <div id="asFrom"></div>
+    <form class="as-form" id="asForm" novalidate>
+      <div id="asJob"></div>
+      <div class="as-grid">
+        <label>접수일<input type="date" id="as-at"></label>
+        <label>받은 곳<select id="as-src"><option value="">—</option><option value="kakao">카톡</option><option value="call">전화</option><option value="sms">문자</option><option value="site">현장에서</option><option value="etc">기타</option></select></label>
+        <label class="wide">증상<input id="as-sym" maxlength="200" autocomplete="off" placeholder="예: 상부장 문 경첩 처짐, 문이 안 닫힘"></label>
+        <label class="wide">메모 <small class="hint">고객이 보낸 글, 통화 내용 등</small><textarea id="as-note" rows="3"></textarea></label>
+      </div>
+      <fieldset class="as-fs"><legend>방문 일정</legend>
+        <div id="as-vis"></div>
+        <div><button class="btn ghost sm" type="button" id="as-addv">+ 방문 날짜 넣기</button></div>
+      </fieldset>
+      <fieldset class="as-fs"><legend>부품 <small class="hint">· 주문하고 기다리는 게 있으면</small></legend>
+        <div class="as-grid"><label class="wide">무엇<input id="as-pw" maxlength="100" autocomplete="off" placeholder="예: 경첩 2개, 상판"></label><label>도착 예정<input type="date" id="as-pe"></label><label>도착한 날<input type="date" id="as-pg"></label></div>
+      </fieldset>
+      <label class="check as-donechk"><input type="checkbox" id="as-done"><span>AS 끝남 <small class="hint">더 할 일이 없으면 체크</small></span></label>
+      <div class="err" id="as-err" hidden></div>
+      <div class="qa-btns"><button class="btn" id="as-save">저장</button><button class="btn del" type="button" id="as-del" hidden>이 AS 지우기</button></div>
+    </form>
+  </div>
+</div>
 <div class="sheet" id="quickSheet" hidden role="dialog" aria-modal="true" aria-labelledby="quickTitle">
   <div class="sheet-card">
     <div class="sheet-head"><h2 id="quickTitle">새 현장 빠른 등록</h2><button class="btn ghost sm" type="button" id="quickClose">닫기</button></div>
@@ -1444,6 +1531,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
       <label class="check"><input type="checkbox" data-pref="tomorrow" checked><span>내일 일정<small>매일 저녁 6시 · 내일 시공·실측·AS</small></span></label>
       <label class="check"><input type="checkbox" data-pref="today" checked><span>오늘 일정 · 시공자 미배정<small>매일 아침 7시 30분 · 일주일 안에 시작하는데 시공자가 없는 현장도 알려줘요</small></span></label>
       <label class="check"><input type="checkbox" data-pref="checklist" checked><span>시공 체크리스트 제출<small>시공자가 체크리스트를 내면 바로 · 문제가 있으면 내용까지 알려줘요</small></span></label>
+      <label class="check"><input type="checkbox" data-pref="as" checked><span>AS 접수<small>고객 카톡·통화로 AS가 들어오면 바로 · 아침 7시 30분에 확인 안 한 접수와 방문일 안 잡은 AS (시공자 계정 기기는 안 받아요)</small></span></label>
       <label class="check admin-only" hidden><input type="checkbox" data-pref="money" checked><span>입금 확인<small>매일 아침 7시 30분 · 오늘 받을 돈, 입금 지연 (관리자만)</small></span></label>
     </fieldset>
     <p class="hint" style="margin:0">알림은 기기마다 따로 켜요. 다른 휴대폰이나 컴퓨터에서도 받으려면 그 기기에서도 켜 주세요. 로그아웃하면 그 기기의 알림은 꺼져요.</p>
@@ -1466,6 +1554,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
 <script src="checklist.js"></script>
 <script src="estimate.js"></script>
 <script src="bank.js"></script>
+<script src="as.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

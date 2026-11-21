@@ -82,7 +82,7 @@ function norm(id,d){d=d||{};return{id,name:d.name||"",item:d.item||"",addr:d.add
     gate:d.i?.gate||"",door:d.i?.door||"",tel:typeof d.i?.tel==="string"?d.i.tel:"",mgr:Array.isArray(d.i?.mgr)?d.i.mgr:[],days:normDays(d.i?.days),off:(Array.isArray(d.i?.off)?d.i.off:[]).filter(isDate),
     apps:(Array.isArray(d.i?.apps)?d.i.apps:[]).filter(a=>a&&a.id).map(a=>({id:String(a.id),type:a.type||"",model:a.model||"",spec:a.spec||"",...(typeof a.join==="boolean"?{join:a.join}:{})})),
     chk:Array.isArray(d.i?.chk)?d.i.chk.map(String).filter(Boolean):[],fl:normFl(d.i?.fl)},
-  f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[],closed:isDate(d.f?.closed)?d.f.closed:"",closedBy:d.f?.closedBy==="auto"?"auto":d.f?.closed?"manual":""},createdAt:d.created_at||""};}
+  f:{done:!!d.f?.done,extra:Array.isArray(d.f?.extra)?d.f.extra:[],as:Array.isArray(d.f?.as)?d.f.as:[],asc:(Array.isArray(d.f?.asc)?d.f.asc:[]).filter(c=>c&&c.id).map(normCase),closed:isDate(d.f?.closed)?d.f.closed:"",closedBy:d.f?.closedBy==="auto"?"auto":d.f?.closed?"manual":""},createdAt:d.created_at||""};}
 const isDate=v=>typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v);
 /* 도면 · 생산 (진행 흐름). jobs.i.fl 에 둠 (새 칸 없이): ct 계약일(수금에서 가져옴) · dw 설계 담당·도면 확정 목표일·확정일 · pr 생산 방식·외주처·납기·생산 완료일 */
 const PR_HOW={own:"자체 공장",out:"외주",both:"자체 + 외주"};
@@ -199,7 +199,7 @@ function qHit(j){const q=boardQ.trim().toLowerCase();if(!q)return true;
   if([j.name,j.item,j.addr,j.i.tel,...crewAll(j),...j.i.mgr].join(" ").toLowerCase().includes(q))return true;
   const d=q.replace(/[^\d]/g,"");return d.length>=3&&d.length===q.replace(/[\s-]/g,"").length&&[j.i.tel,...j.i.mgr].some(t=>String(t||"").replace(/\D/g,"").includes(d));}
 function render(){renderBoard();renderFlow();
-  renderCal();renderCrew();
+  renderCal();renderCrew();renderAs();
   if(isAdmin){renderPay();renderVend();renderSales();renderWage();renderEst();renderBank();}
   $("vendList").innerHTML=isAdmin?vendNames().map(n=>`<option value="${esc(n)}">`).join(""):"";
   renderHome();
@@ -354,8 +354,7 @@ function renderView(){const j=jobs.find(x=>x.id===viewing);if(!j){if(!$("jobShee
     ${kv("시공자",crewHtml(j))}${kv("마감",`${finishTag(j)}${extraSum(j)?extraHtml(j):""}`)}</dl>${days.length?`<h3 style="margin-top:8px">날짜별 시공자</h3>${li(days)}`:""}
     ${qeOn("sch")?qeSchHtml(j):`<div class="jv-btns"><button class="btn ghost sm" type="button" data-qe="sch">일정 바꾸기</button></div>`}${qeDone("sch")}</div>`;
   if(j.f.extra.length)h+=`<div class="dsec"><h3>마감 추가 투입</h3>${li(j.f.extra.map(x=>`<span class="d">${fmtW(x.date)}</span> ${+x.people}명${x.note?` · ${esc(x.note)}`:""}`))}</div>`;
-  if(j.f.as.length||ended(j)||(j.i.start&&j.i.start<=TODAY)||qeOn("as"))h+=`<div class="dsec"><h3>AS</h3>${li(j.f.as.map(a=>`<span class="d">${fmtW(a.date)}</span> 담당 ${esc(a.crew||"미정")}${a.note?` · ${esc(a.note)}`:""} ${a.done?`<span class="tag ok">완료</span>`:`<span class="tag soon">예정</span>`}`))}
-    ${qeOn("as")?qeAsHtml(j):`<div class="jv-btns"><button class="btn ghost sm" type="button" data-qe="as">+ AS 접수</button></div>`}${qeDone("as")}</div>`;
+  h+=asJobHtml(j);
   h+=jvPhotos(j);
   h+=`<div class="dsec"><h3>현장 출입</h3><dl class="kv">${kv("공동현관",esc(j.i.gate)||"—")}${kv("세대현관",esc(j.i.door)||"—")}${kv("담당자",j.i.mgr.map(esc).join(", ")||"—")}</dl>
     <div class="jv-btns"><button class="btn ghost sm" type="button" data-msg="${esc(j.id)}">시공자 문자 복사</button>${c?`<button class="btn ghost sm" type="button" data-clmsg="${esc(j.id)}">체크리스트 문자 복사</button>`:""}</div></div>`;
@@ -389,9 +388,6 @@ function qeSchHtml(j){const names=[...new Set([...CREW,...j.i.crew])];
     ${dayCustom(j)?`<p class="hint" style="margin:0">날짜별로 따로 정한 시공자·쉬는 날은 새 기간 안에 있는 날만 남아요. 날짜별로 바꾸려면 <b>수정</b>에서 해요.</p>`:""}
     ${qe.warn?`<div class="ms-warn">같은 날 다른 현장에도 잡혀 있어요.<ul>${qe.warn}</ul>한 번 더 누르면 그대로 저장돼요.</div>`:""}${qe.err?`<p class="err">${qe.err}</p>`:""}
     <div class="qe-btns"><button class="btn sm" type="button" data-qe-save="sch">${qe.warn?"그래도 저장":"저장"}</button><button class="btn ghost sm" type="button" data-qe-cancel>취소</button></div></div>`;}
-function qeAsHtml(j){const opts=["",...CREW].map(c=>`<option value="${esc(c)}">${c?esc(c):"담당 미정"}</option>`).join("");
-  return`<div class="qe"><div class="qe-grid"><label>AS 날짜<input type="date" id="qe-ad" data-keep="ad"></label><label>담당<select id="qe-ac" data-keep="ac">${opts}</select></label><label class="wide">내용<input id="qe-an" data-keep="an" placeholder="예: 도어 경첩 조정"></label></div>
-    ${qe.err?`<p class="err">${qe.err}</p>`:""}<div class="qe-btns"><button class="btn sm" type="button" data-qe-save="as">접수</button><button class="btn ghost sm" type="button" data-qe-cancel>취소</button></div></div>`;}
 function jvPhotos(j){const all=photosOf(j.id),rec=[...all].sort((a,b)=>(b.created_at||"").localeCompare(a.created_at||"")),show=rec.slice(0,8),more=rec.length-show.length;
   const up=pending.filter(p=>p.kind==="photo"&&p.jid===j.id).length,tu=f=>urlCache.get(f.thumb||f.path)?.url||"";
   return`<div class="dsec jv-ph"><h3>사진 ${all.length?`<span class="hint">${all.length}장</span>`:""}</h3>
@@ -412,19 +408,12 @@ function qeSaveSch(btn){const j=jobs.find(x=>x.id===viewing);if(!j)return;
       qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:{k:"sch",l:"일정을 바꿨어요",fn:x=>({m:{...x.m,date:prev.md,time:prev.mt},i:{...x.i,...prev.i}})}};if(isAdmin)autoDue();}
     else{qe.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";}
     render();});}
-function qeSaveAs(btn){const j=jobs.find(x=>x.id===viewing);if(!j)return;const a={date:$("qe-ad").value,crew:$("qe-ac").value,note:$("qe-an").value.trim(),done:false};
-  if(!a.note&&!a.date){qe.err="날짜나 내용을 넣어 주세요.";renderView();return;}
-  btn.disabled=true;
-  qcRun(j.id,async j=>{const ok=await jobWrite(j,{f:{...j.f,as:[...j.f.as,a]}});
-    if(ok)qe={jid:j.id,k:"",err:"",warn:"",warnKey:"",done:{k:"as",l:`AS 접수했어요${a.date?` (${fmt(a.date)})`:""}`,fn:x=>{const n=x.f.as.map((y,i)=>!y.done&&y.date===a.date&&(y.crew||"")===a.crew&&(y.note||"")===a.note?i:-1).filter(i=>i>=0).pop();return n===undefined?null:{f:{...x.f,as:x.f.as.filter((y,i)=>i!==n)}};}}};
-    else qe.err="저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.";
-    render();});}
 $("jvBody").addEventListener("click",e=>{
-  const o=e.target.closest("[data-qe]");if(o){qe={jid:viewing,k:o.dataset.qe,err:"",warn:"",warnKey:"",done:null};renderView();if(o.dataset.qe==="as"&&$("qe-an"))$("qe-an").focus({preventScroll:true});return;}
+  const o=e.target.closest("[data-qe]");if(o){qe={jid:viewing,k:o.dataset.qe,err:"",warn:"",warnKey:"",done:null};renderView();return;}
   if(e.target.closest("[data-qe-cancel]")){qe={...qe,k:"",err:"",warn:"",warnKey:""};renderView();return;}
   const u=e.target.closest("[data-qe-undo]");if(u&&qe.done){const d=qe.done;u.disabled=true;
     qcRun(viewing,async j=>{const pt=d.fn(j),ok=pt?await jobWrite(j,pt):true;qe={...qe,done:null,err:ok?"":"되돌리지 못했어요. 다시 눌러 주세요."};if(ok&&isAdmin&&d.k==="sch")autoDue();render();});return;}
-  const sv=e.target.closest("[data-qe-save]");if(!sv)return;if(sv.dataset.qeSave==="sch")qeSaveSch(sv);else qeSaveAs(sv);});
+  const sv=e.target.closest("[data-qe-save]");if(sv)qeSaveSch(sv);});
 document.addEventListener("change",async e=>{const inp=e.target;if(!inp.classList||!inp.classList.contains("jvpick"))return;const jid=viewing;
   const list=[...inp.files].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)),st=$("qe-phs")?$("qe-phs").value:"기타";inp.value="";
   if(qe.jid===jid)qe.phErr="";
@@ -439,7 +428,7 @@ function qcItems(j){const out=[];
   if(st==="prd")out.push({k:"pr",l:"생산 완료",h:fl.pr.due?`납기 ${fmt(fl.pr.due)}`:"납기 미정",late:fl.pr.due&&fl.pr.due<TODAY});
   if(isAdmin)moneyOf(j.id).pays.forEach((p,n)=>{if(!p.paid&&p.amount>0)out.push({k:`p${n}`,l:`${esc(p.label)} 입금 확인`,h:`${won(p.amount)}${p.due?` · ${fmt(p.due)}까지`:""}`,late:p.due&&p.due<TODAY});});
   if(!j.f.done&&j.i.start&&j.i.start<=TODAY){const lw=lastWork(j);out.push({k:"f",l:"시공 마감 완료",h:`${lw&&lw<TODAY?`시공 끝 ${fmt(lw)}`:"시공 중"} · 체크하면 종료 현장으로`});}
-  j.f.as.forEach((a,n)=>{if(!a.done)out.push({k:`a${n}`,l:"AS 완료",h:`${a.date?fmtW(a.date):"날짜 미정"}${a.note?` · ${esc(a.note)}`:""}`,late:a.date&&a.date<TODAY});});
+  j.f.as.forEach((a,n)=>{if(!a.done)out.push({k:`a${n}`,l:a.cid?"AS 방문 다녀옴":"AS 완료",h:`${a.date?fmtW(a.date):"날짜 미정"}${a.note?` · ${esc(a.note)}`:""}`,late:a.date&&a.date<TODAY});});
   return out;}
 function qcHtml(j){if(qc.jid!==j.id)qc={jid:j.id,done:[],err:""};
   const items=qcItems(j);if(!items.length&&!qc.done.length)return"";
@@ -1239,7 +1228,7 @@ document.querySelectorAll('input[name="f-color"]').forEach(r=>r.addEventListener
 let asSeq=0;
 function asRow(a={date:"",crew:"",note:"",done:false}){const n=asSeq++;const div=document.createElement("div");div.className="as-row";
   const opts=["",...CREW,...(a.crew&&!CREW.includes(a.crew)?[a.crew]:[])].map(c=>`<option value="${esc(c)}" ${c===a.crew?"selected":""}>${c?esc(c):"담당 미정"}</option>`).join("");
-  div.innerHTML=`<label>AS 날짜<input type="date" id="a-d${n}" value="${esc(a.date)}"></label><label>담당<select id="a-c${n}">${opts}</select></label><label class="note">내용<input id="a-n${n}" value="${esc(a.note)}" placeholder="예: 도어 경첩 조정"></label><label class="check"><input type="checkbox" id="a-x${n}" ${a.done?"checked":""}>완료</label><button class="btn del sm" type="button">삭제</button>`;
+  if(a.cid)div.dataset.cid=a.cid;div.innerHTML=`<label>AS 날짜<input type="date" id="a-d${n}" value="${esc(a.date)}"></label><label>담당<select id="a-c${n}">${opts}</select></label><label class="note">내용<input id="a-n${n}" value="${esc(a.note)}" placeholder="예: 도어 경첩 조정"></label><label class="check"><input type="checkbox" id="a-x${n}" ${a.done?"checked":""}>완료</label><button class="btn del sm" type="button">삭제</button>`;
   div.querySelector("button").onclick=()=>div.remove();$("f-as").appendChild(div);}
 let extraSeq=0;
 function extraRow(x={date:"",people:1,note:""}){const n=extraSeq++;const div=document.createElement("div");div.className="extra-row";
@@ -1415,12 +1404,12 @@ $("saveBtn").onclick=async()=>{const name=$("f-name").value.trim();
   const off=span.filter(d=>dayPick.off.has(d));
   if(span.length&&off.length===span.length)return showErr("모든 날이 '쉬는 날'이에요. 작업하는 날을 하루 이상 남겨 주세요.");
   const extra=[...$("f-extras").children].map(r=>{const [d,p,n]=r.querySelectorAll("input");return{date:d.value,people:+p.value||0,note:n.value.trim()}}).filter(x=>x.date&&x.people>0);
-  const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked})).filter(a=>a.date||a.note);
+  const as=[...$("f-as").children].map(r=>({date:r.querySelector("input[type=date]").value,crew:r.querySelector("select").value,note:r.querySelector(".note input").value.trim(),done:r.querySelector("input[type=checkbox]").checked,...(r.dataset.cid?{cid:r.dataset.cid}:{})})).filter(a=>a.date||a.note);
   const data={name,item:$("f-item").value.trim(),addr:$("f-addr").value.trim(),
     m:{date:$("f-mdate").value,time:$("f-mdate").value?okTime($("f-mtime").value):"",done:$("f-mdone").checked},i:{start:s,end:e||s,crew,days,off,sat,sun,color:getColor(),tel:fmtTel($("f-tel").value),gate:$("f-gate").value.trim(),door:$("f-door").value.trim(),mgr:pickedMgr(),
       apps:readApps(),chk:$("f-chk").value.split("\n").map(x=>x.trim()).filter(Boolean),
       fl:{ct:editing?editing.i.fl.ct:"",dw:{by:$("f-dwby").value.trim(),due:$("f-dwdue").value,ok:$("f-dwok").value},pr:{how:$("f-prhow").value,out:$("f-prout").value.trim(),due:$("f-prdue").value,ok:$("f-prok").value}}},
-    f:{...(editing&&!(editing.f.done&&!$("f-fdone").checked)?{closed:editing.f.closed,closedBy:editing.f.closedBy}:{}),done:$("f-fdone").checked,extra,as},updated_at:new Date().toISOString()};
+    f:{...(editing&&!(editing.f.done&&!$("f-fdone").checked)?{closed:editing.f.closed,closedBy:editing.f.closedBy}:{}),done:$("f-fdone").checked,extra,as,asc:editing?(jobs.find(x=>x.id===editing.id)||editing).f.asc:[]},updated_at:new Date().toISOString()};
   let mo=isAdmin?readMoney():null;
   if(mo&&billTotal(mo)>0)data.i.fl.ct=mo.contract.date||data.i.fl.ct||TODAY;
   $("saveBtn").disabled=true;$("f-err").hidden=true;
@@ -1479,6 +1468,7 @@ function homeAlerts(){const A=[],live=jobs.filter(j=>!ended(j)),it=(j,more,mode)
     add("late","입고 예정일 지남 (입고 확인 안 함)",cw.filter(o=>o.x.due<TODAY).sort((a,b)=>a.x.due.localeCompare(b.x.due)).map(o=>it(o.j,`${lbl(o)} · 예정 ${fmt(o.x.due)}`,"money")),"건",["vend","거래처 정산 보기"]);
     add("late","입고 예정이 시공 시작보다 늦음",cw.filter(o=>o.x.due>=TODAY&&o.j.i.start&&o.j.i.start>=TODAY&&o.x.due>o.j.i.start).map(o=>it(o.j,`${lbl(o)} · 입고 ${fmt(o.x.due)} · 시공 ${fmt(o.j.i.start)}`,"money")),"건",["vend","거래처 정산 보기"]);}
   add("late","체크리스트 문제 (조치 전)",jobs.filter(j=>clNeeds(j)==="bad").map(j=>it(j,`문제 ${clSum(j).bad.length}개`)),"곳");
+  asAlerts(add);
   add("late","AS 날짜 지남 (완료 체크 안 함)",jobs.flatMap(j=>asOpen(j).filter(a=>a.date&&a.date<TODAY).map(a=>it(j,`${fmt(a.date)}${a.crew?` · ${esc(a.crew)}`:""}`))),"건");
   add("soon","도면 확정 목표일 지남",live.filter(j=>fs(j)==="dwg"&&j.i.fl.dw.due&&j.i.fl.dw.due<TODAY).map(j=>it(j,`${fmt(j.i.fl.dw.due)}${j.i.fl.dw.by?` · ${esc(j.i.fl.dw.by)}`:""}`)),"곳",["flow","진행 흐름 보기"]);
   add("soon","체크리스트 미제출",jobs.filter(j=>clNeeds(j)==="late").map(j=>it(j,`시공 끝 ${fmt(lastWork(j))}`)),"곳");
@@ -1523,8 +1513,8 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(!
   tab(v);if(v==="board")render();if(v==="wage")renderWage();window.scrollTo({top:0});});
 
 /* 메뉴: 큰 묶음(오늘 · 현장 · 견적 · 정산 · 결산) 안에 세부 화면. 묶음마다 마지막에 본 화면을 기억함. 관리자가 아니면 오늘 · 현장만 */
-const GROUPS={home:["home"],site:["board","flow","cal","crew"],est:["est"],money:["pay","wage","vend"],fin:["sales","exp","bank"]};
-const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",est:"현장별 견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출",bank:"통장 내역"};
+const GROUPS={home:["home"],site:["board","flow","cal","crew","as"],est:["est"],money:["pay","wage","vend"],fin:["sales","exp","bank"]};
+const VIEW_TITLE={board:"현장 목록",flow:"진행 흐름",cal:"달력",crew:"시공자별",as:"AS",est:"현장별 견적서",pay:"고객 수금",wage:"시공자 정산",vend:"거래처 정산",sales:"손익",exp:"회사 지출",bank:"통장 내역"};
 const VIEWS=Object.values(GROUPS).flat(),ADMIN_VIEWS=VIEWS.filter(v=>!GROUPS.site.includes(v)&&v!=="home");
 const groupOf=v=>Object.keys(GROUPS).find(g=>GROUPS[g].includes(v));
 let lastSub={};try{lastSub=JSON.parse(localStorage.getItem("nest-sub")||"{}")||{}}catch(e){}
@@ -1537,6 +1527,7 @@ function tab(which){if(crewAs||acctWait()){showMine();return;}$("view-mine").hid
   $("pgTitle").textContent=VIEW_TITLE[which]||"";
   if(which==="crew")renderCrew();
   if(which==="flow")renderFlow();
+  if(which==="as")renderAs();
   if(which==="est"&&isAdmin)renderEst();
   if(which==="bank"&&isAdmin){renderBank();bankStatus();}
   if(which==="home")renderHome();
@@ -1995,7 +1986,10 @@ function backupSheets(){
       rows:list.map(j=>[j.name,JOB_STAGE[jobStage(j)],j.item,j.addr,j.i.tel,j.m.date,j.m.date?j.m.time:"",OX(j.m.done),j.i.start,j.i.end,j.i.start?workDays(j).length:"",crewAll(j).join(", "),dayCustom(j)?spanDays(j.i).map(d=>`${md(d)} ${(j.i.off||[]).includes(d)?"쉼":crewOn(j,d).join("·")||"미배정"}`).join(", "):"",[j.i.sat&&"토",j.i.sun&&"일"].filter(Boolean).join("·"),j.i.gate,j.i.door,j.i.mgr.join(", "),OX(j.f.done),j.f.extra.reduce((a,x)=>a+(+x.people||0),0)||"",j.f.as.length||"",files.filter(f=>f.job_id===j.id).length||"",FLOW_NAME[flowStage(j)],j.i.fl.ct,j.i.fl.dw.by,j.i.fl.dw.due,j.i.fl.dw.ok,PR_HOW[j.i.fl.pr.how]||"",j.i.fl.pr.out,j.i.fl.pr.due,j.i.fl.pr.ok])},
     {name:"마감 추가 투입",cols:[["현장",18,"s"],["날짜",12,"d"],["인원",7,"n"],["메모",36,"s"]],
       rows:list.flatMap(j=>j.f.extra.map(x=>[j.name,x.date||"",+x.people||"",x.note||""]))},
-    {name:"AS",cols:[["현장",18,"s"],["날짜",12,"d"],["담당",12,"s"],["내용",40,"s"],["완료",7,"s"]],
+    {name:"AS",cols:[["현장",18,"s"],["접수일",12,"d"],["받은 곳",8,"s"],["증상",36,"s"],["상태",14,"s"],["방문",28,"s"],["부품",24,"s"],["끝난 날",12,"d"],["메모",40,"s"]],
+      rows:list.flatMap(j=>j.f.asc.map(c=>[j.name,c.at,AS_SRC[c.src]||"",c.sym,asSt(j,c).l,asVis(j,c).map(a=>`${a.date?md(a.date):"날짜 미정"} ${a.crew||"담당 미정"}${a.done?" 다녀옴":""}`).join(", "),
+        [c.parts.what,c.parts.got?`${md(c.parts.got)} 도착`:c.parts.eta?`${md(c.parts.eta)} 도착 예정`:""].filter(Boolean).join(" · "),c.done,c.note]))},
+    {name:"AS 방문",cols:[["현장",18,"s"],["날짜",12,"d"],["담당",12,"s"],["내용",40,"s"],["완료",7,"s"]],
       rows:list.flatMap(j=>j.f.as.map(a=>[j.name,a.date||"",a.crew||"",a.note||"",OX(a.done)]))}];
   if(isAdmin){
     sheets.push({name:"수금",cols:[["현장",18,"s"],["계약일",12,"d"],["계약금액",14,"w"],["VAT 별도",9,"s"],["청구 합계",14,"w"],["받은 돈",14,"w"],["미수금",14,"w"]],
@@ -2425,7 +2419,7 @@ async function loadAll(){
   if(crewLocked())return loadCrew();
   if(isAdmin)loadAccts();
   const [{data:j,error:e1},{data:c},{data:fl},mo,ck]=await Promise.all([sb.from("jobs").select("*"),sb.from("crew").select("name").order("created_at"),sb.from("files").select("*").order("created_at"),
-    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst(),loadCdays(),loadBank()]);
+    isAdmin?sb.from("job_money").select("*"):Promise.resolve({data:[]}),sb.from("checklists").select("*"),loadLib(),loadWage(),loadExpenses(),loadEst(),loadCdays(),loadBank(),loadAs()]);
   if(e1){$("status").textContent="현장을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";$("status").hidden=false;return;}
   $("status").hidden=true;
   jobs=(j||[]).map(r=>norm(r.id,r));CREW=(c||[]).map(r=>r.name);files=fl||[];laborCache=null;
@@ -2462,7 +2456,7 @@ async function startApp(session){const id=session.user.id||"";
   if(!channel){channel=sb.channel("nest");["jobs","crew","files","job_money","checklists"].forEach(tb=>channel.on("postgres_changes",{event:"*",schema:"public",table:tb},loadAll));channel.subscribe();}
   if(!crewPoll)crewPoll=setInterval(()=>{if(!document.hidden&&!$("app").hidden&&(crewLocked()||acctWait()))loadAll();},180e3);
 }
-function showLogin(){startedFor="";userName="";userCrew="";crewAs="";upd13=false;myRole="";myCrewName="";acctList=null;acctErr="";acctOk="";clearInterval(crewPoll);crewPoll=null;document.body.classList.remove("acct-wait");adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;bankReset();if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
+function showLogin(){startedFor="";userName="";userCrew="";crewAs="";upd13=false;myRole="";myCrewName="";acctList=null;acctErr="";acctOk="";clearInterval(crewPoll);crewPoll=null;document.body.classList.remove("acct-wait");adminChecked=false;mineLast="";cdays=[];day11=true;cdIdx=null;cdDay="";cdErr="";cdOk="";if(cdChan){sb.removeChannel(cdChan);cdChan=null;}document.body.classList.remove("crew-on");$("view-mine").hidden=true;try{sessionStorage.removeItem("nest-pv")}catch(e){}$("nameSheet").hidden=true;document.body.style.overflow="";try{sessionStorage.removeItem("nest-cur")}catch(e){}$("app").hidden=true;$("pushSheet").hidden=true;$("login").hidden=false;isAdmin=false;$("gnav").hidden=true;document.body.classList.remove("gnav-on");money={};wage={rates:normRates(),months:{}};pay08=true;laborCache=null;if(wageChan){sb.removeChannel(wageChan);wageChan=null;}expenses=[];pay09=true;if(expChan){sb.removeChannel(expChan);expChan=null;}ests=[];est10=true;coFilled=false;bankReset();asReset();if(estChan){sb.removeChannel(estChan);estChan=null;}if(!$("estSheet").hidden)closeEst(true);if(channel){sb.removeChannel(channel);channel=null;}if(specChan){sb.removeChannel(specChan);specChan=null;}clearTimeout(specPoll);specLib={};specAuto=null;specAt=0;specAutoRan=false;mediaRan=false;}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("l-err").hidden=true;$("l-btn").disabled=true;
   const {error}=await sb.auth.signInWithPassword({email:$("l-email").value.trim(),password:$("l-pw").value});
   $("l-btn").disabled=false;
@@ -2473,7 +2467,7 @@ const dayNow=()=>{const d=new Date();return`${d.getFullYear()}-${pad(d.getMonth(
 document.addEventListener("visibilitychange",()=>{if(document.hidden||$("app").hidden)return;
   const d=dayNow();if(d!==TODAY){TODAY=d;laborCache=null;}loadAll();if(curTab==="bank")bankStatus();});
 
-bankInit();
+bankInit();asInit();
 (function boot(){
   const cfg=window.NEST_CONFIG||{};
   if(!cfg.SUPABASE_URL||!cfg.SUPABASE_ANON_KEY||!window.supabase){$("setup").hidden=false;return;}
