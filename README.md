@@ -322,7 +322,7 @@ on conflict do nothing;
 
 고객 카톡 AS와 고객 통화를 사장님 갤럭시가 서버로 보내서 **현장 › AS** 접수함에 자동으로 넣습니다. 갤럭시에 **MacroDroid**(무료 자동화 앱)를 깔아 두면 됩니다. 하기 전에도 AS 건 등록·관리, 붙여넣기 접수는 됩니다.
 
-1. **SQL 실행 (한 번만)**: Supabase → SQL Editor → New query에 [`supabase/update-14.sql`](supabase/update-14.sql) 내용을 통째로 붙여넣고 **Run**. 맨 아래에 `AS 접수함 준비 끝`이 나오면 됩니다. 여러 번 실행해도 괜찮습니다.
+1. **SQL 실행 (한 번만)**: Supabase → SQL Editor → New query에 [`supabase/update-14.sql`](supabase/update-14.sql) 내용을 통째로 붙여넣고 **Run**. 맨 아래에 `AS 접수함 준비 끝`이 나오면 됩니다. 여러 번 실행해도 괜찮습니다. 업데이트 13 전에 실행하면 AS 표는 로그인한 직원 모두가 볼 수 있고, 나중에 업데이트 13을 실행하면 사무실 직원·관리자만 보게 바뀝니다.
 2. **알림 서버 다시 붙여넣기**: Supabase → Edge Functions → `notify` → Code에 [새 코드](supabase/functions/notify/index.ts)를 통째로 붙여넣고 **Deploy**.
    - 카톡이 AS인지는 시방서 찾기에 쓰는 `ANTHROPIC_API_KEY`(Edge Functions → Secrets)로 AI가 판단합니다. 키가 없거나 하루 400번을 넘으면 '고장·경첩·안 닫혀요' 같은 낱말로만 판단합니다.
    - 비용: 서버는 받은 카톡을 모두(AS가 아닌 것도) AI에게 한 번씩 물어봅니다. 기본은 가장 똑똑한 모델(claude-opus-5-5)이라 카톡 한 건에 10원 안팎, 하루 카톡 150건이면 한 달 4만 원 안팎입니다. 줄이려면 Secrets에 `AS_MODEL` = `claude-haiku-5-5`를 넣으면 한 달 천 원대로 줄어듭니다(애매한 카톡은 덜 정확할 수 있음). 하루 횟수는 `AS_DAY_CAP`(기본 400)으로 바꿉니다. 앱 **갤럭시 자동 접수** 칸에 오늘 AI 판단 횟수가 나옵니다.
