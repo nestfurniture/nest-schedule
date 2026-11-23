@@ -92,7 +92,7 @@ function asSetupHtml(){const p=asKvData.ping||{},live=asLive(),used=p.day===TODA
     <span class="hint">${seen?`마지막으로 받은 것: ${seen}`:"아직 휴대폰에서 받은 게 없어요"}</span><span class="bk-more">설정</span></summary>
     <p class="hint">사장님 갤럭시의 MacroDroid 앱이 카톡 알림과 통화 끝을 서버로 보내면, 서버가 고객의 AS 요청만 골라 접수함에 넣고 휴대폰 알림을 보내요. AS가 아닌 카톡은 저장하지 않아요. 설정 순서는 <a href="https://github.com/nestfurniture/nest-schedule#업데이트-14-as-자동-접수-적용" target="_blank" rel="noopener">README 업데이트 14</a>에 있어요.</p>
     ${asKey?`<div class="as-keys">${copy("카톡 알림 받을 때 주소",url("kakao"))}${copy("통화 끝날 때 주소",url("call"))}${copy("헤더 Authorization 값",`Bearer ${cfg.SUPABASE_ANON_KEY||""}`)}
-      <p class="hint">주소 끝의 key는 비밀번호 같은 거예요. 다른 사람에게 보내지 마세요. 새어 나갔으면 <button type="button" class="linkish" data-askey="reset">열쇠 새로 만들기</button>를 누르고 MacroDroid 주소도 바꿔 주세요.</p></div>`
+      <p class="hint">주소 끝의 key는 비밀번호 같은 거예요. 다른 사람에게 보내지 마세요. 새어 나갔으면 <button type="button" class="linkish" data-askey="reset">열쇠 새로 만들기</button>를 누르고 MacroDroid 주소도 바꿔 주세요(은행 알림 매크로까지 모두).</p></div>`
       :`<div><button type="button" class="btn ghost sm" data-askey="">MacroDroid에 넣을 주소 보기</button></div>`}
     ${asKeyErr?`<p class="err">${esc(asKeyErr)}</p>`:""}
     <label class="as-ignl">빼고 볼 카톡 이름 <small class="hint">한 줄에 하나 · 가족, 직원, 거래처 단톡방처럼 AS가 올 일 없는 이름</small><textarea id="as-ign" rows="3">${esc((Array.isArray(asKvData.ignore.names)?asKvData.ignore.names:[]).join("\n"))}</textarea></label>

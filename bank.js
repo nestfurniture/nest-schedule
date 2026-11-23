@@ -1,15 +1,18 @@
-/* 통장 내역 (관리자, 업데이트 12) — 결산 › 통장 내역
-   서버(bank)가 팝빌 계좌조회로 회사 통장 입출금을 매시간 bank_tx 표에 넣고, 여기서는 한 줄씩 어디에 넣을지 정함:
+/* 통장 내역 (관리자, 업데이트 15 · 팝빌은 업데이트 12) — 결산 › 통장 내역
+   회사 통장 입출금이 bank_tx 표에 들어옴: 사장님 갤럭시의 은행 알림(알림 서버 notify bank_in) + 한 달에 한 번 올리는 은행 엑셀(여기서 읽음).
+   팝빌 계좌조회(서버 bank)도 남아 있지만 API 요금(계좌당 월 10만원)이 커서 안 씀. 팝빌로 가져온 적이 있을 때만 팝빌 칸을 보여 줌.
+   여기서는 한 줄씩 어디에 넣을지 정함:
    나간 돈 → 회사 지출 · 거래처 지급(매입 지급 체크) · 시공자 정산 지급 · 현장 매입 새로 넣기 · 건너뛰기
    들어온 돈 → 고객 입금(수금 입금 확인) · 건너뛰기
    이름과 금액이 맞으면 제안을 띄우고, 회사 지출·건너뛰기로 정한 이름은 기억해서(bank_kv rules) 다음부터 같은 곳을 제안함.
    처리한 줄은 되돌리기로 원래대로(넣은 지출 지우기, 체크 풀기). app.js보다 먼저 읽고, 단추는 app.js가 bankInit()으로 연결 */
-let bankTx=[],bank12=true,bankChan=null,bankRules=[],bankState=null,bankSt=null,bankStAt=0,bankStBusy=false,
+let bankTx=[],bank12=true,bank15=true,bankChan=null,bankRules=[],bankState=null,bankSt=null,bankStAt=0,bankStBusy=false,
+  bankAccts=[],bankXl={},bankPing={},bankX=null,bankXBusy=false,bankAOpen=false,bankADel="",bankKeyOpen=false,bankKeyErr="",bankConnOpen=null,
   bankF="new",bankM="",bankA="",bankJoinCorp=null,bankOpen="",bankKind="",bankMsg="",bankMsgOk=false,bankBusy=false,bankLater=false,bankRT=null;
 const BANK_URLS={acct:"계좌 등록·관리",rate:"정액제 신청·연장",point:"포인트 충전",login:"팝빌 열기"};
 const normTx=r=>({id:String(r.id),acct:r.acct||"",corp:r.corp||"",day:String(r.day||"").slice(0,10),at:r.at||"",dir:r.dir==="in"?"in":"out",amount:+r.amount||0,
   balance:r.balance==null?null:+r.balance,r1:r.r1||"",r2:r.r2||"",r3:r.r3||"",r4:r.r4||"",memo:r.memo||"",
-  status:["done","skip"].includes(r.status)?r.status:"new",link:r.link&&typeof r.link==="object"?r.link:null,note:r.note||"",done_by:r.done_by||""});
+  status:["done","skip"].includes(r.status)?r.status:"new",link:r.link&&typeof r.link==="object"?r.link:null,note:r.note||"",done_by:r.done_by||"",src:r.src||"",raw:r.raw||""});
 const normRules=d=>(d&&Array.isArray(d.list)?d.list:[]).filter(r=>r&&typeof r.k==="string"&&r.k.length>=2&&(r.t==="skip"||(r.t==="exp"&&EXP_CATS.includes(r.cat))))
   .map(r=>({k:r.k,t:r.t,...(r.t==="exp"?{cat:r.cat}:{}),name:String(r.name||r.k).slice(0,40)}));
 async function loadBank(){if(!isAdmin){bankTx=[];return;}
@@ -18,12 +21,15 @@ async function loadBank(){if(!isAdmin){bankTx=[];return;}
     if(r.error){error=r.error;break;}all.push(...(r.data||[]));if((r.data||[]).length<1000)break;}
   bank12=!(error&&/bank_tx|42P01|PGRST20/i.test(`${error.code} ${error.message}`));
   if(!error)bankTx=all.map(normTx);
+  /* 업데이트 15(알림·엑셀)를 했는지: bank_tx 에 src 칸이 있는지 */
+  if(bank12&&!error){if(all.length)bank15="src" in all[0];else{const r=await sb.from("bank_tx").select("src").limit(1);bank15=!r.error;}}
   if(bank12){const kv=await sb.from("bank_kv").select("*");
-    if(!kv.error){const g=k=>(kv.data||[]).find(r=>r.key===k);bankRules=normRules(g("rules")&&g("rules").data);bankState=(g("state")&&g("state").data)||null;}}
+    if(!kv.error){const g=k=>(kv.data||[]).find(r=>r.key===k);bankRules=normRules(g("rules")&&g("rules").data);bankState=(g("state")&&g("state").data)||null;
+      const ac=g("accts")&&g("accts").data;bankAccts=normAccts(ac);bankXl=ac&&ac.xl&&typeof ac.xl==="object"?ac.xl:{};bankPing=(g("ping")&&g("ping").data)||{};}}
   if(bank12&&!error&&!bankChan)bankChan=sb.channel("nest-bank").on("postgres_changes",{event:"*",schema:"public",table:"bank_tx"},bankReload)
     .on("postgres_changes",{event:"*",schema:"public",table:"bank_kv"},bankReload).subscribe();}
 function bankReload(){clearTimeout(bankRT);bankRT=setTimeout(()=>loadBank().then(()=>{if(isAdmin){renderBank();renderHome();}}),400);}
-function bankReset(){bankTx=[];bank12=true;bankRules=[];bankState=null;bankSt=null;bankStAt=0;bankOpen="";bankMsg="";if(bankChan){sb.removeChannel(bankChan);bankChan=null;}}
+function bankReset(){bankTx=[];bank12=true;bank15=true;bankRules=[];bankState=null;bankSt=null;bankStAt=0;bankOpen="";bankMsg="";bankAccts=[];bankXl={};bankPing={};bankX=null;bankAOpen=false;bankADel="";bankKeyOpen=false;bankKeyErr="";bankConnOpen=null;if(bankChan){sb.removeChannel(bankChan);bankChan=null;}}
 
 /* ---------- 서버(bank) 부르기 ---------- */
 async function bankCall(body){
@@ -39,7 +45,7 @@ function bankErrText(r){if(!r||!r.error)return"";
   if(r.error==="not configured")return"팝빌 열쇠(Secrets)가 아직 안 들어갔어요. README 업데이트 12의 2단계를 확인해 주세요.";
   if(r.error==="popbill")return`팝빌: ${r.message||"오류"}${r.code?` (${r.code})`:""}`;
   return`서버 오류: ${r.message||r.error}`;}
-async function bankStatus(force){if(!isAdmin||!bank12||bankStBusy)return;
+async function bankStatus(force){if(!isAdmin||!bank12||bankStBusy||!bankPop())return;
   if(!force&&bankSt&&Date.now()-bankStAt<60e3)return;
   bankStBusy=true;const r=await bankCall({action:"status"});bankStBusy=false;bankStAt=Date.now();
   bankSt=r.error?{fail:r}:r.data;renderBank();}
@@ -196,17 +202,19 @@ async function bankUnlinkExp(bankId,expId){const t=bankTx.find(x=>x.id===bankId)
   if(t){t.status="new";t.link=null;t.note="";}}
 
 /* ---------- 화면 ---------- */
-const acctLbl=k=>{const a=(bankState&&bankState.accts||{})[k]||bkCorps(bankSt).flatMap(c=>c.accounts||[]).find(x=>x.key===k);return a?`${String(a.bank||"").replace(/은행$/,"")} ${a.tail}`:String(k).slice(-4);};
+const acctLbl=k=>{const f=acctOf(k);if(f)return`${f.bank} ${f.no.slice(-4)}`;if(String(k).startsWith("?"))return`${String(k).slice(1)||"은행"} (통장 모름)`;
+  const a=(bankState&&bankState.accts||{})[k]||bkCorps(bankSt).flatMap(c=>c.accounts||[]).find(x=>x.key===k);return a?`${String(a.bank||"").replace(/은행$/,"")} ${a.tail}`:String(k).slice(-4);};
 /* 사업자 (리브젠·네스트처럼 여럿일 때): 서버가 알려 준 이름 → 없으면 마지막으로 가져온 상태의 이름 */
 const fmtCorp=n=>/^\d{10}$/.test(n)?`${n.slice(0,3)}-${n.slice(3,5)}-${n.slice(5)}`:String(n||"");
 const bkCorps=S=>S&&Array.isArray(S.corps)&&S.corps.length?S.corps:S&&S.configured?[{num:"",corp:S.corp||"",name:"",member:S.member,accounts:S.accounts,point:S.point,errors:S.errors||[]}]:[];
 function bizMap(){const m={};Object.entries((bankState&&bankState.corps)||{}).forEach(([k,v])=>{m[k]=(v&&v.name)||fmtCorp(k);});
+  bankAccts.forEach(a=>{if(a.corp)m[a.corp]=a.corp;});
   bkCorps(bankSt).forEach(c=>{if(c.num)m[c.num]=c.name||fmtCorp(c.num);});return m;}
-const txCorp=t=>t.corp||((bankState&&bankState.accts||{})[t.acct]||{}).corp||"";
+const txCorp=t=>t.corp||(acctOf(t.acct)||{}).corp||((bankState&&bankState.accts||{})[t.acct]||{}).corp||"";
 const bankMulti=()=>Object.keys(bizMap()).length>1||new Set(bankTx.map(txCorp).filter(Boolean)).size>1;
 /* 계좌 고르기: "c:사업자번호"면 그 사업자 계좌 전부 */
 const bkIn=t=>!bankA||(bankA.startsWith("c:")?txCorp(t)===bankA.slice(2):t.acct===bankA);
-const bkBusy=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest(".bk-pick")&&a.matches("input:not([type=checkbox]):not([type=radio]),select,textarea"));};
+const bkBusy=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest(".bk-pick,.bk-conn")&&a.matches("input:not([type=checkbox]):not([type=radio]):not([type=file]):not([readonly]),select,textarea"));};
 const kstTime=iso=>{const d=new Date(iso);return isNaN(d)?"":`${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
 /* 사업자 하나의 연결 상태: 가입 → 계좌 등록 → 계좌 목록 */
 function corpConn(S,c,multi,st){
@@ -217,7 +225,7 @@ function corpConn(S,c,multi,st){
   if(c.member==null)return{setup:true,title:"팝빌에 연결하지 못했어요",body:errs||"<p>잠시 뒤 다시 확인해 주세요.</p>",btns:""};
   const pt=[c.point,S.partnerPoint].filter(v=>v!=null),pts=pt.length?` (${pt.map(v=>`${comma(v)||0}P`).join(" · ")})`:"";
   const acc=c.accounts||[];
-  if(!acc.length)return{setup:true,title:"등록한 계좌가 없어요",body:`<p>계좌 등록·관리에서 통장을 등록해 주세요. 정액제 요금(계좌당 월 5,000원)은 계좌를 등록할 때 포인트에서 나가니 포인트를 먼저 충전해 두세요. 신한·아이엠뱅크·신협은 은행에서 빠른조회 아이디를, 국민은행은 인터넷뱅킹 아이디를 함께 넣어요.</p>${errs}`,
+  if(!acc.length)return{setup:true,title:"등록한 계좌가 없어요",body:`<p>계좌 등록·관리에서 통장을 등록해 주세요. 이용료는 계좌를 등록할 때 포인트에서 나가니 포인트를 먼저 충전해 두세요. 신한·아이엠뱅크·신협은 은행에서 빠른조회 아이디를, 국민은행은 인터넷뱅킹 아이디를 함께 넣어요.</p>${errs}`,
     btns:btn("acct")+btn("point",pts)};
   const rows=acc.map(a=>{const tags=[a.state!==1?`<span class="tag late">정지</span>`:"",a.contract===2?`<span class="tag late">해지</span>`:"",a.unpaid?`<span class="tag late">미납</span>`:"",a.restrict?`<span class="tag late">사용 제한</span>`:"",a.closing?`<span class="tag soon">해지 예정</span>`:"",
       a.end&&a.end<addDays(TODAY,7)&&a.contract!==2?`<span class="tag soon">기한 곧 끝남</span>`:""].join("");
@@ -275,9 +283,9 @@ function bankPickHtml(t,s,C){
   return`<div class="bk-pick" data-bkp="${esc(t.id)}"><div class="bk-kinds" role="radiogroup">${kinds.map(([v,l])=>`<button type="button" class="chip${v===k?" on":""}" data-bkk="${v}" aria-pressed="${v===k}">${l}</button>`).join("")}</div>${body}
     <div class="bk-btns"><button class="btn sm" type="button" data-bkdo="${k}">이렇게 처리</button><button class="btn ghost sm" type="button" data-bkclose>닫기</button></div></div>`;}
 function renderBank(){if(!isAdmin||!$("view-bank")||$("view-bank").hidden)return;
-  $("bkUpdate").hidden=bank12;$("bkBody").hidden=!bank12;if(!bank12)return;
+  $("bkUpdate").hidden=bank12&&bank15;$("bkBody").hidden=!bank12;if(!bank12)return;
   if(bkBusy()){bankLater=true;return;}bankLater=false;
-  $("bkConn").innerHTML=bankConnHtml()+(bankMsg?`<p class="${bankMsgOk?"ok-msg":"err"}">${bankMsg}</p>`:"");
+  $("bkConn").innerHTML=(bankPop()?bankConnHtml():bank15?bankFreeHtml()+bankXHtml():"")+(bankMsg?`<p class="${bankMsgOk?"ok-msg":"err"}">${bankMsg}</p>`:"");
   const months=[...new Set(bankTx.map(t=>t.day.slice(0,7)))].sort().reverse(),accts=[...new Set(bankTx.map(t=>t.acct))];
   const multi=bankMulti(),BZ=bizMap(),aCorp={};bankTx.forEach(t=>{if(!(t.acct in aCorp))aCorp[t.acct]=txCorp(t);});
   const aOpts=[["","모든 계좌"]];
@@ -310,7 +318,7 @@ function renderBank(){if(!isAdmin||!$("view-bank")||$("view-bank").hidden)return
     else act=`<div class="bk-done"><span>${t.status==="skip"?"–":"✓"} ${esc((t.link&&t.link.l)||(t.status==="skip"?"건너뜀":"처리함"))}${t.done_by?` <span class="hint">${esc(t.done_by)}</span>`:""}</span><button class="linkish" type="button" data-bku="${esc(t.id)}">되돌리기</button></div>`;
     return`<li class="bk-row ${t.dir} ${t.status}" data-bk="${esc(t.id)}"><div class="bk-top"><span class="d">${fmtW(t.day)}${t.at?` ${t.at}`:""}</span>${multi&&aCorp[t.acct]?`<span class="tag biz">${esc(BZ[aCorp[t.acct]]||fmtCorp(aCorp[t.acct]))}</span>`:""}${accts.length>1?`<span class="hint">${esc(acctLbl(t.acct))}</span>`:""}<b class="bk-amt">${sign}${won(t.amount)}</b></div>
       <div class="bk-who"><b>${esc(txWho(t))||"(내용 없음)"}</b>${more?` <span class="hint">${more}</span>`:""}</div>${act}</li>`;}).join("")+(list.length>300?`<li class="hint">위에서 300건만 보여요. 달이나 계좌를 골라 주세요.</li>`:"")
-    :`<li class="none">${bankTx.length?bankF==="new"?"확인할 거래가 없어요. 다 정리됐어요.":"이 조건에 맞는 거래가 없어요.":"아직 가져온 거래가 없어요. 통장 연결을 마치면 매시간 저절로 들어와요."}</li>`;
+    :`<li class="none">${bankTx.length?bankF==="new"?"확인할 거래가 없어요. 다 정리됐어요.":"이 조건에 맞는 거래가 없어요.":bankPop()?"아직 가져온 거래가 없어요. 통장 연결을 마치면 매시간 저절로 들어와요.":"아직 들어온 거래가 없어요. 휴대폰 은행 알림을 연결하거나 은행 엑셀을 올려 주세요."}</li>`;
   $("bkRuleN").textContent=bankRules.length?`${bankRules.length}개`:"없음";
   $("bkRules").innerHTML=bankRules.length?bankRules.map(r=>`<li><span>${esc(r.name)}</span><span class="hint">${r.t==="skip"?"건너뛰기":`회사 지출 · ${esc(r.cat)}`}</span><button class="linkish" type="button" data-bkforget="${esc(r.k)}">지우기</button></li>`).join("")
     :`<li class="hint">회사 지출이나 건너뛰기로 처리할 때 '다음에도'를 체크하면 여기 쌓여요.</li>`;}
@@ -330,6 +338,174 @@ async function bankRun(t,a,btn){if(btn)btn.disabled=true;const e=await bankApply
   bankMsg=e;bankMsgOk=false;if(!e){bankOpen="";bankKind="";}
   if(/다른 기기/.test(e))await loadBank();
   laborCache=null;render();return!e;}
+/* ---------- 팝빌 없이 (업데이트 15): 회사 통장 등록 · 휴대폰 은행 알림 · 은행 엑셀 올리기 ----------
+   통장 목록은 bank_kv accts {list:[{id,bank,no,corp,name}], xl:{계좌id:{at,from,to,n}}}. 알림 서버가 알림에 보이는 번호로 계좌를 맞춤.
+   bank_kv ping 은 알림 서버가 적음 (마지막 알림, 오늘 넣은 수, 못 읽은 알림 5개). */
+const BANK_LIST=["신한","기업","국민","농협","우리","하나","카카오","토스","케이","새마을","우체국","기타"];
+const normAccts=d=>(d&&Array.isArray(d.list)?d.list:[]).filter(a=>a&&typeof a.id==="string"&&/^k[a-z0-9]{4,16}$/.test(a.id))
+  .map(a=>({id:a.id,bank:String(a.bank||"").slice(0,10),no:String(a.no||"").replace(/\D/g,"").slice(0,20),corp:String(a.corp||"").slice(0,20),name:String(a.name||"").slice(0,20)}));
+const acctOf=k=>bankAccts.find(a=>a.id===k)||null;
+/* 팝빌로 가져온 적이 있으면 팝빌 칸, 아니면 알림·엑셀 칸 */
+const bankPop=()=>!!(bankState&&(bankState.lastEnd||bankState.corps||bankState.accts));
+async function bankAcctSave(list,xl=bankXl){const {error}=await sb.from("bank_kv").upsert({key:"accts",data:{list,xl},updated_at:new Date().toISOString()});
+  if(!error){bankAccts=list;bankXl=xl;}return!error;}
+async function bankAcctAdd(box){const v=f=>{const el=box.querySelector(`[data-bka="${f}"]`);return el?el.value.trim():"";};
+  const bank=v("bank"),no=v("no").replace(/\D/g,"");
+  if(no.length<4)return"계좌번호를 4자리 이상 넣어 주세요. 끝 4자리만 넣어도 돼요.";
+  if(bankAccts.some(a=>a.bank===bank&&(a.no.endsWith(no)||no.endsWith(a.no))))return"이미 넣은 통장이에요.";
+  const id="k"+bnId().replace(/[^0-9a-f]/g,"").slice(0,10);
+  return await bankAcctSave([...bankAccts,{id,bank,no,corp:v("corp").slice(0,20),name:v("name").slice(0,20)}])?"":"저장하지 못했어요. 업데이트 15를 했는지 확인해 주세요.";}
+async function bankKeyGet(){bankKeyErr="";const {data,error}=await sb.rpc("as_key",{p_reset:false});
+  if(error||typeof data!=="string")bankKeyErr=/admin only/.test(error&&error.message||"")?"관리자만 볼 수 있어요.":"열쇠를 불러오지 못했어요. 업데이트 14(AS 자동 접수)를 했는지 확인해 주세요.";else asKey=data;
+  bankKeyOpen=true;renderBank();}
+const bkAgo=iso=>{const m=(Date.now()-new Date(iso))/6e4;if(!(m>=0))return"";if(m<2)return"방금";if(m<60)return`${Math.round(m)}분 전`;if(m<1440)return`${Math.round(m/60)}시간 전`;return kstTime(iso);};
+function bankFreeHtml(){const P=bankPing||{},cfg=window.NEST_CONFIG||{};
+  const live=!!P.last&&Date.now()-new Date(P.last)<3*864e5,nToday=P.day===TODAY?+P.n||0:0,miss=Array.isArray(P.miss)?P.miss:[];
+  const unk=bankTx.filter(t=>t.acct.startsWith("?")&&t.status==="new").length;
+  const rows=bankAccts.map(a=>{const x=bankXl[a.id],del=bankADel===a.id;
+    return`<li><span><b>${esc(a.bank)} ···${esc(a.no.slice(-4))}</b>${a.corp||a.name?` <span class="hint">${esc([a.corp,a.name].filter(Boolean).join(" · "))}</span>`:""}</span>
+      <span class="hint">${x&&x.to?`엑셀 ${fmt(x.to)}까지 올림`:"엑셀 아직 안 올림"}</span><button class="linkish" type="button" data-bkadel="${esc(a.id)}">${del?"정말 뺄까요? 들어온 거래는 남아요":"빼기"}</button></li>`;}).join("");
+  const corps=[...new Set([...bankAccts.map(a=>a.corp),"네스트","리브젠"].filter(Boolean))];
+  const form=`<div class="bk-grid bk-aform"><label>은행<select data-bka="bank">${BANK_LIST.map(b=>`<option>${b}</option>`).join("")}</select></label>
+    <label>계좌번호 <small class="hint">전체 또는 끝 4자리</small><input data-bka="no" inputmode="numeric" autocomplete="off" placeholder="110-123-456789"></label>
+    <label>사업자<input data-bka="corp" list="bkCorpList" autocomplete="off" placeholder="네스트"></label><label>별명 <small class="hint">안 써도 돼요</small><input data-bka="name" autocomplete="off" placeholder="운영 통장"></label></div>
+    <datalist id="bkCorpList">${corps.map(c=>`<option value="${esc(c)}">`).join("")}</datalist>
+    <div class="bk-btns"><button class="btn sm" type="button" data-bkaadd>통장 넣기</button>${bankAccts.length?`<button class="btn ghost sm" type="button" data-bkaform>닫기</button>`:""}</div>`;
+  const copy=(l,v)=>`<label class="as-copy">${l}<span><input readonly value="${esc(v)}"><button type="button" class="btn ghost sm" data-bkcopy>복사</button></span></label>`;
+  const last=P.ok&&+P.ok.amount?`마지막으로 넣은 거래: ${P.ok.dir==="in"?"입금":"출금"} ${won(+P.ok.amount)} · ${esc(acctLbl(P.ok.acct||""))} (${kstTime(P.ok.at)})`:"";
+  const setup=!bankAccts.length||!P.last;
+  const sum=[bankAccts.length?bankAccts.map(a=>`${esc(a.bank)} ${esc(a.no.slice(-4))}`).join(" · "):"통장 없음",P.last?`알림 ${bkAgo(P.last)}`:""].filter(Boolean).join(" · ");
+  const open=(bankConnOpen===null?setup:bankConnOpen)||bankAOpen||bankKeyOpen||!!bankADel;
+  return`<details class="bk-conn${setup||unk?" bad":""}"${open?" open":""}><summary><b>통장 연결</b> <span class="tag ${live?"ok":"wait"}">${live?"알림 받는 중":"알림 연결 전"}</span> <span class="hint">${sum}</span><span class="bk-more">설정</span></summary>
+  <p class="hint">휴대폰에 오는 은행 입출금 알림이 저절로 들어오고, 한 달에 한 번 인터넷뱅킹 거래내역 엑셀을 올리면 알림이 놓친 거래가 채워져요. 팝빌 없이 무료예요.</p>
+  <div class="bk-corp"><p class="bk-corp-h"><b>① 회사 통장</b> <span class="hint">알림이 어느 통장 것인지 계좌번호로 알아봐요</span></p>
+    ${bankAccts.length?`<ul class="bk-accts">${rows}</ul>`:""}
+    ${!bankAccts.length||bankAOpen?form:`<div class="bk-btns"><button class="btn ghost sm" type="button" data-bkaform>+ 통장 더 넣기</button></div>`}</div>
+  <div class="bk-corp"><p class="bk-corp-h"><b>② 휴대폰 은행 알림</b> <span class="hint">${P.last?`마지막 알림 ${kstTime(P.last)} · 오늘 넣은 거래 ${nToday}건`:"아직 받은 알림이 없어요"}</span></p>
+    ${last?`<p class="hint">${last}</p>`:""}
+    ${unk?`<p class="err">어느 통장인지 모르는 거래가 ${unk}건 있어요. ①에 그 통장 계좌번호를 넣으면 다음부터 알아보고, 그 통장 엑셀을 올리면 채워져요.</p>`:""}
+    ${miss.length?`<details class="as-raw"><summary>못 읽은 은행 알림 ${miss.length}개</summary><ul class="bk-miss">${miss.map(m=>`<li><span class="hint">${kstTime(m.at)}${m.app?` · ${esc(m.app)}`:""}</span> ${esc(m.text)}</li>`).join("")}</ul><p class="hint">거래 알림인데 여기 있으면 엑셀을 올릴 때 채워져요. 자주 생기면 그 알림 화면을 캡처해서 알려 주세요.</p></details>`:""}
+    <p class="hint">갤럭시의 MacroDroid에 '은행 알림' 매크로를 하나 더 만들어요. 주소 끝의 key는 AS 자동 접수와 같아요. 순서는 <a href="https://github.com/nestfurniture/nest-schedule#업데이트-15-통장-내역-은행-알림과-엑셀-적용" target="_blank" rel="noopener">README 업데이트 15</a>에 있어요.</p>
+    ${asKey?`<div class="as-keys">${copy("은행 알림 받을 때 주소",`${cfg.SUPABASE_URL}/functions/v1/notify?action=bank_in&key=${asKey}`)}${copy("헤더 Authorization 값",`Bearer ${cfg.SUPABASE_ANON_KEY||""}`)}<p class="hint">주소 끝의 key는 비밀번호 같은 거예요. 다른 사람에게 보내지 말고, 화면을 캡처할 때는 가려 주세요.</p></div>`
+      :`<div class="bk-btns"><button type="button" class="btn ghost sm" data-bkkey>MacroDroid에 넣을 주소 보기</button></div>`}
+    ${bankKeyErr?`<p class="err">${esc(bankKeyErr)}</p>`:""}</div>
+  </details>`;}
+
+/* ---------- 은행 엑셀 읽기 ----------
+   파일은 일꾼(bank-xlsx.js)이 표로 풀고, 여기서 머리줄(거래일시·입금·출금·잔액·내용 …)을 찾아 거래로 바꿈.
+   신한·기업 말고도 대부분 은행의 '거래내역조회' 엑셀을 읽음. 알림으로 들어온 줄과 겹치면 그 줄을 엑셀 내용으로 채움. */
+const bxH=s=>String(s??"").replace(/\s+/g,"").replace(/[(\[](원|KRW|원화)[)\]]/gi,"").replace(/[()\[\]:.]/g,"");
+const BXC={date:/^(거래일시|거래일자|거래일|거래날짜|일시|일자|날짜|거래년월일|처리일시|처리일자|입출금일시|거래일시분|조회일자)$/,
+  time:/^(거래시간|시간|시각|거래시각|처리시간|처리시각)$/,
+  in:/^(입금|입금액|입금금액|맡기신금액|맡기신|받은금액|입금하신금액|입금원)$/,
+  out:/^(출금|출금액|출금금액|찾으신금액|찾으신|지급|지급액|지급금액|보낸금액|출금원)$/,
+  amt:/^(거래금액|금액|입출금액|입출금금액)$/,kind:/^(입출금구분|입출구분|입금출금구분|입지구분|구분)$/,
+  bal:/^(잔액|거래후잔액|잔고|거래후잔고|현재잔액|거래후잔액원)$/,
+  who:/^(내용|기재내용|거래내용|보낸분|받는분|보낸분받는분|받는분보낸분|보낸분\/받는분|받는분\/보낸분|보낸사람|받는사람|의뢰인|수취인|의뢰인수취인|의뢰인\/수취인|예금주|입금자|입금인|입금자명|입금인명|상대예금주|상대예금주명|상대계좌예금주명|상대방|거래처|상호|가맹점|가맹점명|통장표시내용|적요내용)$/,
+  sum:/^(적요|거래구분|거래종류|거래유형|구분|종류|거래방법|거래수단|거래점구분)$/,
+  memo:/^(메모|송금메모|비고|기록사항|내통장표시|받는통장표시)$/,where:/^(거래점|취급점|처리점|거래점명|취급점명|상대은행|상대은행명|은행|지점|취급기관)$/};
+const bxAmt=v=>{if(typeof v==="number")return Math.round(v);const s=String(v??"").trim();if(!s)return 0;
+  const n=+s.replace(/[^\d.]/g,"");return isNaN(n)?0:Math.round(/^\(.*\)$|^[-−]|[-−]$/.test(s)?-n:n);};
+function bxAt(v){if(typeof v==="number"&&v>=0&&v<1){const n=Math.round(v*1440);return`${pad(Math.floor(n/60)%24)}:${pad(n%60)}`;}
+  const s=String(v??"");let m=s.match(/(오전|오후|AM|PM)?\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*(오전|오후|AM|PM)?/i);
+  if(m){let h=+m[2];const ap=(m[1]||m[4]||"").toUpperCase();if((ap==="오후"||ap==="PM")&&h<12)h+=12;if((ap==="오전"||ap==="AM")&&h===12)h=0;return h<24&&+m[3]<60?`${pad(h)}:${m[3]}`:"";}
+  m=s.trim().match(/^(\d{2})(\d{2})(\d{2})?$/);return m&&+m[1]<24&&+m[2]<60?`${m[1]}:${m[2]}`:"";}
+/* 날짜 칸 → {day, at}. 2026-11-23 14:05:33 · 2026.11.23 · 20261123 · 11/23/26 · 엑셀 날짜 숫자 */
+function bxWhen(v){let y,mo,d,m;const s=String(v??"").trim();
+  if(typeof v==="number"&&v>20000&&v<80000){const iso=new Date(Math.round((v-25569)*864e5)).toISOString();return{day:iso.slice(0,10),at:iso.slice(11,16)==="00:00"?"":iso.slice(11,16)};}
+  if((m=s.match(/^(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?\.?/)))[y,mo,d]=[+m[1],+m[2],+m[3]];
+  else if((m=s.match(/^(\d{4})(\d{2})(\d{2})(?!\d)/)))[y,mo,d]=[+m[1],+m[2],+m[3]];
+  else if((m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?!\d)/)))[y,mo,d]=[+m[3]<100?2000+ +m[3]:+m[3],+m[1],+m[2]];
+  else return null;
+  const day=`${y}-${pad(mo)}-${pad(d)}`,t=new Date(day+"T12:00:00Z");
+  if(isNaN(t)||t.toISOString().slice(0,10)!==day||y<2000||y>2100)return null;
+  return{day,at:bxAt(s.slice(m[0].length))};}
+/* 파일 머리(계좌번호·은행 이름)와 파일 이름으로 어느 통장인지 짐작 */
+function bxGuess(text){const T=String(text||""),nums=[...T.matchAll(/\d{2,6}-\d{2,8}-\d{1,8}(?:-\d{1,4})?|\d{10,16}/g)].map(m=>m[0]).filter(x=>!/^(19|20)\d{2}-\d{1,2}-\d{1,2}$/.test(x)).map(x=>x.replace(/\D/g,""));
+  const hit=bankAccts.filter(a=>a.no.length>=4&&nums.some(n=>n===a.no||n.endsWith(a.no)||(n.length>=8&&a.no.endsWith(n))));
+  if(hit.length===1)return hit[0].id;
+  const b=BANK_LIST.find(x=>x!=="기타"&&(x==="기업"?/기업은행|IBK/i:new RegExp(x)).test(T)),same=bankAccts.filter(a=>a.bank===b&&(!hit.length||hit.includes(a)));
+  return same.length===1?same[0].id:"";}
+function bxParse(sheets,fname){let best=null;
+  for(const sh of sheets){const rows=sh.rows||[];
+    for(let r=0;r<Math.min(rows.length,40);r++){const H=(rows[r]||[]).map(bxH),col=k=>H.findIndex(h=>BXC[k].test(h)),all=k=>H.map((h,i)=>BXC[k].test(h)?i:-1).filter(i=>i>=0);
+      const C={date:col("date"),time:col("time"),in:col("in"),out:col("out"),amt:col("amt"),bal:col("bal"),who:all("who"),memo:all("memo"),where:all("where")};
+      if(C.date<0||!((C.in>=0&&C.out>=0)||C.amt>=0))continue;
+      const two=C.in>=0&&C.out>=0;C.kind=two?-1:col("kind");C.sum=all("sum").filter(i=>i!==C.kind);
+      const out=[];
+      for(let i=r+1;i<rows.length;i++){const row=rows[i]||[],g=c=>c>=0&&c<row.length?row[c]:"",txt=c=>String(g(c)??"").replace(/\s+/g," ").trim().slice(0,60);
+        const w=bxWhen(g(C.date));if(!w)continue;
+        let dir="",amount=0;
+        if(two){const a=bxAmt(g(C.in)),b=bxAmt(g(C.out));if(a>0&&!(b>0)){dir="in";amount=a;}else if(b>0&&!(a>0)){dir="out";amount=b;}}
+        else{const a=bxAmt(g(C.amt)),k=txt(C.kind);amount=Math.abs(a);
+          dir=/입금|^입$|받|^\+/.test(k)?"in":/출금|^출$|지급|찾|^[-−]/.test(k)?"out":a<0?"out":a>0&&C.kind<0?"in":"";}
+        if(!dir||!amount)continue;
+        const whos=C.who.map(txt).filter(Boolean),sums=C.sum.map(txt).filter(Boolean),bs=txt(C.bal);
+        out.push({day:w.day,at:w.at||(C.time>=0?bxAt(g(C.time)):""),dir,amount,balance:C.bal>=0&&bs!==""?bxAmt(g(C.bal)):null,
+          r1:whos[0]||sums[0]||"",r2:(whos[0]?sums:sums.slice(1)).join(" ").slice(0,60),r3:[...whos.slice(1),...C.memo.map(txt)].filter(Boolean).join(" ").slice(0,80),r4:C.where.map(txt).filter(Boolean).join(" ").slice(0,40)});}
+      if(out.length&&(!best||out.length>best.rows.length))best={rows:out,sheet:sh.name,head:rows.slice(0,r).map(x=>(x||[]).join(" ")).join(" ")};
+      break;}}
+  if(!best)return{rows:[],err:"날짜·입금·출금 칸을 찾지 못했어요. 은행 인터넷뱅킹의 '거래내역조회'에서 엑셀로 저장한 파일인지 확인해 주세요."};
+  /* 계좌번호가 다른 표에 따로 있는 파일도 있어서(은행 html 엑셀) 다른 표의 위쪽 몇 줄도 같이 봄 */
+  const other=sheets.filter(x=>x.name!==best.sheet).map(x=>(x.rows||[]).slice(0,8).map(r=>(r||[]).join(" ")).join(" ")).join(" ");
+  return{rows:best.rows,sheet:best.sheet,acct:bxGuess(`${best.head} ${other} ${fname||""}`)};}
+/* 엑셀 줄마다: 이미 넣은 엑셀 줄(같은 번호)이면 건너뜀 → 같은 통장·방향·금액·하루 안팎의 알림 줄(잔액이 둘 다 있으면 잔액까지 같아야)이면 채움 → 아니면 새로 */
+const bxT=(d,at)=>{const m=/^(\d{1,2}):(\d{2})/.exec(at||"");return m?Date.parse(d+"T00:00:00Z")/6e4+ +m[1]*60+ +m[2]:null;};
+function bxPlan(rows,A){const ids=new Set(bankTx.map(t=>t.id)),used=new Set(),seen={},add=[],fill=[],same=[];
+  const pool=bankTx.filter(t=>t.acct===A.id||t.acct==="?"||t.acct===`?${A.bank}`);
+  for(const e of rows){const k=`${A.id}:${e.day}:${e.at.replace(":","")}:${e.dir}:${e.amount}:${e.balance??"-"}`,n=seen[k]=(seen[k]||0)+1,id=`x:${k}:${n}`;
+    if(ids.has(id)){same.push(e);continue;}
+    const gap=t=>{if(t.balance!=null&&e.balance!=null)return-1;const a=bxT(t.day,t.at),b=bxT(e.day,e.at);return a!=null&&b!=null?Math.abs(a-b):t.day===e.day?600:9999;};
+    const c=pool.filter(t=>!used.has(t.id)&&t.dir===e.dir&&t.amount===e.amount&&near(t.day,e.day,1)&&(t.balance==null||e.balance==null||t.balance===e.balance))
+      .map(t=>({t,g:gap(t)})).filter(o=>o.g<=(o.t.src==="alert"?180:30)||o.g===600).sort((a,b)=>a.g-b.g)[0];
+    if(!c){add.push({...e,id});continue;}
+    used.add(c.t.id);
+    if(c.t.src==="alert"||c.t.acct.startsWith("?"))fill.push({t:c.t,e});else same.push(e);}
+  return{add,fill,same};}
+function bxRead(file){return new Promise((ok,no)=>{
+  if(file.size>15*1024*1024)return no(new Error("파일이 너무 커요 (15MB까지). 기간을 나눠서 받아 주세요."));
+  let w;try{w=new Worker("bank-xlsx.js");}catch(e){return no(new Error("이 브라우저에서는 엑셀을 읽을 수 없어요."));}
+  const end=()=>{clearTimeout(t);w.terminate();};
+  const t=setTimeout(()=>{w.terminate();no(new Error("파일을 읽는 데 너무 오래 걸려요. 은행에서 .xlsx 나 .csv 로 받아 보세요."));},45e3);
+  w.onmessage=e=>{end();e.data&&e.data.ok?ok(e.data.sheets):no(new Error(`엑셀을 읽지 못했어요. ${(e.data&&e.data.error)||""}`));};
+  w.onerror=()=>{end();no(new Error("엑셀을 읽지 못했어요. 인터넷 연결을 확인하고 다시 골라 주세요."));};
+  file.arrayBuffer().then(buf=>w.postMessage({buf},[buf]),e=>{end();no(e);});});}
+async function bankXOpen(file){bankX={name:file.name,busy:true};bankMsg="";renderBank();
+  try{const sheets=await bxRead(file),r=bxParse(sheets,file.name);
+    bankX=r.rows.length?{name:file.name,rows:r.rows,sheet:sheets.length>1?r.sheet:"",acct:r.acct||(bankAccts.length===1?bankAccts[0].id:""),old:false,before:TODAY.slice(0,8)+"01"}
+      :{name:file.name,err:r.err||"거래를 찾지 못했어요."};}
+  catch(e){bankX={name:file.name,err:e.message||String(e)};}
+  renderBank();}
+function bankXHtml(){const X=bankX;
+  if(!X)return`<div class="bk-xbar"><label class="btn ghost sm">은행 엑셀 올리기<input type="file" id="bk-file" accept=".xls,.xlsx,.csv,.htm,.html" hidden></label><span class="hint">인터넷뱅킹 거래내역조회에서 내려받은 파일</span></div>`;
+  if(X.busy)return`<div class="bk-conn"><p class="hint">${esc(X.name)} 읽는 중…</p></div>`;
+  if(X.err)return`<div class="bk-conn bad"><p><b>${esc(X.name)}</b></p><p class="err">${esc(X.err)}</p><div class="bk-btns"><button class="btn ghost sm" type="button" data-bkxno>닫기</button></div></div>`;
+  const A=acctOf(X.acct),R=X.rows,days=R.map(r=>r.day).sort(),inN=R.filter(r=>r.dir==="in").length;
+  X.plan=A?bxPlan(R,A):null;const p=X.plan,old=p&&X.old&&X.before?p.add.filter(e=>e.day<X.before).length:0;
+  const plan=!bankAccts.length?`<p class="err">위 ① 회사 통장에서 통장을 먼저 넣어 주세요.</p>`:!p?`<p class="hint">통장을 고르면 이미 들어온 거래와 겹치는지 찾아봐요.</p>`
+    :`<p>새로 넣을 거래 <b>${p.add.length}건</b>${p.fill.length?` · 알림으로 들어온 ${p.fill.length}건은 엑셀 내용으로 채워요`:""}${p.same.length?` · 이미 있는 ${p.same.length}건은 건너뛰어요`:""}</p>
+      ${p.add.length?`<div class="bk-old"><label class="check"><input type="checkbox" data-bkx="old" ${X.old?"checked":""}><span>이 날짜 전 거래는 확인 안 하고 '건너뜀'으로 넣기${X.old?` (${old}건)`:""}</span></label><input type="date" data-bkx="before" value="${esc(X.before)}" aria-label="이 날짜 전"></div>
+      <p class="hint">결산에 이미 손으로 다 적어 둔 지난 달이면 체크하세요. 건너뜀으로 넣은 줄도 나중에 되돌리기로 다시 처리할 수 있어요.</p>`:""}`;
+  return`<div class="bk-conn bk-x"><p><b>은행 엑셀 올리기</b> <span class="hint">${esc(X.name)}${X.sheet?` · ${esc(X.sheet)} 표`:""}</span></p>
+    <p>${fmt(days[0])} ~ ${fmt(days[days.length-1])} · 거래 ${R.length}건 <span class="hint">(들어온 ${inN} · 나간 ${R.length-inN})</span></p>
+    <label class="bk-xacct">어느 통장 거래내역인가요? <select data-bkx="acct"><option value="">고르세요</option>${bankAccts.map(a=>`<option value="${esc(a.id)}" ${a.id===X.acct?"selected":""}>${esc(acctLbl(a.id))}${a.corp?` · ${esc(a.corp)}`:""}${a.name?` · ${esc(a.name)}`:""}</option>`).join("")}</select></label>
+    ${plan}<div class="bk-btns"><button class="btn sm" type="button" data-bkxgo ${p&&(p.add.length||p.fill.length)?"":"disabled"}>넣기</button><button class="btn ghost sm" type="button" data-bkxno>취소</button></div></div>`;}
+async function bankXGo(btn){const X=bankX,A=X&&acctOf(X.acct);if(!A||bankXBusy)return;
+  bankXBusy=true;btn.disabled=true;btn.textContent="넣는 중…";
+  const p=bxPlan(X.rows,A),at=new Date().toISOString(),by=String(userName||userEmail||"").slice(0,40),old=e=>X.old&&X.before&&e.day<X.before;
+  const rows=p.add.map(e=>({id:e.id,acct:A.id,corp:A.corp,day:e.day,at:e.at,dir:e.dir,amount:e.amount,balance:e.balance,r1:e.r1,r2:e.r2,r3:e.r3,r4:e.r4,memo:"",src:"excel",raw:"",
+    ...(old(e)?{status:"skip",link:{t:"skip",l:"건너뜀 · 엑셀로 넣은 지난 거래"},note:"엑셀로 넣은 지난 거래",done_at:at,done_by:by}:{status:"new",link:null,note:"",done_at:null,done_by:""}),updated_at:at}));
+  let err="",added=0,filled=0;
+  for(let i=0;i<rows.length&&!err;i+=400){const part=rows.slice(i,i+400),{error}=await sb.from("bank_tx").upsert(part,{onConflict:"id",ignoreDuplicates:true});if(error)err=error.message;else added+=part.length;}
+  for(const {t,e} of p.fill){if(err)break;
+    const {error}=await sb.from("bank_tx").update({acct:A.id,corp:A.corp,day:e.day,at:e.at||t.at,balance:e.balance??t.balance,r1:e.r1||t.r1,r2:e.r2,r3:e.r3,r4:e.r4,src:"excel",updated_at:at}).eq("id",t.id);
+    if(error)err=error.message;else filled++;}
+  if(added||filled){const days=X.rows.map(r=>r.day).sort(),pv=bankXl[A.id]||{},to=days[days.length-1];
+    await bankAcctSave(bankAccts,{...bankXl,[A.id]:{at,from:pv.from&&pv.from<days[0]?pv.from:days[0],to:pv.to&&pv.to>to?pv.to:to,n:X.rows.length}});}
+  bankXBusy=false;
+  bankMsg=`${added?`엑셀에서 새 거래 ${added}건을 넣었어요.`:""}${filled?` 알림으로 들어온 ${filled}건은 엑셀 내용으로 채웠어요.`:""}${err?` 다 넣지 못했어요: ${esc(err)} 다시 올리면 남은 것만 들어가요.`:""}`.trim()||"넣을 거래가 없었어요.";
+  bankMsgOk=!err;if(!err)bankX=null;
+  await loadBank();laborCache=null;render();}
 /* ---------- 팝빌 회원 가입 ---------- */
 function openBankJoin(num){const C=bkCorps(bankSt),c=C.find(x=>x.num===num)||C[0]||{num:"",corp:"",name:""},co=(typeof estConf!=="undefined"&&estConf.company)||{};
   /* 다른 사업자로 바꿔 열면 칸을 비움. 회사 정보(견적서 설정)는 그 사업자와 같을 때만 미리 채움 */
@@ -348,6 +524,17 @@ $("view-bank").addEventListener("click",async e=>{const b=e.target.closest("butt
   if("bkfCat" in d){bankF=d.bkfCat;bankOpen="";renderBank();return;}
   if("bkre" in d){bankMsg="";bankSt=null;renderBank();bankStatus(true);return;}
   if("bkget" in d){bankCollect(b);return;}
+  if("bkaform" in d){bankAOpen=!bankAOpen;bankMsg="";renderBank();return;}
+  if("bkaadd" in d){const box=b.closest(".bk-corp");if(!box)return;b.disabled=true;const m=await bankAcctAdd(box);b.disabled=false;
+    if(document.activeElement)document.activeElement.blur();bankMsg=m||"통장을 넣었어요.";bankMsgOk=!m;if(!m)bankAOpen=false;renderBank();return;}
+  if(d.bkadel){if(bankADel!==d.bkadel){bankADel=d.bkadel;renderBank();return;}
+    bankADel="";const xl={...bankXl};delete xl[d.bkadel];const ok=await bankAcctSave(bankAccts.filter(a=>a.id!==d.bkadel),xl);
+    bankMsg=ok?"통장을 뺐어요. 그 통장으로 들어온 거래는 그대로 있어요.":"저장하지 못했어요. 다시 눌러 주세요.";bankMsgOk=ok;renderBank();return;}
+  if("bkkey" in d){b.disabled=true;bankKeyGet();return;}
+  if("bkcopy" in d){const i=b.parentElement.querySelector("input");i.select();
+    try{navigator.clipboard.writeText(i.value).then(()=>{b.textContent="복사됨";setTimeout(()=>{b.textContent="복사"},1500);},()=>document.execCommand("copy"));}catch(x){document.execCommand("copy");}return;}
+  if("bkxno" in d){bankX=null;renderBank();return;}
+  if("bkxgo" in d){bankXGo(b);return;}
   if(d.bkurl){bankPopup(d.bkurl,b);return;}
   if("bkjoin" in d){openBankJoin(d.bkjoin);return;}
   if(d.bkopen){bankOpen=bankOpen===d.bkopen?"":d.bkopen;bankKind="";bankMsg="";renderBank();return;}
@@ -368,8 +555,13 @@ $("view-bank").addEventListener("click",async e=>{const b=e.target.closest("butt
 $("view-bank").addEventListener("change",e=>{const t=e.target;
   if(t.id==="bk-m"){bankM=t.value;bankOpen="";renderBank();return;}
   if(t.id==="bk-a"){bankA=t.value;bankOpen="";renderBank();return;}
+  if(t.id==="bk-file"){const f=t.files&&t.files[0];if(f)bankXOpen(f);return;}
+  if(t.dataset.bkx&&bankX){const k=t.dataset.bkx;if(k==="old")bankX.old=t.checked;else if(k==="acct")bankX.acct=t.value;else if(k==="before")bankX.before=t.value;
+    if(k!=="old")t.blur();renderBank();return;}
   if(t.dataset.bkf==="cost"){const box=t.closest(".bk-pick"),s=box&&box.querySelector("[data-bksum]"),tx=box&&bankTx.find(x=>x.id===box.dataset.bkp);
     if(s&&tx){const v=[...box.querySelectorAll('[data-bkf="cost"]:checked')].reduce((a,c)=>a+(+c.dataset.amt||0),0);s.textContent=`고른 합계 ${won(v)} / 통장 ${won(tx.amount)}${v&&v!==tx.amount?" · 금액이 달라요":""}`;}}});
+/* 통장 연결 칸을 열고 닫은 것은 다시 그려도 그대로 */
+$("view-bank").addEventListener("click",e=>{const sm=e.target.closest&&e.target.closest("details.bk-conn>summary");if(sm&&!bankPop())bankConnOpen=!sm.parentElement.open;});
 $("view-bank").addEventListener("focusout",()=>setTimeout(()=>{if(bankLater&&!bkBusy())renderBank();},0));
 $("bj-close").onclick=closeBankJoin;
 $("bankJoin").addEventListener("click",e=>{if(e.target===$("bankJoin"))closeBankJoin();});

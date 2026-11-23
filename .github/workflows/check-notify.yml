@@ -66,3 +66,8 @@ jobs:
           echo; echo "== 22. AS 자동 접수 서버(as_in, 틀린 열쇠) — 403 bad key 면 새 코드 + SQL 됨, 503 update 14 needed 면 SQL 실행 필요, 400 unknown action 이면 notify 붙여넣기 필요"
           curl -s -i -m 60 -X POST "$URL/functions/v1/notify?action=as_in&kind=kakao" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"key":"probeprobeprobeprobeprobeprobeprobe1234"}' | grep -E "^HTTP|error" | head -5
+          echo; echo "== 23. 통장 내역 표(bank_tx.src, 업데이트 15) — [] 이면 준비됨 (관리자만 읽을 수 있어서 내용은 안 보임), 42703 이면 update-15.sql 실행 필요(업데이트 12만 함), PGRST205 면 update-15.sql 실행 필요"
+          curl -s -i -m 30 "$URL/rest/v1/bank_tx?select=src&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | grep -E "^HTTP|PGRST|42703|\[" | head -5
+          echo; echo "== 24. 은행 알림 서버(bank_in, 틀린 열쇠) — 403 bad key 면 새 notify 코드가 들어감, 400 unknown action 이면 notify 다시 붙여넣기 필요"
+          curl -s -i -m 60 -X POST "$URL/functions/v1/notify?action=bank_in" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+            -H "Content-Type: application/json" -d '{"key":"probeprobeprobeprobeprobeprobeprobe1234"}' | grep -E "^HTTP|error" | head -5

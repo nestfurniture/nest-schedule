@@ -706,6 +706,13 @@ details.bk-conn>summary~*{margin-top:8px}
 .bk-vg:first-child{border-top:0}
 .bk-vg>div>b{font-size:13px;font-weight:500}
 .bk-more{margin-left:auto;font-size:13px;color:var(--accent);font-weight:500}
+#bkConn>*+*{margin-top:10px}
+.bk-xbar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.bk-xbar label.btn{cursor:pointer}
+.bk-x label.bk-xacct{display:flex;flex-direction:column;gap:4px;font-size:14px;max-width:440px}
+.bk-old{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.bk-old input[type=date]{max-width:170px}
+.bk-miss{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px;word-break:break-all}
 .bk-more::after{content:" ›"}
 details[open]>summary .bk-more::after{content:" ⌃"}
 .bk-rules{margin-top:12px;font-size:14px}
@@ -1354,7 +1361,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
   </section>
 
   <section id="view-bank" class="view" hidden>
-    <div class="update" id="bkUpdate" hidden>통장 거래내역을 연결하려면 Supabase 업데이트 12가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule#업데이트-12-통장-거래내역-자동-연결-적용" target="_blank" rel="noopener">README 업데이트 12</a> 순서대로 해 주세요.</div>
+    <div class="update" id="bkUpdate" hidden>통장 내역을 쓰려면 Supabase 업데이트 15가 필요해요. <a href="https://github.com/nestfurniture/nest-schedule/blob/main/supabase/update-15.sql" target="_blank" rel="noopener">업데이트 SQL 열기</a>에서 내용을 복사해 SQL Editor에서 Run 해 주세요. 휴대폰 은행 알림 연결은 <a href="https://github.com/nestfurniture/nest-schedule#업데이트-15-통장-내역-은행-알림과-엑셀-적용" target="_blank" rel="noopener">README 업데이트 15</a>에 있어요.</div>
     <div class="view" id="bkBody">
       <div id="bkConn"></div>
       <div class="tiles" id="bkTiles"></div>
@@ -1362,7 +1369,7 @@ details[open]>summary .bk-more::after{content:" ⌃"}
       <div class="bk-bulk" id="bkBulk"></div>
       <ul class="bk-list" id="bkList"></ul>
       <details class="bk-rules"><summary>기억한 이름 <b id="bkRuleN"></b></summary><ul id="bkRules"></ul></details>
-      <p class="sub">팝빌 계좌조회로 가져온 회사 통장 입출금이에요. 한 줄씩 어디에 넣을지 정하면 회사 지출, 거래처 정산(지급 완료), 시공자 정산(지급 완료), 고객 수금(입금 확인)에 바로 들어가요. 이름과 금액이 맞으면 제안이 뜨고, 회사 지출·건너뛰기로 정한 이름은 기억해서 다음에도 같은 곳을 제안해요. 처리한 줄은 <b>되돌리기</b>로 원래대로 돌릴 수 있어요(넣은 지출은 지워지고 체크는 풀려요).</p>
+      <p class="sub">휴대폰 은행 알림과 은행 엑셀로 들어온 회사 통장 입출금이에요. 한 줄씩 어디에 넣을지 정하면 회사 지출, 거래처 정산(지급 완료), 시공자 정산(지급 완료), 고객 수금(입금 확인)에 바로 들어가요. 이름과 금액이 맞으면 제안이 뜨고, 회사 지출·건너뛰기로 정한 이름은 기억해서 다음에도 같은 곳을 제안해요. 처리한 줄은 <b>되돌리기</b>로 원래대로 돌릴 수 있어요(넣은 지출은 지워지고 체크는 풀려요).</p>
     </div>
   </section>
 
